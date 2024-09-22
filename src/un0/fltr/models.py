@@ -12,81 +12,12 @@ from sqlalchemy.dialects.postgresql import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from un0.fltr.enums import (  # type: ignore
-    ColumnSecurity,
     Include,
     Match,
-    FieldType,
     Lookup,
 )
-from un0.db import Base, BaseMixin, RBACMixin, TableType, str_26, str_255, decimal  # type: ignore
-
-
-class Field(Base, BaseMixin):
-    __tablename__ = "field"
-    __table_args__ = (
-        sa.UniqueConstraint("table_type_id", "field_name"),
-        {
-            "schema": "un0",
-            "comment": "Describes a column in a db table.",
-            "info": {"rls_policy": "superuser"},
-        },
-    )
-
-    # Columns
-    table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
-        info={"edge": "IS_OF_TABLE_TYPE"},
-    )
-    field_name: Mapped[str_255] = mapped_column()
-    label: Mapped[str_255] = mapped_column()
-    field_type: Mapped[FieldType] = mapped_column(
-        ENUM(
-            FieldType,
-            name="fieldtype",
-            create_type=True,
-            schema="un0",
-        ),
-    )
-    includes: Mapped[list[Include]] = mapped_column(
-        ENUM(
-            Include,
-            name="include",
-            create_type=True,
-            schema="un0",
-        )
-    )
-    matches: Mapped[list[Match]] = mapped_column(
-        ENUM(
-            Match,
-            name="match",
-            create_type=True,
-            schema="un0",
-        )
-    )
-    lookups: Mapped[list[Lookup]] = mapped_column(
-        ENUM(
-            Lookup,
-            name="lookup",
-            create_type=True,
-            schema="un0",
-        )
-    )
-    column_security: Mapped[ColumnSecurity] = mapped_column(
-        ENUM(
-            ColumnSecurity,
-            name="columsecurity",
-            create_type=True,
-            schema="un0",
-        ),
-        default=ColumnSecurity.PUBLIC,
-    )
-
-    # Relationships
-    """
-    table_type: Mapped["TableType"] = relationship(back_populates="fields")
-    filter_values: Mapped[list["FilterValue"]] = relationship(back_populates="fields")
-    """
+from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
+from un0.rltd.models import RelatedObject, TableType
 
 
 class FilterKey(Base, BaseMixin):

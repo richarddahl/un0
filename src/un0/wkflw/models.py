@@ -19,7 +19,8 @@ from un0.wkflw.enums import (  # type: ignore
     WorkflowDBEvent,
     WorkflowTrigger,
 )
-from un0.db import Base, BaseMixin, RBACMixin, RelatedObject, TableType, str_26, str_255  # type: ignore
+from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
+from un0.rltd.models import RelatedObject, TableType
 from un0.fltr.models import Query
 
 
@@ -235,32 +236,5 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
         back_populates="workflow_record",
         foreign_keys=[record_id],
         doc="Record of the workflows execution",
-    )
-    """
-
-
-class ObjectFunction(Base, BaseMixin):
-    __tablename__ = "object_function"
-    __table_args__ = {
-        "schema": "un0",
-        "comment": "Functions that can be called by user-defined workflows and reports",
-        "info": {"rls_policy": "superuser"},
-    }
-    # Columns
-
-    label: Mapped[str] = mapped_column(doc="Label of the function")
-    documentation: Mapped[Optional[str]] = mapped_column(
-        doc="Documentation of the function"
-    )
-    name: Mapped[str] = mapped_column(doc="Name of the function")
-    table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
-        info={"edge": "IS_OF_TABLE_TYPE"},
-    )
-    # Relationships
-    """
-    table_type: Mapped[TableType] = relationship(
-        back_populates="object_function", doc="Table Type of the function"
     )
     """

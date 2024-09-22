@@ -16,7 +16,8 @@ from un0.auth.enums import (
     CustomerType,
     PermissionAction,
 )
-from un0.db import Base, BaseMixin, RelatedObject, TableType, str_26, str_255  # type: ignore
+from un0.db import Base, BaseMixin, str_26, str_255  # type: ignore
+from un0.rltd.models import RelatedObject, TableType
 
 
 class Customer(Base, BaseMixin):

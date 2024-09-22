@@ -15,7 +15,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from un0.msg.enums import (  # type: ignore
     MessageImportance,
 )
-from un0.db import Base, BaseMixin, RBACMixin, RelatedObject, str_26, str_255  # type: ignore
+from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
+from un0.rltd.models import RelatedObject, TableType
 
 
 class Message(Base, BaseMixin, RBACMixin):

@@ -51,6 +51,8 @@ from un0.db import Base
 import un0.auth.models as auth_models  # noqa
 import un0.fltr.models as fltr_models  # noqa
 import un0.msg.models as msg_models  # noqa
+import un0.rltd.models as rltd_models  # noqa
+import un0.rprt.models as rprt_models  # noqa
 import un0.wkflw.models as wkflw_models  # noqa
 from un0.config import settings
 
