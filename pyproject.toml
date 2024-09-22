@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
+#
+# SPDX-License-Identifier: MIT
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Basic Project Information
+[project]
+name = "un0"
+dynamic = ["version"]
+description = 'un0 is not an 0rm'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = []
+authors = [{ name = "Richard Dahl", email = "richard@dahl.us" }]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "babel",
+  "fastapi",
+  "jinja2",
+  "psycopg",
+  "pydantic[email]",
+  "pydantic-settings",
+  "python-dotenv",
+  "python-multipart",
+  "uvicorn",
+  "sqlalchemy[asyncio]",
+]
+
+[project.urls]
+Documentation = "https://github.com/richarddahl/un0#readme"
+Issues = "https://github.com/richarddahl/un0/issues"
+Source = "https://github.com/richarddahl/un0"
+
+[tool.hatch.version]
+path = "src/un0/__about__.py"
+
+
+# Default Environment
+[tool.hatch.envs.default.scripts]
+main = "uvicorn src/un0.main:app {args: --reload}"
+createdb = "python src/un0/cmd/create_db.py"
+dropdb = "python src/un0/cmd/drop_db.py"
+
+
+#Development Environment
+[tool.hatch.envs.dev.scripts]
+createdb = "ENV=dev python src/un0/cmd/create_db.py"
+dropdb = "ENV=dev python src/un0/cmd/drop_db.py"
+
+
+# Testing Environment
+[tool.hatch.envs.test]
+dependencies = ["coverage[toml]>=6.5", "pytest", "pytest_asyncio", "asyncio"]
+
+[tool.coverage.run]
+source_pkgs = ["un0", "tests"]
+branch = true
+parallel = true
+omit = ["src/un0/__about__.py"]
+
+[tool.coverage.paths]
+un0 = ["src/un0", "*/un0/src/un0"]
+tests = ["tests", "*/un0/tests"]
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+[tool.hatch.envs.test.scripts]
+test = "ENV=test pytest -vv --capture=tee-sys --show-capture=all"
+test-cov = "ENV=test coverage run -m pytest"
+cov-report = ["ENV=test", "- coverage combine", "coverage report"]
+cov = ["ENV=test", "test-cov", "cov-report"]
+createdb = "ENV=test python src/un0/cmd/create_db.py"
+dropdb = "ENV=test python src/un0/cmd/drop_db.py"
+
+
+# Documentation Environement
+[tool.hatch.envs.docs]
+dependencies = [
+  "mkdocs>=1.0.0",
+  "mkdocs-material>=7.0.0",
+  "mkdocstrings>=0.15.0",
+  "mkdocs-autorefs",
+  "mkdocs-material-extensions",
+  "mkdocstrings-python",
+]
+
+[tool.hatch.envs.docs.scripts]
+build = "mkdocs build --clean --strict"
+serve = "mkdocs serve --dev-addr localhost:8001"
+
+
+# Types Environment
+[tool.hatch.envs.types]
+extra-dependencies = ["mypy>=1.0.0"]
+
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/un0 tests}"
