@@ -110,12 +110,13 @@ CREATE EXTENSION IF NOT EXISTS age;
 
 CONFIGURING_AGE_EXTENSION = f"""
 -- Configuring the age extension
-LOAD 'age';
+--LOAD 'age';
 GRANT USAGE ON SCHEMA ag_catalog TO {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
 ALTER SCHEMA ag_catalog OWNER TO {settings.DB_NAME}_admin;
 SELECT * FROM ag_catalog.create_graph('graph');
 GRANT USAGE ON SCHEMA graph TO {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
 ALTER SCHEMA graph OWNER TO {settings.DB_NAME}_admin;
+GRANT ALL ON ALL TABLES IN SCHEMA graph TO {settings.DB_NAME}_admin;
 ALTER TABLE graph._ag_label_edge OWNER TO {settings.DB_NAME}_admin;
 ALTER TABLE graph._ag_label_vertex OWNER TO {settings.DB_NAME}_admin;
 ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {settings.DB_NAME}_admin;

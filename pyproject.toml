@@ -86,6 +86,8 @@ cov = ["ENV=test", "test-cov", "cov-report"]
 createdb = "ENV=test python src/un0/cmd/create_db.py"
 dropdb = "ENV=test python src/un0/cmd/drop_db.py"
 
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 
 # Documentation Environement
 [tool.hatch.envs.docs]

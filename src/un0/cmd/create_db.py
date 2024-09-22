@@ -259,7 +259,7 @@ def create_database() -> None:
             sa.text(
                 """
                 INSERT INTO un0.user(email, handle, full_name, is_superuser)
-                VALUES('admin@uno.tech', 'admin_user', 'Admin User', true);
+                VALUES('admin@notorm.tech', 'admin_user', 'Admin User', true);
                 """
             )
         )

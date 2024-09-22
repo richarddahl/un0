@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 import pytest
+import json
 
 import sqlalchemy as sa
 from sqlalchemy.sql import select
@@ -13,14 +14,29 @@ from un0.config import settings
 
 @pytest.mark.asyncio
 async def test_admin_user(setup_database, async_session):
+    """Tests that the admin user, created in create_db.create_db is created correctlty."""
     async with async_session() as session:
-        set_role = await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
-        q = select(User).where(User.email == "admin@uno.tech")
+        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
+        q = select(User).where(User.email == "admin@notorm.tech")
         result = await session.execute(q)
         admin_user = result.scalars().first()
 
+        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_admin"))
+        stmt = sa.text(
+            f"""
+            SELECT * FROM cypher('graph', $$
+            MATCH (u:User)
+            WHERE (u.id = '{admin_user.id}')
+            RETURN properties(u)
+            $$) as (type agtype);
+            """
+        )
+        admin_user_vertex = await session.execute(stmt)
+        json_data = json.loads(admin_user_vertex.first()[0])
+        assert json_data["email"] == "admin@notorm.tech"
+
     assert admin_user is not None
-    assert admin_user.email == "admin@uno.tech"
+    assert admin_user.email == "admin@notorm.tech"
     assert admin_user.handle == "admin_user"
     assert admin_user.full_name == "Admin User"
     assert admin_user.is_superuser is True
@@ -31,8 +47,8 @@ async def test_admin_user(setup_database, async_session):
 @pytest.mark.asyncio
 async def test_create_customer(setup_database, async_session):
     async with async_session() as session:
-        set_role = await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
-        q = select(User).where(User.email == "admin@uno.tech")
+        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
+        q = select(User).where(User.email == "admin@notorm.tech")
         result = await session.execute(q)
         admin_user = result.scalars().first()
 
