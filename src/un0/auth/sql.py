@@ -14,17 +14,37 @@ import textwrap
 from un0.config import settings
 
 
+CREATE_USER_TABLE_RLS_POLICY = """
+ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_select_policy
+ON un0.user FOR SELECT
+USING (un0.is_superuser());
+"""
+
 CREATE_IS_SUPERUSER_FUNCTION = """
 /* simple function to check if a user is a superuser */
+
 CREATE OR REPLACE FUNCTION un0.is_superuser()
     RETURNS BOOLEAN
     LANGUAGE plpgsql
 AS $$
 DECLARE 
     is_superuser BOOLEAN;
-    session_user_id VARCHAR(26) := current_setting('session_user_id', true);
+    current_user_email VARCHAR(26) := current_setting('app.user_email'::VARCHAR, true);
 BEGIN
-    EXECUTE 'SELECT is_superuser from user WHERE id = $1' INTO is_superuser USING session_user_id;
+    /* Avoid a query if the current user is the app superuser as defined in the environement settings*/
+    IF current_setting('app.superuser_email', true) = current_user_email THEN
+        RETURN TRUE;
+    END IF;
+
+    PREPARE is_superuser_statement (VARCHAR) AS
+        SELECT is_superuser
+        FROM un0.user
+        WHERE email = $1;
+
+    EXECUTE is_superuser_statement (current_user_email) INTO is_superuser;
+    DEALLOCATE is_superuser_query;
     RETURN is_superuser;
 END;
 $$;
@@ -39,9 +59,13 @@ CREATE OR REPLACE FUNCTION un0.is_customer_admin()
 AS $$
 DECLARE
     is_customer_admin BOOLEAN;
-    session_user_id VARCHAR(26) := current_setting('session_user_id', true);
+    user_email VARCHAR(26) := current_setting('app.user_email', true);
 BEGIN
-    EXECUTE 'SELECT is_customer_admin from user WHERE id = $1' INTO is_customer_admin USING session_user_id;
+    EXECUTE 'SELECT is_customer_admin
+    FROM un0.user 
+    WHERE email = $1' 
+    INTO is_customer_admin 
+    USING app_user_id;
     RETURN is_customer_admin;
 END;
 $$;
