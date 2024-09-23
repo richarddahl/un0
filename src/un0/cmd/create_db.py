@@ -257,9 +257,14 @@ def create_database() -> None:
             create_table_type_for_table(table, conn)
         conn.execute(
             sa.text(
-                """
+                f"""
                 INSERT INTO un0.user(email, handle, full_name, is_superuser)
-                VALUES('admin@notorm.tech', 'admin_user', 'Admin User', true);
+                VALUES(
+                    '{settings.SUPERUSER_EMAIL}',
+                    '{settings.SUPERUSER_HANDLE}',
+                    '{settings.SUPERUSER_FULL_NAME}',
+                    true
+                );
                 """
             )
         )
