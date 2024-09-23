@@ -23,7 +23,14 @@ USING (un0.is_superuser());
 """
 
 CREATE_IS_SUPERUSER_FUNCTION = """
-/* simple function to check if a user is a superuser */
+/* function to check if a user is a superuser
+    If the user is a superuser, return true
+    If the user is not a superuser, return false
+
+    Uses the current_setting function to get the current user's email
+    and compares it to the superuser_email setting in the environment
+    settings. If the emails match, the user is a superuser.
+ */
 
 CREATE OR REPLACE FUNCTION un0.is_superuser()
     RETURNS BOOLEAN
@@ -34,11 +41,11 @@ DECLARE
     current_user_email VARCHAR(26) := current_setting('app.user_email'::VARCHAR, true);
 BEGIN
     /* Avoid a query if the current user is the app superuser as defined in the environement settings*/
-    IF current_setting('app.superuser_email', true) = current_user_email THEN
+    IF current_user_email = current_setting('app.superuser_email', true) THEN
         RETURN TRUE;
     END IF;
 
-    SELECT is_superuser
+    SELECT un0.user.is_superuser
     INTO is_superuser
     FROM un0.user
     WHERE email = current_user_email;
