@@ -19,7 +19,10 @@ ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY user_select_policy
 ON un0.user FOR SELECT
-USING (un0.is_superuser());
+USING (
+    un0.is_superuser() OR
+    owner = current_setting('app.user', true)
+);
 """
 
 CREATE_IS_SUPERUSER_FUNCTION = """
