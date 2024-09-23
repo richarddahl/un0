@@ -38,13 +38,10 @@ BEGIN
         RETURN TRUE;
     END IF;
 
-    PREPARE is_superuser_statement (VARCHAR) AS
-        SELECT is_superuser
-        FROM un0.user
-        WHERE email = $1;
-
-    EXECUTE is_superuser_statement (current_user_email) INTO is_superuser;
-    DEALLOCATE is_superuser_statement;
+    SELECT is_superuser
+    INTO is_superuser
+    FROM un0.user
+    WHERE email = current_user_email;
     RETURN is_superuser;
 END;
 $$;
