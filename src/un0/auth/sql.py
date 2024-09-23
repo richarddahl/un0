@@ -44,7 +44,7 @@ BEGIN
         WHERE email = $1;
 
     EXECUTE is_superuser_statement (current_user_email) INTO is_superuser;
-    DEALLOCATE is_superuser_query;
+    DEALLOCATE is_superuser_statement;
     RETURN is_superuser;
 END;
 $$;
