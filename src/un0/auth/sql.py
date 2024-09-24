@@ -49,10 +49,10 @@ BEGIN
     SELECT header, payload, valid FROM un0.verify(token, '{settings.TOKEN_SECRET}') INTO token_header, token_payload, token_valid;
     IF token_valid THEN
         -- Get the exp from the token payload
-        token_expiration := token_payload ->> 'exp';
+        token_expiration := to_timestamp((token_payload ->> 'exp')::double precision);
 
         -- Check if the token is expired
-        IF token_expiration > NOW() THEN
+        IF token_expiration < NOW() THEN
             RETURN FALSE;
         END IF;
 
