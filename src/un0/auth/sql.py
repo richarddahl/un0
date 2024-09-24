@@ -45,7 +45,7 @@ Ensures that:
     The email address provided in the sub is for an active user record in the user table or raises an Exception (User not found)
 
 If all checks pass, sets the session variables used to enforce RLS and returns True, otherwise returns False:
-    user_email: The email address of the user
+    user_email: The email address of the user (a natural key and the sub in the token)
     is_superuser: Whether the user is a superuser
     is_customer_admin: Whether the user is a customer admin
     customer_id: The ID of the customer to which the user is associated
