@@ -325,3 +325,14 @@ def enable_rls(table_name: str):
         ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
     """
     )
+CREATE OR REPLACE FUNCTION un0.get_user_defined_variables()
+    RETURNS TABLE(variable_name TEXT, variable_value TEXT)
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT name, current_setting(name)
+    FROM pg_settings
+    WHERE name LIKE 's_vars.%';
+END;
+$$;
