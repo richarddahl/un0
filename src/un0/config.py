@@ -34,7 +34,7 @@ class General(BaseSettings):
     TOKEN_EXPIRE_MINUTES: int = 15
     TOKEN_REFRESH_MINUTES: int = 30
     TOKEN_ALGORITHM: str = "HS256"
-    TOKEN_SECRET_KEY: str
+    TOKEN_SECRET: str
     LOGIN_URL: str
 
     # APPLICATION SETTINGS

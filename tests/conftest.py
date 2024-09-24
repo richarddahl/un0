@@ -5,6 +5,8 @@ import datetime
 import pytest
 import json
 
+import jwt
+
 import sqlalchemy as sa
 import textwrap
 from sqlalchemy.orm import sessionmaker, Session
@@ -36,46 +38,57 @@ def async_session(async_engine):
 
 
 @pytest.fixture(scope="session")
-def jwt_token(session, email: str | None = None):
+def valid_jwt_token(session, email: str | None = None):
     """Returns a JWT token for use in tests."""
     if email is None:
         email = settings.SUPERUSER_EMAIL
-    expiration = (
-        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
-        # - datetime.timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES * 100)
+    expiration = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+        minutes=settings.TOKEN_EXPIRE_MINUTES
     )
     token_payload = {
         "sub": email,
-        "exp": expiration.timestamp(),
+        "exp": expiration,
     }
-    token_str = json.dumps(token_payload)
-    print(token_str)
-    with session as _session:
-        result = _session.execute(
-            sa.text(
-                f"SELECT * FROM un0.sign('{token_str}', '{settings.TOKEN_SECRET}', '{settings.TOKEN_ALGORITHM}');"
-            )
-        )
-        token = result.scalars().first()
-        return token
+    token = jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
+    return token
 
 
 @pytest.fixture(scope="session")
-def admin_user(session, jwt_token):
-    """Returns the admin user created in create_db.create_db.
-    This fixture is used in tests to verify that the admin user is created correctly
-    and for creating new objects.
+def invalid_jwt_token(session, email: str | None = None):
+    """Returns a JWT token for use in tests."""
+    if email is None:
+        email = settings.SUPERUSER_EMAIL
+    expiration = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        minutes=settings.TOKEN_EXPIRE_MINUTES
+    )
+    token_payload = {
+        "sub": email,
+        "exp": expiration,
+    }
+    token = jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
+    return token
+
+
+@pytest.fixture(scope="session")
+def valid_user(session, valid_jwt_token, email: str | None = None):
+    """
     TODO: This fixture should be refactored to use async_session.
     """
 
+    if email is None:
+        email = settings.SUPERUSER_EMAIL
+
     with session as _session:
-        token = _session.execute(
+        token_result = _session.execute(
             sa.text(
-                f"SELECT * FROM un0.verify_jwt_and_set_session_variables('{jwt_token}'::TEXT);"
+                f"SELECT * FROM un0.verify_jwt_and_set_session_variables('{valid_jwt_token}'::TEXT);"
             )
         )
+        if token_result.scalars().first() is False:
+            return None
+
         _session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
-        q = sa.sql.select(User).where(User.email == f"{settings.SUPERUSER_EMAIL}")
+        q = sa.sql.select(User).where(User.email == f"{email}")
         result = _session.execute(q)
         admin_user = result.scalars().first()
         return admin_user
@@ -109,9 +122,13 @@ def db_connection(engine):
 def test_compare_with_now(db_connection):
     """Test the compare_with_now SQL function."""
     python_timestamp = datetime.datetime.now() - datetime.timedelta(days=1)
-    query = textwrap.dedent("""
+    query = textwrap.dedent(
+        """
         SELECT un0.compare_with_now(:python_timestamp) AS is_past;
-    """)
-    result = db_connection.execute(sa.text(query), {'python_timestamp': python_timestamp})
+    """
+    )
+    result = db_connection.execute(
+        sa.text(query), {"python_timestamp": python_timestamp}
+    )
     is_past = result.scalar()
     assert is_past is True, "The timestamp should be in the past compared to NOW()"

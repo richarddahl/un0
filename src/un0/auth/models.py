@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
+import textwrap
 
 from typing import Optional
 
@@ -65,13 +66,17 @@ class User(Base, BaseMixin):
     __tablename__ = "user"
     __table_args__ = (
         sa.CheckConstraint(
-            """
+            textwrap.dedent(
+                """
                 is_superuser = 'false' AND default_group_id IS NOT NULL OR 
                 is_superuser = 'true' AND default_group_id IS NULL AND
                 is_superuser = 'false' AND is_customer_admin = 'false' OR
                 is_superuser = 'true' AND is_customer_admin = 'false' OR
-                is_superuser = 'false' AND is_customer_admin = 'true'
-            """,
+                is_superuser = 'false' AND is_customer_admin = 'true' --OR
+                --is_superuser = 'true' AND owner_id IS NOT NULL OR
+                --is_superuser = 'false' AND owner_id IS NULL
+            """
+            ),
             name="ck_user_is_superuser",
         ),
         {
@@ -107,6 +112,12 @@ class User(Base, BaseMixin):
     is_customer_admin: Mapped[bool] = mapped_column(
         server_default=sa.text("false"), index=True, doc="Customer admin status"
     )
+    # owner_id: Mapped[Optional[str_26]] = mapped_column(
+    #    sa.ForeignKey("un0.user.id", ondelete="SET NULL"),
+    #    index=True,
+    #    nullable=True,
+    #    info={"edge": "HAS_OWNER"},
+    # )
 
     # Relationships
     # customer: Mapped[Customer] = relationship(
