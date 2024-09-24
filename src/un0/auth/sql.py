@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
-"""
-    NOTE - The use of f strings to provide the schema name and database name DOES NOT 
-    provide any protection against SQL injection. You cannot paramaterize postgres DDL 
-    statements. The names are defined in the .env file, are not user input, and are only
-    used at the beginning of projects to create the initial db.  
-    
-    That said, Don't inject SQL into your own database!
-"""
+CREATE OR REPLACE FUNCTION un0.compare_with_now(python_timestamp TIMESTAMP)
+    RETURNS BOOLEAN
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN python_timestamp < NOW();
+END;
+$$;
 import textwrap
 
 from un0.config import settings
