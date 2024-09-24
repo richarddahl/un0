@@ -111,12 +111,12 @@ CREATE EXTENSION IF NOT EXISTS age;
 CONFIGURING_AGE_EXTENSION = f"""
 -- Configuring the age extension
 --LOAD 'age';
-GRANT USAGE ON SCHEMA ag_catalog TO {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
+GRANT USAGE ON SCHEMA ag_catalog TO
+    {settings.DB_NAME}_admin,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 ALTER SCHEMA ag_catalog OWNER TO {settings.DB_NAME}_admin;
 SELECT * FROM ag_catalog.create_graph('graph');
-GRANT USAGE ON SCHEMA graph TO {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
-ALTER SCHEMA graph OWNER TO {settings.DB_NAME}_admin;
-GRANT ALL ON ALL TABLES IN SCHEMA graph TO {settings.DB_NAME}_admin;
 ALTER TABLE graph._ag_label_edge OWNER TO {settings.DB_NAME}_admin;
 ALTER TABLE graph._ag_label_vertex OWNER TO {settings.DB_NAME}_admin;
 ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {settings.DB_NAME}_admin;
@@ -126,22 +126,79 @@ ALTER SEQUENCE graph._label_id_seq OWNER TO {settings.DB_NAME}_admin;
 
 
 REVOKE_ACCESS_FROM_PUBLIC = f"""
--- Explicitly revoke all privileges on the public schema
-REVOKE ALL ON SCHEMA public FROM public;
+-- Explicitly revoke all privileges on all schemas and tables
+REVOKE ALL ON SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA} 
+FROM
+    public,
+    {settings.DB_NAME}_base_role,
+    {settings.DB_NAME}_login,
+    {settings.DB_NAME}_admin,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 
--- Explicitly revoke all privileges on the un0 schemas
-REVOKE ALL ON SCHEMA audit FROM public;
-REVOKE ALL ON SCHEMA un0 FROM public;
-REVOKE ALL ON SCHEMA {settings.DB_SCHEMA} FROM public;
+REVOKE ALL ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA} 
+FROM
+    public,
+    {settings.DB_NAME}_base_role,
+    {settings.DB_NAME}_login,
+    {settings.DB_NAME}_admin,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 """
 
 
 SET_SEARCH_PATHS = f"""
-ALTER ROLE {settings.DB_NAME}_base_role SET search_path TO ag_catalog, un0, audit, graph, {settings.DB_NAME};
-ALTER ROLE {settings.DB_NAME}_login SET search_path TO ag_catalog, un0, audit, graph, {settings.DB_NAME};
-ALTER ROLE {settings.DB_NAME}_reader SET search_path TO ag_catalog, un0, audit, graph, {settings.DB_NAME};
-ALTER ROLE {settings.DB_NAME}_writer SET search_path TO ag_catalog, un0, audit, graph, {settings.DB_NAME};
-ALTER ROLE {settings.DB_NAME}_admin SET search_path TO ag_catalog, un0, audit, graph, {settings.DB_NAME};
+ALTER ROLE
+    {settings.DB_NAME}_base_role
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {settings.DB_NAME};
+ALTER ROLE
+    {settings.DB_NAME}_login
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {settings.DB_NAME};
+ALTER ROLE
+    {settings.DB_NAME}_admin
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {settings.DB_NAME};
+ALTER ROLE
+    {settings.DB_NAME}_reader
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {settings.DB_NAME};
+ALTER ROLE
+    {settings.DB_NAME}_writer 
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {settings.DB_NAME};
+
 """
 
 
@@ -152,27 +209,77 @@ ALTER SCHEMA un0 OWNER TO {settings.DB_NAME}_admin;
 ALTER SCHEMA graph OWNER TO {settings.DB_NAME}_admin;
 ALTER SCHEMA {settings.DB_SCHEMA} OWNER TO {settings.DB_NAME}_admin;
 
+REVOKE CONNECT ON DATABASE {settings.DB_NAME} FROM
+    public,
+    {settings.DB_NAME}_base_role,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer,
+    {settings.DB_NAME}_admin;
+
 -- Grant connect privileges to the application authenticator
 GRANT CONNECT ON DATABASE {settings.DB_NAME} TO {settings.DB_NAME}_login;
 
 -- Grant usage privileges for users to created schemas
 -- authenticator needs usage as it is used by the inspector in testing
-GRANT USAGE ON SCHEMA un0, audit, graph, {settings.DB_SCHEMA} TO
-    {settings.DB_NAME}_login, {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
+GRANT USAGE ON SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA}
+TO
+    {settings.DB_NAME}_login,
+    {settings.DB_NAME}_admin,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA un0, audit, graph, {settings.DB_SCHEMA} TO
-    {settings.DB_NAME}_login, {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
+GRANT CREATE ON SCHEMA
+    un0,
+    audit,
+    graph,
+    {settings.DB_SCHEMA}
+TO
+    {settings.DB_NAME}_admin;
 
-GRANT SELECT ON ALL TABLES IN SCHEMA un0, audit, graph, {settings.DB_SCHEMA} TO
-    {settings.DB_NAME}_admin, {settings.DB_NAME}_reader, {settings.DB_NAME}_writer;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA}
+TO
+    {settings.DB_NAME}_login,
+    {settings.DB_NAME}_admin,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA un0, audit, graph, {settings.DB_SCHEMA} TO
-    {settings.DB_NAME}_admin, {settings.DB_NAME}_writer;
+GRANT SELECT ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA}
+TO
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer;
 
-REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA audit FROM public;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA un0 FROM public;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA graph FROM public;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {settings.DB_SCHEMA} FROM public;
+
+GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    {settings.DB_SCHEMA} 
+TO
+    {settings.DB_NAME}_writer;
+
+GRANT ALL ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {settings.DB_SCHEMA} 
+TO
+    {settings.DB_NAME}_admin;
 """
 
 
