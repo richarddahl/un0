@@ -15,7 +15,7 @@ from un0.cmd import create_db, drop_db
 from un0.config import settings
 from un0.auth.models import User
 
-
+# USED TO MOCK A SUPERUSER SESSION
 SUPERUSER_SESSION_CONFIGURATION_STATEMENTS = f"""
 SELECT SET_CONFIG('s_var.user_email', '{settings.SUPERUSER_EMAIL}', true);
 SELECT SET_CONFIG('s_var.is_superuser', 'true', true);
@@ -58,6 +58,7 @@ def encode_token(
 async def admin_user(async_session):
     token = encode_token()
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         token_result = await session.execute(
             sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
         )

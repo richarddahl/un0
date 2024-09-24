@@ -11,7 +11,7 @@ from un0.cmd.sql import (
     SET_PGMETA_CONFIG,
     CREATE_DATABASE,
     CREATE_SCHEMAS,
-    REVOKE_ACCESS_FROM_PUBLIC,
+    REVOKE_ACCESS,
     CONFIGURE_BASIC_PRIVILEGES,
     SET_SEARCH_PATHS,
     CREATE_EXTENSIONS,
@@ -104,7 +104,7 @@ def create_schemas_extensions_and_tables() -> None:
         conn.execute(sa.text(CREATE_PGULID))
 
         print("Revoking public access to schemas\n")
-        conn.execute(sa.text(REVOKE_ACCESS_FROM_PUBLIC))
+        conn.execute(sa.text(REVOKE_ACCESS))
 
         print("Setting role search paths\n")
         conn.execute(sa.text(SET_SEARCH_PATHS))

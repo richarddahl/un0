@@ -6,7 +6,7 @@ import pytest  # type: ignore
 
 import sqlalchemy as sa
 
-from tests.conftest import encode_token
+from tests.conftest import encode_token, SET_ROLE_READER_STATEMENT
 
 
 @pytest.mark.asyncio
@@ -14,6 +14,7 @@ async def test_valid_jwt(async_session):
     """Tests that a valid JWT token can be verified and the session variables set."""
     token = encode_token()
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         result = await session.execute(
             sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
         )
@@ -33,6 +34,7 @@ async def test_valid_jwt(async_session):
 async def test_expired_jwt(async_session):
     token = encode_token(is_expired=True)
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         with pytest.raises(sa.exc.ProgrammingError) as excinfo:
             await session.execute(
                 sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
@@ -44,6 +46,7 @@ async def test_expired_jwt(async_session):
 async def test_inv_sec_jwt(async_session):
     token = encode_token(inv_sec=True)
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         with pytest.raises(sa.exc.ProgrammingError) as excinfo:
             await session.execute(
                 sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
@@ -55,6 +58,7 @@ async def test_inv_sec_jwt(async_session):
 async def test_invalid_sub_jwt(async_session):
     token = encode_token(email="richard@dahl.us")
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         with pytest.raises(sa.exc.ProgrammingError) as excinfo:
             await session.execute(
                 sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
@@ -66,6 +70,7 @@ async def test_invalid_sub_jwt(async_session):
 async def test_no_sub_jwt(async_session):
     token = encode_token(has_sub=False)
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         with pytest.raises(sa.exc.ProgrammingError) as excinfo:
             await session.execute(
                 sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
@@ -77,6 +82,7 @@ async def test_no_sub_jwt(async_session):
 async def test_no_exp_jwt(async_session):
     token = encode_token(has_exp=False)
     async with async_session() as session:
+        await session.execute(sa.text(SET_ROLE_READER_STATEMENT))
         with pytest.raises(sa.exc.ProgrammingError) as excinfo:
             await session.execute(
                 sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")

@@ -125,7 +125,7 @@ ALTER SEQUENCE graph._label_id_seq OWNER TO {settings.DB_NAME}_admin;
 """
 
 
-REVOKE_ACCESS_FROM_PUBLIC = f"""
+REVOKE_ACCESS = f"""
 -- Explicitly revoke all privileges on all schemas and tables
 REVOKE ALL ON SCHEMA
     un0,
@@ -154,6 +154,13 @@ FROM
     {settings.DB_NAME}_admin,
     {settings.DB_NAME}_reader,
     {settings.DB_NAME}_writer;
+
+REVOKE CONNECT ON DATABASE {settings.DB_NAME} FROM
+    public,
+    {settings.DB_NAME}_base_role,
+    {settings.DB_NAME}_reader,
+    {settings.DB_NAME}_writer,
+    {settings.DB_NAME}_admin;
 """
 
 
@@ -203,24 +210,16 @@ SET search_path TO
 
 
 CONFIGURE_BASIC_PRIVILEGES = f"""
--- Grant ownership of the un0 schemas to the application admin
+-- Grant ownership of the un0 schemas to the DB admin role
 ALTER SCHEMA audit OWNER TO {settings.DB_NAME}_admin;
 ALTER SCHEMA un0 OWNER TO {settings.DB_NAME}_admin;
 ALTER SCHEMA graph OWNER TO {settings.DB_NAME}_admin;
 ALTER SCHEMA {settings.DB_SCHEMA} OWNER TO {settings.DB_NAME}_admin;
 
-REVOKE CONNECT ON DATABASE {settings.DB_NAME} FROM
-    public,
-    {settings.DB_NAME}_base_role,
-    {settings.DB_NAME}_reader,
-    {settings.DB_NAME}_writer,
-    {settings.DB_NAME}_admin;
-
--- Grant connect privileges to the application authenticator
+-- Grant connect privileges to the DB login role
 GRANT CONNECT ON DATABASE {settings.DB_NAME} TO {settings.DB_NAME}_login;
 
 -- Grant usage privileges for users to created schemas
--- authenticator needs usage as it is used by the inspector in testing
 GRANT USAGE ON SCHEMA
     un0,
     audit,
@@ -228,7 +227,6 @@ GRANT USAGE ON SCHEMA
     ag_catalog,
     {settings.DB_SCHEMA}
 TO
-    {settings.DB_NAME}_login,
     {settings.DB_NAME}_admin,
     {settings.DB_NAME}_reader,
     {settings.DB_NAME}_writer;
@@ -248,7 +246,6 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
     ag_catalog,
     {settings.DB_SCHEMA}
 TO
-    {settings.DB_NAME}_login,
     {settings.DB_NAME}_admin,
     {settings.DB_NAME}_reader,
     {settings.DB_NAME}_writer;
@@ -272,14 +269,14 @@ GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA
 TO
     {settings.DB_NAME}_writer;
 
-GRANT ALL ON ALL TABLES IN SCHEMA
-    un0,
-    audit,
-    graph,
-    ag_catalog,
-    {settings.DB_SCHEMA} 
-TO
-    {settings.DB_NAME}_admin;
+--GRANT ALL ON ALL TABLES IN SCHEMA
+--    un0,
+--    audit,
+--    graph,
+--    ag_catalog,
+--    {settings.DB_SCHEMA} 
+--TO
+--    {settings.DB_NAME}_admin;
 """
 
 
