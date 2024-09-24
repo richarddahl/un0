@@ -27,10 +27,44 @@ INSERT INTO un0.user(email, handle, full_name, is_superuser)
 VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.SUPERUSER_FULL_NAME}', true);
 """
 
+CREATE_LIST_SESSION_VARIABLES_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.list_session_variables()
+    RETURNS TABLE(
+        variable_name TEXT,
+        variable_value TEXT
+    )
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        name,
+        current_setting(name)
+    FROM pg_settings
+    WHERE name LIKE 's_var.%';
+END;
+$$;
+"""
 
 CREATE_VERIFY_JWT_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_session_variables(token TEXT)
--- Function to verify a JWT token and set the session variables necessary for enforcing RLS
+/*
+Function to verify a JWT token and set the session variables necessary for enforcing RLS
+Ensures that:
+    The token is valid or raises an Exception (Invalid Token)
+    The token contains a sub (which is an email address) or raises an Exception (Token does not contain a sub)
+    The email address provided in the sub is for an active user record in the user table or raises an Exception (User not found)
+
+Then sets all session variables are set for the user to enforce RLS:
+    user_id: The ID of the user
+    is_superuser: Whether the user is a superuser
+    is_customer_admin: Whether the user is a customer admin
+    customer_id: The ID of the customer the user is associated with
+
+If all checks pass, returns True, otherwise returns False
+
+param token: The JWT token to verify
+*/
     RETURNS  BOOLEAN
     LANGUAGE plpgsql
 AS $$
@@ -40,20 +74,34 @@ DECLARE
     token_payload JSONB;
     token_valid BOOLEAN;
     sub VARCHAR;
+    expiration INT;
     session_is_superuser BOOLEAN;
     session_is_customer_admin BOOLEAN;
     session_user_id VARCHAR(26);
     session_customer_id VARCHAR(26);
 BEGIN
+    -- Verify the token
     SELECT header, payload, valid
     FROM un0.verify(token, '{settings.TOKEN_SECRET}')
     INTO token_header, token_payload, token_valid;
+
     IF token_valid THEN
-        -- Set the role to the admin role to query the user table bypassing the RLS policy
-        SET ROLE {settings.DB_NAME}_admin;
 
         -- Get the sub from the token payload
         sub := token_payload ->> 'sub';
+
+        IF sub IS NULL THEN
+            RAISE EXCEPTION 'token does not contain a sub';
+        END IF;
+
+        -- Get the expiration from the token payload
+        expiration := token_payload ->> 'exp';
+        IF expiration IS NULL THEN
+            RAISE EXCEPTION 'token has no expiration';
+        END IF;
+
+        -- Set the role to the admin role to query the user table bypassing the RLS policy
+        SET ROLE {settings.DB_NAME}_admin;
 
         -- Query the user table for the user to get the relevant session variables
         SELECT id, is_superuser, is_customer_admin, customer_id
@@ -61,18 +109,25 @@ BEGIN
         WHERE email = sub
         INTO session_user_id, session_is_superuser, session_is_customer_admin, session_customer_id;
 
+        IF session_user_id IS NULL THEN
+            RAISE EXCEPTION 'user not found';
+        END IF;
+
+        -- Reset the role to the default
+        RESET ROLE;
+
         -- Set the session variables used for RLS
         SET s_var.user_id = session_user_id;
         SET s_var.is_superuser = session_is_superuser;
         SET s_var.is_customer_admin = session_is_customer_admin;
         SET s_var.customer_id = session_customer_id;
 
-        -- Reset the role to the default
-        RESET ROLE;
-        -- Return the validity of the token
-        RETURN token_valid;
+    ELSE
+        -- Token failed verification
+        RAISE EXCEPTION 'invalid token';
     END IF;
-    RETURN FALSE;
+    -- Return the validity of the token
+    RETURN token_valid;
 END;
 $$
 """
