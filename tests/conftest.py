@@ -13,6 +13,19 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from un0.cmd import create_db, drop_db
 from un0.config import settings
+from un0.auth.models import User
+
+
+SUPERUSER_SESSION_CONFIGURATION_STATEMENTS = f"""
+SELECT SET_CONFIG('s_var.user_email', '{settings.SUPERUSER_EMAIL}', true);
+SELECT SET_CONFIG('s_var.is_superuser', 'true', true);
+SELECT SET_CONFIG('s_var.is_customer_admin', 'false', true);
+SELECT SET_CONFIG('s_var.customer_id', '', true);
+"""
+
+SET_ROLE_ADMIN_STATEMENT = f"SET ROLE {settings.DB_NAME}_admin;"
+SET_ROLE_READER_STATEMENT = f"SET ROLE {settings.DB_NAME}_reader;"
+SET_ROLE_WRITER_STATEMENT = f"SET ROLE {settings.DB_NAME}_writer;"
 
 
 # Not marked as a fixture as need to call it with different parameters for testing
@@ -41,29 +54,42 @@ def encode_token(
     return jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
+async def admin_user(async_session):
+    token = encode_token()
+    async with async_session() as session:
+        token_result = await session.execute(
+            sa.text(f"SELECT * FROM un0.verify_jwt_and_set_vars('{token}'::TEXT);")
+        )
+        assert token_result.scalars().first() is True
+        q = sa.sql.select(User).where(User.email == settings.SUPERUSER_EMAIL)
+        result = await session.execute(q)
+        return result.scalars().first()
+
+
+@pytest.fixture(scope="module")
 def engine():
     return sa.create_engine(settings.DB_URL)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def session(engine):
     return Session(engine)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def async_engine():
     return create_async_engine(settings.DB_URL)
 
 
 @pytest.fixture(
-    scope="session",
+    scope="module",
 )
 def async_session(async_engine):
     return sessionmaker(bind=async_engine, class_=AsyncSession)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_database():
     drop_db.drop_database()
     # Create database

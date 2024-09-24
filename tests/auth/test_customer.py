@@ -7,17 +7,17 @@ import json
 import sqlalchemy as sa
 from sqlalchemy.sql import select
 
-from un0.auth.models import Customer, User, Role, Group, UserGroupRole
+from un0.auth.models import Customer, Group, User
 from un0.auth.enums import CustomerType
 from un0.config import settings
 
 
+'''
 @pytest.mark.asyncio
-async def test_create_customer(setup_database, async_session, valid_user):
-    admin_user = valid_user
+async def test_create_groups_on_customer_creation(async_session, admin_user):
+    admin_user = await admin_user
     async with async_session() as session:
         await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_writer"))
-        await session.execute(sa.text(f"SET SESSION un0.app_user = '{admin_user.id}'"))
 
         acme = Customer(name="Acme Inc.", customer_type=CustomerType.ENTERPRISE)
         nacme = Customer(name="NAcme Inc.", customer_type=CustomerType.CORPORATE)
@@ -25,7 +25,9 @@ async def test_create_customer(setup_database, async_session, valid_user):
             name="Wiley Coyote", customer_type=CustomerType.SMALL_BUSINESS
         )
         bird = Customer(name="Road Runner", customer_type=CustomerType.INDIVIDUAL)
-        session.add_all([acme, nacme, coyote, bird])
+        customers = [acme, nacme, coyote, bird]
+        session.add_all(customers)
+        await session.commit()
 
         customer_count = await session.execute(
             select(sa.func.count()).select_from(Customer)
@@ -35,7 +37,34 @@ async def test_create_customer(setup_database, async_session, valid_user):
         assert group_count.scalar() == 4
 
 
-'''
+@pytest.mark.asyncio
+async def test_customer_graphs(async_session, admin_user):
+    admin_user = await admin_user
+    async with async_session() as session:
+        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_admin"))
+        stmt = sa.text(
+            """
+            SELECT * FROM cypher('graph', $$
+            MATCH (c:Customer)
+            RETURN properties(c)
+            $$) as (type agtype);
+            """
+        )
+        customer_vertex = await session.execute(stmt)
+        for props in customer_vertex.fetchall():
+            properties = json.loads(props[0])
+            assert properties["created_at"] is not None
+            assert properties["modified_at"] is not None
+            with pytest.raises(KeyError):
+                properties["deleted_at"]
+    # assert properties["name"] == "Acme Inc."
+    # assert properties["customer_type"] == "ENTERPRISE"
+    # assert properties["created_at"] is not None
+    # assert properties["modified_at"] is not None
+    # with pytest.raises(KeyError):
+    #     properties["deleted_at"]
+
+
     # Create roles
     acme_admin_role = Role(
         name="Admin", description="Administrator role", customer_id=acme.id

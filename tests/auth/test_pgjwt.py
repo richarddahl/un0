@@ -2,15 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-import datetime
 import pytest  # type: ignore
-import jwt
-
-from typing import Any
 
 import sqlalchemy as sa
 
-from un0.config import settings
 from tests.conftest import encode_token
 
 
@@ -28,7 +23,7 @@ async def test_valid_jwt(async_session):
             sa.text("SELECT * FROM un0.list_session_variables();")
         )
         session_variables = result.scalars().first()
-        assert session_variables.get("user_id") != ""
+        assert session_variables.get("user_email") != ""
         assert session_variables.get("is_superuser") == "true"
         assert session_variables.get("is_customer_admin") == "false"
         assert session_variables.get("customer_id") == ""
