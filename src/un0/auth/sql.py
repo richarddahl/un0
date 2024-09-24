@@ -27,24 +27,22 @@ INSERT INTO un0.user(email, handle, full_name, is_superuser)
 VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.SUPERUSER_FULL_NAME}', true);
 """
 
+
 CREATE_LIST_SESSION_VARIABLES_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.list_session_variables()
-    RETURNS TABLE(
-        variable_name TEXT,
-        variable_value TEXT
-    )
+CREATE OR REPLACE FUNCTION un0.get_user_defined_variables()
+    RETURNS TABLE(variable_name TEXT, variable_value TEXT)
     LANGUAGE plpgsql
 AS $$
 BEGIN
     RETURN QUERY
-    SELECT
-        name,
-        current_setting(name)
-    FROM pg_settings
-    WHERE name LIKE 's_var.%';
+    SELECT 'user_id'::TEXT, current_setting('s_var.user_id', true)::TEXT,
+        'is_superuser'::TEXT, current_setting('s_var.is_superuser', true)::TEXT,
+        'is_customer_admin'::TEXT, current_setting('s_var.is_customer_admin', true)::TEXT,
+        'customer_id'::TEXT, current_setting('s_var.customer_id', true)::TEXT;
 END;
 $$;
 """
+
 
 CREATE_VERIFY_JWT_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_session_variables(token TEXT)
@@ -325,14 +323,3 @@ def enable_rls(table_name: str):
         ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
     """
     )
-CREATE OR REPLACE FUNCTION un0.get_user_defined_variables()
-    RETURNS TABLE(variable_name TEXT, variable_value TEXT)
-    LANGUAGE plpgsql
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT name, current_setting(name)
-    FROM pg_settings
-    WHERE name LIKE 's_vars.%';
-END;
-$$;
