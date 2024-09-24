@@ -14,68 +14,98 @@ import textwrap
 from un0.config import settings
 
 
-CREATE_USER_TABLE_RLS_POLICY = """
-ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
+CREATE_SUPERUSER = f"""
+/*
+Creates the superuser for the application 
+Must be done before RLS is enabled on the user table
+*/
 
-CREATE POLICY user_select_policy
-ON un0.user FOR SELECT
-USING (
-    un0.is_superuser() OR
-    owner = current_setting('app.user', true)
-);
-"""
-
-CREATE_IS_SUPERUSER_FUNCTION = """
-/* function to check if a user is a superuser
-    If the user is a superuser, return true
-    If the user is not a superuser, return false
-
-    Uses the current_setting function to get the current user's email
-    and compares it to the superuser_email setting in the environment
-    settings. If the emails match, the user is a superuser.
- */
-
-CREATE OR REPLACE FUNCTION un0.is_superuser()
-    RETURNS BOOLEAN
-    LANGUAGE plpgsql
-AS $$
-DECLARE 
-    is_superuser BOOLEAN;
-    current_user_email VARCHAR(26) := current_setting('app.user_email'::VARCHAR, true);
-BEGIN
-    /* Avoid a query if the current user is the app superuser as defined in the environement settings*/
-    IF current_user_email = current_setting('app.superuser_email', true) THEN
-        RETURN TRUE;
-    END IF;
-
-    SELECT un0.user.is_superuser
-    INTO is_superuser
-    FROM un0.user
-    WHERE email = current_user_email;
-    RETURN is_superuser;
-END;
-$$;
+INSERT INTO un0.user(email, handle, full_name, is_superuser)
+VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.SUPERUSER_FULL_NAME}', true);
 """
 
 
-CREATE_IS_CUSTOMER_ADMIN_FUNCTION = """
-/* simple function to check if a user is a customer_admin */
-CREATE OR REPLACE FUNCTION un0.is_customer_admin()
-    RETURNS BOOLEAN
+CREATE_VERIFY_JWT_FUNCTION = f"""
+SET TIME ZONE 'UTC';
+
+
+CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_session_variables(token TEXT)
+-- Function to verify a JWT token and set the session variables necessary for enforcing RLS
+    RETURNS TIMESTAMP
     LANGUAGE plpgsql
 AS $$
+
 DECLARE
-    is_customer_admin BOOLEAN;
-    user_email VARCHAR(26) := current_setting('app.user_email', true);
+    token_header JSONB;
+    token_payload JSONB;
+    token_valid BOOLEAN;
+    sub VARCHAR(255);
+    session_is_superuser BOOLEAN;
+    session_is_customer_admin BOOLEAN;
+    session_user_id VARCHAR(26);
+    session_customer_id VARCHAR(26);
+    token_expiration TIMESTAMP;
 BEGIN
-    EXECUTE 'SELECT is_customer_admin
-    FROM un0.user 
-    WHERE email = $1' 
-    INTO is_customer_admin 
-    USING app_user_id;
-    RETURN is_customer_admin;
+    SELECT header, payload, valid FROM un0.verify(token, '{settings.TOKEN_SECRET}') INTO token_header, token_payload, token_valid;
+    IF token_valid THEN
+        -- Get the exp from the token payload
+        token_expiration := token_payload ->> 'exp';
+
+        -- Check if the token is expired
+        IF token_expiration > NOW() THEN
+            RETURN FALSE;
+        END IF;
+
+        -- Set the role to the admin role to query the user table
+        SET ROLE {settings.DB_NAME}_admin;
+
+        -- Get the sub from the token payload
+        sub := token_payload ->> 'sub';
+
+        -- Query the user table for the user to get the relevant session variables
+        SELECT id, is_superuser, is_customer_admin, customer_id
+        FROM un0.user
+        WHERE email = sub
+        INTO session_user_id, session_is_superuser, session_is_customer_admin, session_customer_id;
+
+        -- Set the session variables used for RLS
+        SET s_var.user_id = session_user_id;
+        SET s_var.is_superuser = session_is_superuser;
+        SET s_var.is_customer_admin = session_is_customer_admin;
+        SET s_var.customer_id = session_customer_id;
+
+        -- Reset the role to the default
+        RESET ROLE;
+        -- Return the validity of the token
+        RETURN token_valid;
+    END IF;
+    RETURN FALSE;
 END;
-$$;
+$$
+"""
+
+CREATE_USER_TABLE_RLS_SELECT_POLICY = """
+/*
+Enable RLS on the user table with policy
+*/
+ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
+
+/* The policy to allow:
+    Superusers to operate on all user records;
+    Customer Admins to operate on all users records associated with the customer;
+    Regular users to operate on their own record
+*/
+
+CREATE POLICY user_policy
+ON un0.user FOR ALL
+USING (
+    current_setting('s_var.is_superuser', true)::BOOLEAN OR
+    id = current_setting('s_var.user_id', true)::VARCHAR(26) OR
+    (
+        current_setting('s_var.is_customer_admin', true)::BOOLEAN AND
+        customer_id = current_setting('s_var.customer_id', true)::VARCHAR(26)
+    )
+);
 """
 
 CREATE_CAN_INSERT_GROUP_FUNCTION = f"""
@@ -121,6 +151,29 @@ BEGIN
     RETURN true;
 END
 $$;
+"""
+
+
+CREATE_SET_USER_OWNER_FUNCTION_AND_TRIGGER = """
+CREATE OR REPLACE FUNCTION un0.set_user_owner_id()
+    -- Function to set the owner_id of a user record to the current user, unless the user is a superuser
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.is_superuser THEN
+        RETURN NEW;
+    ELSE
+        NEW.owner_id := current_setting('s_var.user_id', true);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER set_user_owner_id_trigger
+    BEFORE INSERT ON un0.user
+    FOR EACH ROW
+    EXECUTE FUNCTION un0.set_user_owner_id();
 """
 
 CREATE_INSERT_GROUP_CHECK_CONSTRAINT = f"""
