@@ -30,14 +30,15 @@ dependencies = [
   "babel",
   "fastapi",
   "jinja2",
+  "PyJWT",
   "psycopg",
   "pydantic[email]",
   "pydantic-settings",
   "python-dotenv",
   "python-multipart",
+  "pytz",
   "uvicorn",
   "sqlalchemy[asyncio]",
-  "PyJWT",
 ]
 
 [project.urls]
