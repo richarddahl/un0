@@ -132,3 +132,11 @@ def test_compare_with_now(db_connection):
     )
     is_past = result.scalar()
     assert is_past is True, "The timestamp should be in the past compared to NOW()"
+
+
+def test_programming_error_message(db_connection):
+    """Test to validate the error message in a ProgrammingError."""
+    with pytest.raises(sa.exc.ProgrammingError) as excinfo:
+        db_connection.execute("SELECT * FROM non_existent_table")
+
+    assert "relation \"non_existent_table\" does not exist" in str(excinfo.value)
