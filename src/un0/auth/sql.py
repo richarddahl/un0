@@ -26,12 +26,9 @@ VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.S
 
 
 CREATE_VERIFY_JWT_FUNCTION = f"""
-SET TIME ZONE 'UTC';
-
-
 CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_session_variables(token TEXT)
 -- Function to verify a JWT token and set the session variables necessary for enforcing RLS
-    RETURNS TIMESTAMP
+    RETURNS BOOLEAN
     LANGUAGE plpgsql
 AS $$
 
@@ -45,18 +42,29 @@ DECLARE
     session_user_id VARCHAR(26);
     session_customer_id VARCHAR(26);
     token_expiration TIMESTAMP;
+    exp DOUBLE PRECISION;
 BEGIN
-    SELECT header, payload, valid FROM un0.verify(token, '{settings.TOKEN_SECRET}') INTO token_header, token_payload, token_valid;
+    SELECT header, payload, valid
+    FROM un0.verify(token, '{settings.TOKEN_SECRET}')
+    INTO token_header, token_payload, token_valid;
     IF token_valid THEN
-        -- Get the exp from the token payload
-        token_expiration := to_timestamp((token_payload ->> 'exp')::double precision);
-
-        -- Check if the token is expired
-        IF token_expiration < NOW() THEN
+        -- Get the exp value from the token payload
+        exp := (token_payload ->> 'exp')::DOUBLE PRECISION;
+        token_expiration := to_timestamp(exp);
+        IF EXTRACT(EPOCH FROM token_expiration) < EXTRACT(EPOCH FROM NOW()) THEN
             RETURN FALSE;
-        END IF;
+        END IF; 
+        /*
+        SELECT 
+            CASE 
+                WHEN (EXTRACT(EPOCH FROM 'exp'::timestamp) > EXTRACT(EPOCH FROM NOW())) THEN FALSE
+                ELSE TRUE
+            END AS is_token_expired
+        FROM 
+            token_payload;
+        */
 
-        -- Set the role to the admin role to query the user table
+        -- Set the role to the admin role to query the user table bypassing the RLS policy
         SET ROLE {settings.DB_NAME}_admin;
 
         -- Get the sub from the token payload
