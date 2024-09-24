@@ -3,8 +3,6 @@
 # SPDX-License-Identifier: MIT
 import datetime
 import pytest
-import json
-
 import jwt
 
 import sqlalchemy as sa
@@ -42,6 +40,7 @@ def valid_jwt_token(session, email: str | None = None):
     """Returns a JWT token for use in tests."""
     if email is None:
         email = settings.SUPERUSER_EMAIL
+        email = "richard@dahl.us"
     expiration = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
         minutes=settings.TOKEN_EXPIRE_MINUTES
     )
@@ -49,6 +48,7 @@ def valid_jwt_token(session, email: str | None = None):
         "sub": email,
         "exp": expiration,
     }
+    print(token_payload)
     token = jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
     return token
 
