@@ -123,7 +123,7 @@ CREATE_USER_TABLE_RLS_SELECT_POLICY = """
 /*
 Enable RLS on the user table with policy
 */
-ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
+ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
 
 /* The policy to allow:
     Superusers to operate on all user records;
@@ -132,10 +132,10 @@ ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
 */
 
 CREATE POLICY user_policy
-ON un0.user FOR ALL
+ON un0.user FOR ALL 
 USING (
     current_setting('s_var.is_superuser', true)::BOOLEAN OR
-    id = current_setting('s_var.user_email', true)::VARCHAR(26) OR
+    email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
     (
         current_setting('s_var.is_customer_admin', true)::BOOLEAN AND
         customer_id = current_setting('s_var.customer_id', true)::VARCHAR(26)
