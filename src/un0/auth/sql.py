@@ -327,10 +327,15 @@ CREATE OR REPLACE FUNCTION un0.get_user_defined_variable_names()
     RETURNS TABLE(variable_name TEXT)
     LANGUAGE plpgsql
 AS $$
+DECLARE
+    var_name TEXT;
 BEGIN
-    RETURN QUERY
-    SELECT name
-    FROM pg_settings
-    WHERE name LIKE 's_vars.%';
+    FOR var_name IN
+        SELECT name
+        FROM pg_catalog.pg_settings
+        WHERE name LIKE 's_vars.%'
+    LOOP
+        RETURN NEXT var_name;
+    END LOOP;
 END;
 $$;
