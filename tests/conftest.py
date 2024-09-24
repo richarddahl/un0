@@ -5,14 +5,40 @@ import datetime
 import pytest
 import jwt
 
+from typing import Any
+
 import sqlalchemy as sa
-import textwrap
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-from un0.auth.models import User
 from un0.cmd import create_db, drop_db
 from un0.config import settings
+
+
+# Not marked as a fixture as need to call it with different parameters for testing
+def encode_token(
+    email: str = settings.SUPERUSER_EMAIL,  # Email for sub
+    has_sub: bool = True,  # Has subject
+    has_exp: bool = True,  # Has expiration
+    is_expired: bool = False,  # Expired token
+    inv_sec: bool = False,  # Invalid secret
+):
+    """Returns a JWT token for use in tests."""
+    token_payload: dict[str, Any] = {}
+    if has_exp and not is_expired:
+        token_payload["exp"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ) + datetime.timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES)
+    elif has_exp and is_expired:
+        token_payload["exp"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES)
+    if has_sub:
+        token_payload["sub"] = email
+
+    if inv_sec:
+        return jwt.encode(token_payload, "FAKE SECRET", settings.TOKEN_ALGORITHM)
+    return jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
 
 
 @pytest.fixture(scope="session")
@@ -30,71 +56,14 @@ def async_engine():
     return create_async_engine(settings.DB_URL)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(
+    scope="session",
+)
 def async_session(async_engine):
     return sessionmaker(bind=async_engine, class_=AsyncSession)
 
 
-@pytest.fixture(scope="session")
-def valid_jwt_token(session, email: str | None = None):
-    """Returns a JWT token for use in tests."""
-    if email is None:
-        email = settings.SUPERUSER_EMAIL
-        email = "richard@dahl.us"
-    expiration = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
-        minutes=settings.TOKEN_EXPIRE_MINUTES
-    )
-    token_payload = {
-        "sub": email,
-        "exp": expiration,
-    }
-    print(token_payload)
-    token = jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
-    return token
-
-
-@pytest.fixture(scope="session")
-def invalid_jwt_token(session, email: str | None = None):
-    """Returns a JWT token for use in tests."""
-    if email is None:
-        email = settings.SUPERUSER_EMAIL
-    expiration = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-        minutes=settings.TOKEN_EXPIRE_MINUTES
-    )
-    token_payload = {
-        "sub": email,
-        "exp": expiration,
-    }
-    token = jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
-    return token
-
-
-@pytest.fixture(scope="session")
-def valid_user(session, valid_jwt_token, email: str | None = None):
-    """
-    TODO: This fixture should be refactored to use async_session.
-    """
-
-    if email is None:
-        email = settings.SUPERUSER_EMAIL
-
-    with session as _session:
-        token_result = _session.execute(
-            sa.text(
-                f"SELECT * FROM un0.verify_jwt_and_set_session_variables('{valid_jwt_token}'::TEXT);"
-            )
-        )
-        if token_result.scalars().first() is False:
-            return None
-
-        _session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_reader"))
-        q = sa.sql.select(User).where(User.email == f"{email}")
-        result = _session.execute(q)
-        admin_user = result.scalars().first()
-        return admin_user
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def setup_database():
     drop_db.drop_database()
     # Create database
@@ -116,27 +85,3 @@ def db_connection(engine):
     transaction.rollback()
     # put back the connection to the connection pool
     connection.close()
-
-
-@pytest.fixture
-def test_compare_with_now(db_connection):
-    """Test the compare_with_now SQL function."""
-    python_timestamp = datetime.datetime.now() - datetime.timedelta(days=1)
-    query = textwrap.dedent(
-        """
-        SELECT un0.compare_with_now(:python_timestamp) AS is_past;
-    """
-    )
-    result = db_connection.execute(
-        sa.text(query), {"python_timestamp": python_timestamp}
-    )
-    is_past = result.scalar()
-    assert is_past is True, "The timestamp should be in the past compared to NOW()"
-
-
-def test_programming_error_message(db_connection):
-    """Test to validate the error message in a ProgrammingError."""
-    with pytest.raises(sa.exc.ProgrammingError) as excinfo:
-        db_connection.execute("SELECT * FROM non_existent_table")
-
-    assert "relation \"non_existent_table\" does not exist" in str(excinfo.value)

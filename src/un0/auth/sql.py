@@ -6,16 +6,6 @@ import textwrap
 
 from un0.config import settings
 
-CREATE_COMPARE_WITH_NOW_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.compare_with_now(python_timestamp TIMESTAMP)
-    RETURNS BOOLEAN
-    LANGUAGE plpgsql
-AS $$
-BEGIN
-    RETURN python_timestamp < NOW();
-END;
-$$;
-"""
 
 CREATE_SUPERUSER = f"""
 /*
@@ -29,23 +19,24 @@ VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.S
 
 
 CREATE_LIST_SESSION_VARIABLES_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.get_user_defined_variables()
-    RETURNS TABLE(variable_name TEXT, variable_value TEXT)
+CREATE OR REPLACE FUNCTION un0.list_session_variables()
+    RETURNS JSONB
     LANGUAGE plpgsql
 AS $$
 BEGIN
-    RETURN QUERY
-    SELECT 'user_id'::TEXT, current_setting('s_var.user_id', true)::TEXT,
-        'is_superuser'::TEXT, current_setting('s_var.is_superuser', true)::TEXT,
-        'is_customer_admin'::TEXT, current_setting('s_var.is_customer_admin', true)::TEXT,
-        'customer_id'::TEXT, current_setting('s_var.customer_id', true)::TEXT;
+    RETURN jsonb_build_object(
+        'user_id', current_setting('s_var.user_id', true),
+        'is_superuser', current_setting('s_var.is_superuser', true),
+        'is_customer_admin', current_setting('s_var.is_customer_admin', true),
+        'customer_id', current_setting('s_var.customer_id', true)
+    );
 END;
 $$;
 """
 
 
-CREATE_VERIFY_JWT_FUNCTION = f"""
-CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_session_variables(token TEXT)
+CREATE_VERIFY_JWT_AND_SET_VARS_FUNCTION = f"""
+CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_vars(token TEXT)
 /*
 Function to verify a JWT token and set the session variables necessary for enforcing RLS
 Ensures that:
@@ -53,13 +44,11 @@ Ensures that:
     The token contains a sub (which is an email address) or raises an Exception (Token does not contain a sub)
     The email address provided in the sub is for an active user record in the user table or raises an Exception (User not found)
 
-Then sets all session variables are set for the user to enforce RLS:
+If all checks pass, sets the session variables used to enforce RLS and returns True, otherwise returns False:
     user_id: The ID of the user
     is_superuser: Whether the user is a superuser
     is_customer_admin: Whether the user is a customer admin
-    customer_id: The ID of the customer the user is associated with
-
-If all checks pass, returns True, otherwise returns False
+    customer_id: The ID of the customer to which the user is associated
 
 param token: The JWT token to verify
 */
@@ -73,8 +62,8 @@ DECLARE
     token_valid BOOLEAN;
     sub VARCHAR;
     expiration INT;
-    session_is_superuser BOOLEAN;
-    session_is_customer_admin BOOLEAN;
+    session_is_superuser VARCHAR(4);
+    session_is_customer_admin VARCHAR(5);
     session_user_id VARCHAR(26);
     session_customer_id VARCHAR(26);
 BEGIN
@@ -111,14 +100,14 @@ BEGIN
             RAISE EXCEPTION 'user not found';
         END IF;
 
-        -- Reset the role to the default
-        RESET ROLE;
+        -- Set the role to the reader
+        SET ROLE {settings.DB_NAME}_reader;
 
         -- Set the session variables used for RLS
-        SET s_var.user_id = session_user_id;
-        SET s_var.is_superuser = session_is_superuser;
-        SET s_var.is_customer_admin = session_is_customer_admin;
-        SET s_var.customer_id = session_customer_id;
+        PERFORM set_config('s_var.user_id', session_user_id, true);
+        PERFORM set_config('s_var.is_superuser', session_is_superuser, true);
+        PERFORM set_config('s_var.is_customer_admin', session_is_customer_admin, true);
+        PERFORM set_config('s_var.customer_id', session_customer_id, true);
 
     ELSE
         -- Token failed verification
@@ -323,19 +312,3 @@ def enable_rls(table_name: str):
         ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
     """
     )
-CREATE OR REPLACE FUNCTION un0.get_user_defined_variable_names()
-    RETURNS TABLE(variable_name TEXT)
-    LANGUAGE plpgsql
-AS $$
-DECLARE
-    var_name TEXT;
-BEGIN
-    FOR var_name IN
-        SELECT name
-        FROM pg_catalog.pg_settings
-        WHERE name LIKE 's_vars.%'
-    LOOP
-        RETURN NEXT var_name;
-    END LOOP;
-END;
-$$;
