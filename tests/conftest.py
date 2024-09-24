@@ -6,6 +6,7 @@ import pytest
 import json
 
 import sqlalchemy as sa
+import textwrap
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
@@ -102,3 +103,15 @@ def db_connection(engine):
     transaction.rollback()
     # put back the connection to the connection pool
     connection.close()
+
+
+@pytest.fixture
+def test_compare_with_now(db_connection):
+    """Test the compare_with_now SQL function."""
+    python_timestamp = datetime.datetime.now() - datetime.timedelta(days=1)
+    query = textwrap.dedent("""
+        SELECT un0.compare_with_now(:python_timestamp) AS is_past;
+    """)
+    result = db_connection.execute(sa.text(query), {'python_timestamp': python_timestamp})
+    is_past = result.scalar()
+    assert is_past is True, "The timestamp should be in the past compared to NOW()"
