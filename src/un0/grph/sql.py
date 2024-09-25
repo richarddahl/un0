@@ -167,6 +167,7 @@ def function_body(
     operation: str = "UPDATE",
     for_each: str = "ROW",
     include_trigger: bool = False,
+    db_name: str = settings.DB_NAME,
 ) -> str:
     table_name = table.name
     schema_name = table.schema
@@ -177,7 +178,7 @@ def function_body(
             VOLATILE
         AS $BODY$
         BEGIN
-            SET ROLE {settings.DB_NAME}_admin;
+            SET ROLE {db_name}_admin;
             {execution_string}
         END;
         $BODY$;
@@ -194,7 +195,9 @@ def function_body(
 
 
 # INSERT Vertex Function and Trigger
-def insert_vertex_functions_and_triggers(table: sa.Table) -> str:
+def insert_vertex_functions_and_triggers(
+    table: sa.Table, db_name=settings.DB_NAME
+) -> str:
     """Creates a new vertex record when a new relational table record is inserted"""
     table_name = table.name
     edges: list[EdgeData] = []
@@ -215,12 +218,15 @@ def insert_vertex_functions_and_triggers(table: sa.Table) -> str:
         execution_string,
         operation="INSERT",
         include_trigger=True,
+        db_name=db_name,
     )
     return textwrap.dedent(sql_string)
 
 
 # UPDATE Vertex Function and Trigger
-def update_vertex_functions_and_triggers(table: sa.Table) -> str:
+def update_vertex_functions_and_triggers(
+    table: sa.Table, db_name=settings.DB_NAME
+) -> str:
     """Updates an existing vertex record when its relational table record is updated"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -238,12 +244,15 @@ def update_vertex_functions_and_triggers(table: sa.Table) -> str:
         "update_vertex",
         execution_string,
         include_trigger=True,
+        db_name=db_name,
     )
     return textwrap.dedent(sql_string)
 
 
 # DELETE Vertex Function and Trigger
-def delete_vertex_functions_and_triggers(table: sa.Table):
+def delete_vertex_functions_and_triggers(
+    table: sa.Table, db_name=settings.DB_NAME
+) -> str:
     """Deleted an existing vertex record when its relational table record is deleted"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -261,12 +270,15 @@ def delete_vertex_functions_and_triggers(table: sa.Table):
         execution_string,
         operation="DELETE",
         include_trigger=True,
+        db_name=db_name,
     )
     return textwrap.dedent(sql_string)
 
 
 # TRUNCATE Vertex Function and Trigger
-def truncate_vertex_functions_and_triggers(table: sa.Table):
+def truncate_vertex_functions_and_triggers(
+    table: sa.Table, db_name=settings.DB_NAME
+) -> str:
     """Deletes all corresponding vertices for a relation table when the table is truncated"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -284,6 +296,7 @@ def truncate_vertex_functions_and_triggers(table: sa.Table):
         operation="TRUNCATE",
         for_each="STATEMENT",
         include_trigger=True,
+        db_name=db_name,
     )
     return textwrap.dedent(sql_string)
 

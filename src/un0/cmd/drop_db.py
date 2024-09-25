@@ -10,14 +10,14 @@ import sys
 import sqlalchemy as sa
 
 from un0.cmd.sql import (  # type: ignore
-    DROP_DATABASE,
-    DROP_ROLES,
+    drop_database,
+    drop_roles,
 )
 
 from un0.config import settings
 
 
-def drop_database():
+def drop(db_name: str = settings.DB_NAME) -> None:
     """
     Delete the database and its asociated roles.
     """
@@ -35,11 +35,11 @@ def drop_database():
             f"\nDropping the db: {settings.DB_NAME} and all the roles for the application\n"
         )
         # Drop the Database
-        conn.execute(sa.text(DROP_DATABASE))
+        conn.execute(sa.text(drop_database(db_name=db_name)))
         # Drop the roles
-        conn.execute(sa.text(DROP_ROLES))
+        conn.execute(sa.text(drop_roles(db_name=db_name)))
         conn.close()
-        print(f"Database dropped: {settings.DB_NAME} \n")
+        print(f"Database dropped: {db_name} \n")
     eng.dispose()
 
     # Reset the stdout stream
