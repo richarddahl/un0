@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
 
 # Basic Project Information
 [project]
@@ -81,7 +83,9 @@ tests = ["tests", "*/un0/tests"]
 exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
 
 [tool.hatch.envs.test.scripts]
-test = "ENV=test pytest -vv --capture=tee-sys --show-capture=all"
+test = "ENV=test pytest --tb=no --capture=tee-sys --show-capture=all"
+testv = "ENV=test pytest --tb=short --capture=tee-sys --show-capture=all"
+testV = "ENV=test pytest --capture=tee-sys --show-capture=all"
 test-cov = "ENV=test coverage run -m pytest"
 cov-report = ["ENV=test", "- coverage combine", "coverage report"]
 cov = ["ENV=test", "test-cov", "cov-report"]
@@ -90,6 +94,7 @@ dropdb = "ENV=test python src/un0/cmd/drop_db.py"
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
 
 # Documentation Environement
 [tool.hatch.envs.docs]
