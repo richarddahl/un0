@@ -6,7 +6,6 @@ import pytest  # type: ignore
 
 import sqlalchemy as sa
 
-
 from un0.cmd.sql import set_role_reader
 from un0.cmd import create_db, drop_db
 
@@ -36,8 +35,8 @@ class TestVerifyJWTAndSetVars:
             assert session_variables.get("user_email") != ""
             assert session_variables.get("user_id") != ""
             assert session_variables.get("is_superuser") == "true"
-            assert session_variables.get("is_customer_admin") == "false"
-            assert session_variables.get("customer_id") == ""
+            assert session_variables.get("is_tenant_admin") == "false"
+            assert session_variables.get("tenant_id") == ""
 
     def test_expired_jwt(self, session, db_name):
         """Tests that an expired JWT token cannot be authorized."""

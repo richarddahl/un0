@@ -159,9 +159,9 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     )
 
     # Relationships
-    customer: Mapped["Customer"] = relationship(
+    tenant: Mapped["Tenant"] = relationship(
         viewonly=True,
-        doc="The customer associated with the filter value.",
+        doc="The tenant associated with the filter value.",
     )
     """
     fields: Mapped["Field"] = relationship(back_populates="filter_values")

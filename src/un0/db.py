@@ -202,8 +202,8 @@ class BaseMixin:
 
 class RBACMixin:
     # Columns
-    customer_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.customer.id", ondelete="CASCADE"),
+    tenant_id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "HAS_CUSTOMER"},
@@ -236,11 +236,11 @@ class RBACMixin:
     # Relationships
     """
     @declared_attr
-    def customer(cls) -> Mapped["Customer"]:
+    def tenant(cls) -> Mapped["Tenant"]:
         return relationship(
-            foreign_keys=[cls.customer_id],
+            foreign_keys=[cls.tenant_id],
             back_populates="related_object",
-            doc="Customer",
+            doc="Tenant",
         )
 
     @declared_attr

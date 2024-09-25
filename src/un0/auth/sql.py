@@ -27,8 +27,8 @@ BEGIN
         'id', current_setting('s_var.user_id', true),
         'email', current_setting('s_var.user_email', true),
         'is_superuser', current_setting('s_var.is_superuser', true),
-        'is_customer_admin', current_setting('s_var.is_customer_admin', true),
-        'customer_id', current_setting('s_var.customer_id', true)
+        'is_tenant_admin', current_setting('s_var.is_tenant_admin', true),
+        'tenant_id', current_setting('s_var.tenant_id', true)
     );
 END;
 $$;
@@ -49,8 +49,8 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
         If all checks pass, sets the session variables used to enforce RLS and returns True, otherwise returns False:
             user_email: The email address of the user (a natural key and the sub in the token)
             is_superuser: Whether the user is a superuser
-            is_customer_admin: Whether the user is a customer admin
-            customer_id: The ID of the customer to which the user is associated
+            is_tenant_admin: Whether the user is a tenant admin
+            tenant_id: The ID of the tenant to which the user is associated
 
         param token: The JWT token to verify
         */
@@ -65,9 +65,9 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
             sub VARCHAR;
             expiration INT;
             user_is_superuser VARCHAR(5);
-            user_is_customer_admin VARCHAR(5);
+            user_is_tenant_admin VARCHAR(5);
             user_user_id VARCHAR(26);
-            user_customer_id VARCHAR(26);
+            user_tenant_id VARCHAR(26);
             user_is_active BOOLEAN;
             user_is_deleted BOOLEAN;
         BEGIN
@@ -95,14 +95,14 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
                 SET ROLE {db_name}_admin;
 
                 -- Query the user table for the user to get the relevant session variables
-                SELECT id, is_superuser, is_customer_admin, customer_id, is_active, is_deleted 
+                SELECT id, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
                 FROM un0.user
                 WHERE email = sub
                 INTO
                     user_user_id,
                     user_is_superuser,
-                    user_is_customer_admin,
-                    user_customer_id,
+                    user_is_tenant_admin,
+                    user_tenant_id,
                     user_is_active,
                     user_is_deleted;
 
@@ -125,8 +125,8 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
                 PERFORM set_config('s_var.user_email', sub, true);
                 PERFORM set_config('s_var.user_id', user_user_id, true);
                 PERFORM set_config('s_var.is_superuser', user_is_superuser, true);
-                PERFORM set_config('s_var.is_customer_admin', user_is_customer_admin, true);
-                PERFORM set_config('s_var.customer_id', user_customer_id, true);
+                PERFORM set_config('s_var.is_tenant_admin', user_is_tenant_admin, true);
+                PERFORM set_config('s_var.tenant_id', user_tenant_id, true);
 
             ELSE
                 -- Token failed verification
@@ -148,7 +148,7 @@ ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
 
 /* The policy to allow:
     Superusers to operate on all user records;
-    Customer Admins to operate on all users records associated with the customer;
+    Tenant Admins to operate on all users records associated with the tenant;
     Regular users to operate on their own record
 */
 
@@ -158,48 +158,48 @@ USING (
     current_setting('s_var.is_superuser', true)::BOOLEAN OR
     email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
     (
-        current_setting('s_var.is_customer_admin', true)::BOOLEAN AND
-        customer_id = current_setting('s_var.customer_id', true)::VARCHAR(26)
+        current_setting('s_var.is_tenant_admin', true)::BOOLEAN AND
+        tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
     )
 );
 """
 
 CREATE_CAN_INSERT_GROUP_FUNCTION = f"""
-CREATE OR REPLACE FUNCTION un0.can_insert_group(customerid VARCHAR(26))
+CREATE OR REPLACE FUNCTION un0.can_insert_group(tenantid VARCHAR(26))
     RETURNS BOOLEAN
     LANGUAGE plpgsql
 AS $$
 DECLARE
     group_count INT4;
-    customertype un0.customertype;
+    tenanttype un0.tenanttype;
 BEGIN
-    SELECT customer_type INTO customertype
-    from customer
-    WHERE id = customerid;
+    SELECT tenant_type INTO tenanttype
+    from tenant
+    WHERE id = tenantid;
 
     SELECT COUNT(*) INTO group_count
     from group
-    WHERE customer_id = customerid;
+    WHERE tenant_id = tenantid;
 
-    IF customertype = 'INDIVIDUAL' AND
+    IF tenanttype = 'INDIVIDUAL' AND
         {settings.MAX_INDIVIDUAL_GROUPS} > 0 AND
         group_count >= {settings.MAX_INDIVIDUAL_GROUPS} THEN
             RETURN false;
     END IF;
     IF
-        customertype = 'SMALL_BUSINESS' AND
+        tenanttype = 'SMALL_BUSINESS' AND
         {settings.MAX_SMALL_BUSINESS_GROUPS} > 0 AND
         group_count >= {settings.MAX_SMALL_BUSINESS_GROUPS} THEN
             RETURN false;
     END IF;
     IF
-        customertype = 'CORPORATE' AND
+        tenanttype = 'CORPORATE' AND
         {settings.MAX_CORPORATE_GROUPS} > 0 AND
         group_count >= {settings.MAX_CORPORATE_GROUPS} THEN
             RETURN false;
     END IF;
     IF
-        customertype = 'ENTERPRISE' AND
+        tenanttype = 'ENTERPRISE' AND
         {settings.MAX_ENTERPRISE_GROUPS} > 0 AND
         group_count >= {settings.MAX_ENTERPRISE_GROUPS} THEN
             RETURN false;
@@ -237,17 +237,17 @@ def create_insert_group_check_constraint(db_name: str = settings.DB_NAME):
     return f"""
         SET ROLE {db_name}_admin;
         ALTER TABLE {db_name}.group ADD CONSTRAINT ck_can_insert_group
-            CHECK (un0.can_insert_group(customer_id) = true);
+            CHECK (un0.can_insert_group(tenant_id) = true);
     """
 
 
 CREATE_INSERT_GROUP_FOR_CUSTOMER_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.insert_group_for_customer()
+CREATE OR REPLACE FUNCTION un0.insert_group_for_tenant()
     RETURNS TRIGGER
     LANGUAGE plpgsql
 AS $$
 BEGIN
-    INSERT INTO un0.group(customer_id, name) VALUES (NEW.id, NEW.name);
+    INSERT INTO un0.group(tenant_id, name) VALUES (NEW.id, NEW.name);
     RETURN NEW;
 END;
 $$;
@@ -256,10 +256,10 @@ $$;
 
 CREATE_INSERT_GROUP_FOR_CUSTOMER_TRIGGER = """
 -- The trigger to call the function: AFTER INSERT
-CREATE OR REPLACE TRIGGER insert_group_for_customer_trigger
-    AFTER INSERT ON un0.customer
+CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
+    AFTER INSERT ON un0.tenant
     FOR EACH ROW
-    EXECUTE FUNCTION un0.insert_group_for_customer();
+    EXECUTE FUNCTION un0.insert_group_for_tenant();
 """
 
 

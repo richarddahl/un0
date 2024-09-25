@@ -38,7 +38,7 @@ class General(BaseSettings):
     LOGIN_URL: str
 
     # APPLICATION SETTINGS
-    # Max Groups and Users for each type of customer
+    # Max Groups and Users for each type of tenant
     MAX_INDIVIDUAL_GROUPS: int = 1
     MAX_INDIVIDUAL_USERS: int = 1
     MAX_SMALL_BUSINESS_GROUPS: int = 5

@@ -14,51 +14,51 @@ from sqlalchemy.orm import (
 from sqlalchemy.dialects.postgresql import ENUM, ARRAY
 
 from un0.auth.enums import (
-    CustomerType,
+    TenantType,
     PermissionAction,
 )
 from un0.db import Base, BaseMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 
-class Customer(Base, BaseMixin):
-    __tablename__ = "customer"
+class Tenant(Base, BaseMixin):
+    __tablename__ = "tenant"
     __table_args__ = (
         {
             "schema": "un0",
-            "comment": "Application end-user customers",
+            "comment": "Application end-user tenants",
             "info": {"rls_policy": "superuser"},
         },
     )
 
     # Columns
-    name: Mapped[str_255] = mapped_column(unique=True, doc="Customer name")
-    customer_type: Mapped[CustomerType] = mapped_column(
-        ENUM(CustomerType, name="customertype", create_type=True, schema="un0"),
-        server_default=CustomerType.INDIVIDUAL.name,
-        doc="Customer type",
+    name: Mapped[str_255] = mapped_column(unique=True, doc="Tenant name")
+    tenant_type: Mapped[TenantType] = mapped_column(
+        ENUM(TenantType, name="tenanttype", create_type=True, schema="un0"),
+        server_default=TenantType.INDIVIDUAL.name,
+        doc="Tenant type",
     )
 
     # Relationships
     # related_object: Mapped[list[RelatedObject]] = relationship(
     #    viewonly=True,
-    #    doc="Related objects assigned to the customer",
+    #    doc="Related objects assigned to the tenant",
     # )
     # users: Mapped[list["User"]] = relationship(
-    #    back_populates="customer",
-    #    doc="Users assigned to the customer",
+    #    back_populates="tenant",
+    #    doc="Users assigned to the tenant",
     # )
     # roles: Mapped[list["Role"]] = relationship(
-    #    back_populates="customer",
-    #    doc="Roles assigned to the customer",
+    #    back_populates="tenant",
+    #    doc="Roles assigned to the tenant",
     # )
     # groups: Mapped[list["Group"]] = relationship(
-    #    back_populates="customer",
-    #    doc="Groups assigned to the customer",
+    #    back_populates="tenant",
+    #    doc="Groups assigned to the tenant",
     # )
     # queries: Mapped[list["Query"]] = relationship(
-    #    back_populates="customer",
-    #    doc="Queries assigned to the customer",
+    #    back_populates="tenant",
+    #    doc="Queries assigned to the tenant",
     # )
 
 
@@ -70,9 +70,9 @@ class User(Base, BaseMixin):
                 """
                 --is_superuser = 'false' AND default_group_id IS NOT NULL OR 
                 --is_superuser = 'true' AND default_group_id IS NULL AND
-                is_superuser = 'false' AND is_customer_admin = 'false' OR
-                is_superuser = 'true' AND is_customer_admin = 'false' OR
-                is_superuser = 'false' AND is_customer_admin = 'true'
+                is_superuser = 'false' AND is_tenant_admin = 'false' OR
+                is_superuser = 'true' AND is_tenant_admin = 'false' OR
+                is_superuser = 'false' AND is_tenant_admin = 'true'
             """
             ),
             name="ck_user_is_superuser",
@@ -92,8 +92,8 @@ class User(Base, BaseMixin):
         unique=True, index=True, doc="User's displayed name and alternate login ID"
     )
     full_name: Mapped[str_255] = mapped_column(doc="User's full name")
-    customer_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.customer.id", ondelete="CASCADE"),
+    tenant_id: Mapped[Optional[str_26]] = mapped_column(
+        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=True,
         info={"edge": "WORKS_FOR"},
@@ -107,14 +107,14 @@ class User(Base, BaseMixin):
     is_superuser: Mapped[bool] = mapped_column(
         server_default=sa.text("false"), index=True, doc="Superuser status"
     )
-    is_customer_admin: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), index=True, doc="Customer admin status"
+    is_tenant_admin: Mapped[bool] = mapped_column(
+        server_default=sa.text("false"), index=True, doc="Tenant admin status"
     )
 
     # Relationships
-    # customer: Mapped[Customer] = relationship(
+    # tenant: Mapped[Tenant] = relationship(
     #    back_populates="users",
-    #    doc="Customers to which the user is assigned",
+    #    doc="Tenants to which the user is assigned",
     # )
     # default_group: Mapped["Group"] = relationship(
     #    back_populates="users",
@@ -184,8 +184,8 @@ class TablePermission(Base):
 class Role(Base, BaseMixin):
     __tablename__ = "role"
     __table_args__ = (
-        sa.Index("ix_role_customer_id_name", "customer_id", "name"),
-        sa.UniqueConstraint("customer_id", "name"),
+        sa.Index("ix_role_tenant_id_name", "tenant_id", "name"),
+        sa.UniqueConstraint("tenant_id", "name"),
         {
             "comment": """
                 Roles, created by end user group admins, enable assignment of group_permissions
@@ -197,8 +197,8 @@ class Role(Base, BaseMixin):
     )
 
     # Columns
-    customer_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.customer.id", ondelete="CASCADE"),
+    tenant_id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         info={"edge": "BELONGS_TO_CUSTOMER"},
@@ -207,9 +207,9 @@ class Role(Base, BaseMixin):
     description: Mapped[str] = mapped_column(doc="Role description")
 
     # Relationships
-    # customer: Mapped["Customer"] = relationship(
+    # tenant: Mapped["Tenant"] = relationship(
     #    back_populates="roles",
-    #    doc="Customer to which the role belongs",
+    #    doc="Tenant to which the role belongs",
     # )
     # user_group_role: Mapped[list["UserGroupRole"]] = relationship(
     #    back_populates="role",
@@ -226,7 +226,7 @@ class RoleTablePermission(Base):
     __table_args__ = (
         {
             "comment": """
-                Assigned by customer_admin users to assign roles for groups to users based on organization requirements.
+                Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
             """,
             "schema": "un0",
             "info": {"edge": "HAS_ROLE_TABLE_PERMISSION", "rls_policy": "none"},
@@ -257,8 +257,8 @@ class RoleTablePermission(Base):
 class Group(Base, BaseMixin):
     __tablename__ = "group"
     __table_args__ = (
-        sa.Index("ix_group_customer_id_name", "customer_id", "name"),
-        sa.UniqueConstraint("customer_id", "name"),
+        sa.Index("ix_group_tenant_id_name", "tenant_id", "name"),
+        sa.UniqueConstraint("tenant_id", "name"),
         {
             "comment": "Application end-user groups",
             "schema": "un0",
@@ -268,8 +268,8 @@ class Group(Base, BaseMixin):
 
     # Columns
 
-    customer_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.customer.id", ondelete="CASCADE"),
+    tenant_id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "BELONGS_TO_CUSTOMER"},
@@ -277,9 +277,9 @@ class Group(Base, BaseMixin):
     name: Mapped[str_255] = mapped_column(doc="Group name")
 
     # Relationships
-    # customer: Mapped[list["Customer"]] = relationship(
+    # tenant: Mapped[list["Tenant"]] = relationship(
     #    back_populates="groups",
-    #    doc="Customer to which the group belongs",
+    #    doc="Tenant to which the group belongs",
     # )
     # users: Mapped[list["User"]] = relationship(
     #    back_populates="default_group",
@@ -296,7 +296,7 @@ class UserGroupRole(Base, BaseMixin):
     __table_args__ = (
         {
             "comment": """
-                Assigned by customer_admin users to assign roles for groups to users based on organization requirements.
+                Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
             """,
             "schema": "un0",
             "info": {"rls_policy": "admin"},

@@ -6,7 +6,7 @@ import enum
 
 
 #  Enumerations
-class CustomerType(str, enum.Enum):
+class TenantType(str, enum.Enum):
     """
     Enumeration class representing the types of authenticated groups.
 
