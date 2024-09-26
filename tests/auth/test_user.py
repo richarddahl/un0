@@ -20,31 +20,28 @@ from un0.cmd.sql import (
 from un0.config import settings as sttngs
 
 
+@pytest.fixture(scope="function")
+def new_user(tenant_dict):
+    tenant_id = tenant_dict.get("Acme Inc.").get("id")
+    user = User(
+        email="new_user@acme.com",
+        handle="new_user",
+        full_name="New User",
+        tenant_id=tenant_id,
+        is_superuser=False,
+        is_tenant_admin=False,
+        is_active=True,
+        is_deleted=False,
+    )
+    return user
+
+
 class TestUser:
     """Tests for the User model."""
 
     """
     Admin user related tests
     """
-
-    @classmethod
-    @pytest.fixture(scope="function")
-    def new_user(cls, tenant_dict, session):
-        tenant_id = tenant_dict.get("Acme Inc.").get("id")
-        user = User(
-            email="new_user@acme.com",
-            handle="new_user",
-            full_name="New User",
-            tenant_id=tenant_id,
-            is_superuser=False,
-            is_tenant_admin=False,
-            is_active=True,
-            is_deleted=False,
-        )
-
-        session.add(user)
-        session.commit()
-        return user
 
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_user"], indirect=["session"])
