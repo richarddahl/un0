@@ -124,6 +124,11 @@ class User(Base, BaseMixin):
     #    back_populates="user",
     #    doc="Roles assigned to the user for a group",
     # )
+    def __str__(self) -> str:
+        return self.email
+
+    def __repr__(self) -> str:
+        return f"<User {self.email}>"
 
 
 class TablePermission(Base):
