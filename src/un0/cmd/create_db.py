@@ -292,6 +292,8 @@ def create(db_name: str = settings.DB_NAME) -> None:
         conn.execute(sa.text(set_role_admin(db_name=db_name)))
         conn.execute(sa.text(CREATE_USER_TABLE_RLS_SELECT_POLICY))
         conn.commit()
+        conn.close()
+    eng.dispose()
 
     print(f"Database created: {db_name}\n")
     print("Default Admin User created\n")
