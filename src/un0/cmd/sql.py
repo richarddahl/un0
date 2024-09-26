@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from un0.config import settings
 
 
-def set_role_admin(db_name: str = settings.DB_NAME):
-    return f"SET ROLE {db_name}_admin;"
+def set_role_login(db_name: str = settings.DB_NAME):
+    return f"SET ROLE {db_name}_login;"
 
 
 def set_role_reader(db_name: str = settings.DB_NAME):
@@ -24,6 +24,10 @@ def set_role_reader(db_name: str = settings.DB_NAME):
 
 def set_role_writer(db_name: str = settings.DB_NAME):
     return f"SET ROLE {db_name}_writer;"
+
+
+def set_role_admin(db_name: str = settings.DB_NAME):
+    return f"SET ROLE {db_name}_admin;"
 
 
 def drop_database(db_name: str = settings.DB_NAME):
