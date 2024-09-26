@@ -29,9 +29,9 @@ class TestUser:
 
     @classmethod
     @pytest.fixture(scope="function")
-    def new_user(cls, tenant_dict):
+    def new_user(cls, tenant_dict, session):
         tenant_id = tenant_dict.get("Acme Inc.").get("id")
-        return User(
+        user = User(
             email="new_user@acme.com",
             handle="new_user",
             full_name="New User",
@@ -41,6 +41,10 @@ class TestUser:
             is_active=True,
             is_deleted=False,
         )
+
+        session.add(user)
+        session.commit()
+        return user
 
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_user"], indirect=["session"])
