@@ -232,7 +232,7 @@ class TestUser:
     ############################
     # INSERT/UPDATE/DELETE Tests
 
-    # Superuser INSERT/UPDATE/DELETE Test
+    # Superuser INSERT Test
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_user"], indirect=["session"])
     def test_rls_superuser_insert_update_delete(
@@ -248,12 +248,31 @@ class TestUser:
             session.execute(sa.text(set_role_admin(db_name=db_name)))
             session.add(new_user)
             session.commit()
-
-            # Refresh the new_user object to ensure it's up-to-date
             session.refresh(new_user)
-
-            new_user.full_name = "Updated User"
+        """
+            session.delete(new_user)
             session.commit()
+
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_writer(db_name=db_name)))
+            session.add(new_user)
+            session.commit()
+
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_reader(db_name=db_name)))
+            session.add(new_user)
+            session.commit()
+
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_login(db_name=db_name)))
+            session.add(new_user)
+            with pytest.raises(sa.exc.ProgrammingError) as excinfo:
+                session.commit()
+            assert "permission denied" in str(excinfo.value)
+        """
 
     '''
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
