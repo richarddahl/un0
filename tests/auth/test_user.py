@@ -249,6 +249,9 @@ class TestUser:
             session.add(new_user)
             session.commit()
 
+            # Refresh the new_user object to ensure it's up-to-date
+            session.refresh(new_user)
+
             new_user.full_name = "Updated User"
             session.commit()
 
