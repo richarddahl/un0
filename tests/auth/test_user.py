@@ -248,6 +248,17 @@ class TestUser:
             result = session.commit()
             assert result is None
 
+            # Update the full_name of new_user
+            new_user.full_name = "Updated User"
+            session.add(new_user)
+            result = session.commit()
+            assert result is None
+
+            # Delete the new_user
+            session.delete(new_user)
+            result = session.commit()
+            assert result is None
+
     '''
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_user"], indirect=["session"])
