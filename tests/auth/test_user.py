@@ -249,19 +249,20 @@ class TestUser:
         with session as session:
             session.execute(sa.text(mock_su_s_vars))
             session.execute(sa.text(set_role_admin(db_name=db_name)))
-            new_user = User(
-                email="new_user@acme.com",
-                handle="new_user",
-                full_name="New User",
-                tenant_id=new_user.tenant_id,
-                is_superuser=False,
-                is_tenant_admin=False,
-                is_active=True,
-                is_deleted=False,
-            )
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_admin(db_name=db_name)))
+
+            # Create new_user
+            new_user.email = "new_user@acme.com"
+            new_user.handle = "new_user"
+            new_user.full_name = "New User"
+            new_user.is_superuser = False
+            new_user.is_tenant_admin = False
+            new_user.is_active = True
+            new_user.is_deleted = False
+
             session.add(new_user)
-            result = session.commit()
-            assert result is None
+            session.commit()
 
             # Refresh the new_user object from the database
             session.refresh(new_user)
@@ -269,13 +270,11 @@ class TestUser:
             # Update the full_name of new_user
             new_user.full_name = "Updated User"
             session.add(new_user)
-            result = session.commit()
-            assert result is None
+            session.commit()
 
             # Delete the new_user
             session.delete(new_user)
-            result = session.commit()
-            assert result is None
+            session.commit()
 
     '''
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
