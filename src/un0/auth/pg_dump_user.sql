@@ -196,14 +196,14 @@ ALTER TABLE un0."user" ENABLE ROW LEVEL SECURITY;
 -- Name: user user_delete_policy; Type: POLICY; Schema: un0; Owner: un0_test_user_admin
 --
 
-CREATE POLICY user_delete_policy ON un0."user" FOR DELETE USING (((current_setting('s_var.is_superuser'::text, true))::boolean OR ((email)::text = ((current_setting('s_var.user_email'::text, true))::character varying(26))::text) OR ((current_setting('s_var.is_tenant_admin'::text, true))::boolean AND ((tenant_id)::text = ((current_setting('s_var.tenant_id'::text, true))::character varying(26))::text))));
+CREATE POLICY user_delete_policy ON un0."user" FOR DELETE USING (((current_setting('s_var.is_superuser'::text, true))::boolean));
 
 
 --
 -- Name: user user_insert_policy; Type: POLICY; Schema: un0; Owner: un0_test_user_admin
 --
 
-CREATE POLICY user_insert_policy ON un0."user" FOR INSERT WITH CHECK (((current_setting('s_var.is_superuser'::text, true))::boolean OR ((email)::text = ((current_setting('s_var.user_email'::text, true))::character varying(26))::text) OR ((current_setting('s_var.is_tenant_admin'::text, true))::boolean AND ((tenant_id)::text = ((current_setting('s_var.tenant_id'::text, true))::character varying(26))::text))));
+CREATE POLICY user_insert_policy ON un0."user" FOR INSERT WITH CHECK (((current_setting('s_var.is_superuser'::text, true))::boolean));
 
 
 --
@@ -217,7 +217,7 @@ CREATE POLICY user_select_policy ON un0."user" FOR SELECT USING (((current_setti
 -- Name: user user_update_policy; Type: POLICY; Schema: un0; Owner: un0_test_user_admin
 --
 
-CREATE POLICY user_update_policy ON un0."user" FOR UPDATE WITH CHECK (((current_setting('s_var.is_superuser'::text, true))::boolean OR ((email)::text = ((current_setting('s_var.user_email'::text, true))::character varying(26))::text) OR ((current_setting('s_var.is_tenant_admin'::text, true))::boolean AND ((tenant_id)::text = ((current_setting('s_var.tenant_id'::text, true))::character varying(26))::text))));
+CREATE POLICY user_update_policy ON un0."user" FOR UPDATE WITH CHECK (((current_setting('s_var.is_superuser'::text, true))::boolean));
 
 
 --

@@ -249,6 +249,21 @@ class TestUser:
             session.add(new_user)
             session.commit()
             session.refresh(new_user)
+            assert new_user.email == "new_user@acme.com"
+            assert new_user.handle == "new_user"
+            assert new_user.full_name == "New User"
+
+            # Update the user
+            new_user.full_name = "Updated User"
+            session.commit()
+            session.refresh(new_user)
+            assert new_user.full_name == "Updated User"
+
+            # Delete the user
+            session.delete(new_user)
+            session.commit()
+            with pytest.raises(sa.orm.exc.NoResultFound):
+                session.query(User).filter_by(email="new_user@acme.com").one()
         """
             session.delete(new_user)
             session.commit()
