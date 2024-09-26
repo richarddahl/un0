@@ -253,16 +253,10 @@ class TestUser:
             session.execute(sa.text(set_role_admin(db_name=db_name)))
 
             # Create new_user
-            new_user = User(
-                email="new_user@acme.com",
-                handle="new_user",
-                full_name="New User",
-                tenant_id=new_user.tenant_id,
-                is_superuser=False,
-                is_tenant_admin=False,
-                is_active=True,
-                is_deleted=False,
-            )
+            new_user.is_superuser = False
+            new_user.is_tenant_admin = False
+            new_user.is_active = True
+            new_user.is_deleted = False
 
             session.add(new_user)
             session.commit()
