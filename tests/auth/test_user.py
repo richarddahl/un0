@@ -248,6 +248,9 @@ class TestUser:
             result = session.commit()
             assert result is None
 
+            # Refresh the new_user object from the database
+            session.refresh(new_user)
+
             # Update the full_name of new_user
             new_user.full_name = "Updated User"
             session.add(new_user)
