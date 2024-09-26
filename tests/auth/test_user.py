@@ -36,6 +36,10 @@ class TestUser:
             handle="new_user",
             full_name="New User",
             tenant_id=tenant_id,
+            is_superuser=False,
+            is_tenant_admin=False,
+            is_active=True,
+            is_deleted=False,
         )
 
     @pytest.mark.parametrize("db_name", ["un0_test_user"], indirect=["db_name"])
