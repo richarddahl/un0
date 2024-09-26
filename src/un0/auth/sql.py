@@ -145,15 +145,62 @@ CREATE_USER_TABLE_RLS_SELECT_POLICY = """
 Enable RLS on the user table with policy
 */
 ALTER TABLE un0.user ENABLE ROW LEVEL SECURITY;
+ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
 
-/* The policy to allow:
-    Superusers to operate on all user records;
-    Tenant Admins to operate on all users records associated with the tenant;
-    Regular users to operate on their own record
+/* 
+The policy to allow:
+    Superusers to select all user records;
+    All other users to select all users records associated with the tenant;
 */
+CREATE POLICY user_select_policy
+ON un0.user FOR SELECT
+USING (
+    current_setting('s_var.is_superuser', true)::BOOLEAN OR
+    tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
+);
 
-CREATE POLICY user_policy
-ON un0.user FOR ALL 
+/*
+The policy to allow:
+    Superusers to insert user records;
+    Tenant Admins to insert user records associated with the tenant;
+    Regular users cannot insert user records;
+*/
+CREATE POLICY user_insert_policy
+ON un0.user FOR INSERT
+WITH CHECK (
+    current_setting('s_var.is_superuser', true)::BOOLEAN OR
+    email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
+    (
+        current_setting('s_var.is_tenant_admin', true)::BOOLEAN AND
+        tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
+    )
+);
+
+/* 
+The policy to allow:
+    Superusers to update all user records;
+    Tenant Admins to update user records associated with the tenant;
+    All other users to update only their own user record;
+*/
+CREATE POLICY user_update_policy
+ON un0.user FOR UPDATE
+WITH CHECK (
+    current_setting('s_var.is_superuser', true)::BOOLEAN OR
+    email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
+    (
+        current_setting('s_var.is_tenant_admin', true)::BOOLEAN AND
+        tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
+    )
+);
+
+/*
+The policy to allow:
+    Superusers to delete user records;
+    Tenant Admins to delete user records associated with the tenant;
+    Regular users cannot delete user records;
+*/
+CREATE POLICY user_delete_policy
+ON un0.user FOR DELETE
 USING (
     current_setting('s_var.is_superuser', true)::BOOLEAN OR
     email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
