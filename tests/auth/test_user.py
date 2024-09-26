@@ -247,11 +247,9 @@ class TestUser:
             session.execute(sa.text(mock_su_s_vars))
             session.execute(sa.text(set_role_admin(db_name=db_name)))
             session.add(new_user)
-            assert session.commit() is None
+            session.commit()
 
             new_user.full_name = "Updated User"
-            print(new_user.full_name)
-            session.add(new_user)
             session.commit()
 
     '''
