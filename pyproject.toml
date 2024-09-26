@@ -41,6 +41,7 @@ dependencies = [
   "pytz",
   "uvicorn",
   "sqlalchemy[asyncio]",
+  "sqlalchemy-stubs",
 ]
 
 [project.urls]
