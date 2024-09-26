@@ -37,7 +37,7 @@ def session(db_url: str):
 @pytest.fixture(scope="function")
 def data_for_tests(
     session: sa.orm.Session, mock_superuser_session_variables, db_name
-) -> Generator[Any, Any, Any]:
+) -> dict[str, Any]:
     users = []
     session.execute(sa.text(mock_superuser_session_variables))
     session.execute(sa.text(set_role_writer(db_name=db_name)))
