@@ -105,10 +105,10 @@ class User(Base, BaseMixin):
         info={"edge": "HAS_DEFAULT_GROUP"},
     )
     is_superuser: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), index=True, doc="Superuser status"
+        server_default=sa.false(), index=True, doc="Superuser status"
     )
     is_tenant_admin: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), index=True, doc="Tenant admin status"
+        server_default=sa.false(), index=True, doc="Tenant admin status"
     )
 
     # Relationships
