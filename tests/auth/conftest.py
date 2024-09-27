@@ -5,8 +5,10 @@
 import pytest  # type: ignore
 from typing import Any
 
-import sqlalchemy as sa
+from sqlalchemy import create_engine, text, select
+from sqlalchemy.orm import sessionmaker
 
+from un0.cmd import create_db, drop_db
 from un0.cmd.sql import (
     set_role_admin,
     set_role_reader,
@@ -17,90 +19,117 @@ from un0.auth.models import Tenant, Group, User
 from un0.auth.enums import TenantType
 
 
-@pytest.fixture(scope="function")
-def db_name() -> str:
-    return "un0_test_auth"
+@pytest.fixture(scope="class")
+def db_name(request):
+    db_name = request.param
+    drop_db.drop(db_name=db_name)
+    create_db.create(db_name=db_name)
+    yield db_name
+    # drop_db.drop(db_name=db)
 
 
 @pytest.fixture(scope="function")
-def db_url(db_name: str) -> str:
-    return f"{sttngs.DB_DRIVER}://{db_name}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{db_name}"
+def session(request):
+    db_name = request.param
+    db_url = f"{sttngs.DB_DRIVER}://{db_name}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{db_name}"
+    session = sessionmaker(create_engine(db_url), expire_on_commit=False)
+    yield session()
 
 
 @pytest.fixture(scope="function")
-def session(db_url: str):
-    session = sa.orm.sessionmaker(sa.create_engine(db_url))()
-    yield session
-    session.close()
+def admin_user(session, db_name, mock_su_s_vars):
+    session.execute(text(mock_su_s_vars))
+    session.execute(text(set_role_reader(db_name=db_name)))
+    q = select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
+    result = session.execute(q)
+    admin_user = result.scalars().first()
+    return admin_user
 
 
 @pytest.fixture(scope="function")
-def data_for_tests(
-    session: sa.orm.Session, mock_superuser_session_variables, db_name
-) -> dict[str, Any]:
-    users = []
-    session.execute(sa.text(mock_superuser_session_variables))
-    session.execute(sa.text(set_role_writer(db_name=db_name)))
-    tenant_data = [
+def tenant_dict(session, mock_su_s_vars, db_name):
+    tenant_list = [
         ["Acme Inc.", TenantType.ENTERPRISE],
         ["Nacme Corp", TenantType.CORPORATE],
         ["Coyote LLP", TenantType.SMALL_BUSINESS],
         ["Birdy", TenantType.INDIVIDUAL],
     ]
     tenants = [
-        Tenant(name=name, tenant_type=tenant_type) for name, tenant_type in tenant_data
+        Tenant(name=name, tenant_type=tenant_type) for name, tenant_type in tenant_list
     ]
+    session.execute(text(mock_su_s_vars))
+    session.execute(text(set_role_writer(db_name=db_name)))
     session.add_all(tenants)
-    session.commit()
-    result = session.execute(sa.select(Tenant))
+    result = session.execute(select(Tenant))
     db_tenants = result.scalars().all()
     tenant_dict = {
         t.name: {"id": t.id, "tenant_type": t.tenant_type} for t in db_tenants
     }
+    yield tenant_dict
+    # session.execute(sa.text(mock_su_s_vars))
+    # session.execute(sa.delete(Tenant).where(Tenant.id != ""))
+    # session.commit()
 
-    result = session.execute(sa.select(Group))
+
+@pytest.fixture(scope="function")
+def group_dict(request, session, mock_su_s_vars, db_name, tenant_dict):
+    session.execute(text(mock_su_s_vars))
+    session.execute(text(set_role_writer(db_name=db_name)))
+    result = session.execute(select(Group))
     db_groups = result.scalars().all()
     group_dict = {g.name: {"id": g.id} for g in db_groups}
 
-    for tenant in db_tenants:
-        tenant_name = tenant.name.split(" ")[0].lower()
-        tenant_id = tenant_dict.get(tenant.name).get("id")
-        default_group_id = group_dict.get(tenant.name).get("id")
+    yield group_dict
+    # session.execute(sa.text(mock_su_s_vars))
+    # session.execute(sa.delete(Group).where(Group.id != ""))
+    # session.commit()
+
+
+@pytest.fixture(scope="function")
+def user_dict(session, mock_su_s_vars, db_name, tenant_dict, group_dict):
+    users = []
+    for tenant_name, tenant_value in tenant_dict.items():
+        tenant_name_lower = tenant_name.split(" ")[0].lower()
+        tenant_id = tenant_value.get("id")
+        default_group_id = group_dict.get(tenant_name).get("id")
         users.append(
             User(
-                email=f"{'admin'}@{tenant_name}.com",
-                handle=f"{tenant_name}_admin",
-                full_name=f"{tenant.name} Admin",
+                email=f"{'admin'}@{tenant_name_lower}.com",
+                handle=f"{tenant_name_lower}_admin",
+                full_name=f"{tenant_name} Admin",
                 is_tenant_admin=True,
                 tenant_id=tenant_id,
                 default_group_id=default_group_id,
             )
         )
-        if tenant.tenant_type == TenantType.ENTERPRISE:
+        if tenant_value.get("tenant_type") == TenantType.ENTERPRISE:
             rng = range(1, 10)
-        elif tenant.tenant_type == TenantType.CORPORATE:
+        elif tenant_value.get("tenant_type") == TenantType.CORPORATE:
             rng = range(1, 5)
-        elif tenant.tenant_type == TenantType.SMALL_BUSINESS:
+        elif tenant_value.get("tenant_type") == TenantType.SMALL_BUSINESS:
             rng = range(1, 3)
         else:
             rng = range(1, 1)
         for u in rng:
             users.append(
                 User(
-                    email=f"{'User'}{u}@{tenant_name}.com",
-                    handle=f"{tenant_name}_user{u}",
-                    full_name=f"{tenant.name} User{u}",
+                    email=f"{'user'}{u}@{tenant_name_lower}.com",
+                    handle=f"{tenant_name_lower}_user{u}",
+                    full_name=f"{tenant_name} User{u}",
                     tenant_id=tenant_id,
                     default_group_id=default_group_id,
                 )
             )
+    session.execute(text(mock_su_s_vars))
+    session.execute(text(set_role_writer(db_name=db_name)))
     session.add_all(users)
     session.commit()
-
-    result = session.execute(sa.select(User))
+    session.execute(text(mock_su_s_vars))
+    result = session.execute(select(User))
     db_users = result.scalars().all()
     user_dict = {
         u.email: {
+            "email": u.email,
             "id": u.id,
             "is_superuser": u.is_superuser,
             "is_tenant_admin": u.is_tenant_admin,
@@ -108,8 +137,12 @@ def data_for_tests(
         }
         for u in db_users
     }
+    yield user_dict
+    # session.execute(sa.text(mock_su_s_vars))
+    # session.execute(sa.delete(User).where(User.email != sttngs.SUPERUSER_EMAIL))
+    # session.commit()
+
+
+@pytest.fixture(scope="function")
+def data_dict(user_dict, tenant_dict, group_dict):
     yield {"users": user_dict, "tenants": tenant_dict, "groups": group_dict}
-    session.execute(sa.delete(User).where(User.id != ""))
-    session.execute(sa.delete(Group).where(Group.id != ""))
-    session.execute(sa.delete(Tenant).where(Tenant.id != ""))
-    session.commit()

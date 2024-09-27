@@ -2,19 +2,95 @@
 #
 # SPDX-License-Identifier: MIT
 import pytest
-import json
 
 import sqlalchemy as sa
-from sqlalchemy.sql import select
 
-from un0.auth.models import Tenant, Group, User
+from un0.auth.models import Tenant
 from un0.auth.enums import TenantType
-from un0.config import settings
+from un0.cmd.sql import (
+    set_role_admin,
+    set_role_reader,
+    set_role_writer,
+)
+from tests.conftest import (
+    mock_s_vars,
+)
+from un0.auth.models import User
+from un0.cmd import create_db, drop_db
 
 
 '''
+class TestTenant:
+    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
+    @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
+    def test_super_user_select_tenant(
+        self,
+        session,
+        db_name,
+        mock_su_s_vars,
+        data_dict,
+    ):
+        """Tests that a tenant can be read by a superuser with each of the db ROLEs."""
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+
+            # Test with admin role
+            session.execute(sa.text(set_role_admin(db_name=db_name)))
+            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            tenant_count = session.execute(stmt)
+            assert tenant_count.scalar() == 4
+
+            # Test with writer role
+            session.execute(sa.text(set_role_writer(db_name=db_name)))
+            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            tenant_count = session.execute(stmt)
+            assert tenant_count.scalar() == 4
+
+            # Test with reader role
+            session.execute(sa.text(set_role_reader(db_name=db_name)))
+            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            tenant_count = session.execute(stmt)
+            assert tenant_count.scalar() == 4
+
+    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
+    @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
+    def test_reader_role_cannot_create_tenant(self, session, db_name, mock_su_s_vars):
+        """Tests that a tenant cannot be created by the reader role."""
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_reader(db_name=db_name)))
+            un0tech = Tenant(name="un0.tech", tenant_type=TenantType.INDIVIDUAL)
+            session.add(un0tech)
+            with pytest.raises(sa.exc.ProgrammingError):
+                session.commit()
+
+    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
+    @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
+    def test_writer_role_can_create_tenant(self, session, db_name, mock_su_s_vars):
+        """Tests that a tenant can be created by the writer role."""
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_writer(db_name=db_name)))
+            un0tech = Tenant(name="un0.tech", tenant_type=TenantType.INDIVIDUAL)
+            session.add(un0tech)
+            assert session.commit() is None
+
+    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
+    @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
+    def test_super_user_create_tenant(self, session, db_name, mock_su_s_vars):
+        """Tests that a tenant can be created by a superuser ."""
+        with session as session:
+            session.execute(sa.text(mock_su_s_vars))
+            session.execute(sa.text(set_role_writer(db_name=db_name)))
+            new_tenant = Tenant(name="New Tenant", tenant_type=TenantType.ENTERPRISE)
+            session.add(new_tenant)
+            assert session.commit() is None
+
+'''
+
+'''
 @pytest.mark.asyncio
-async def test_create_groups_on_tenant_creation(async_session, admin_user):
+async def test_group_dict_on_tenant_creation(async_session, admin_user):
     admin_user = await admin_user
     async with async_session() as session:
         await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_writer"))
@@ -147,7 +223,7 @@ async def test_tenant_graphs(async_session, admin_user):
     session.commit()
     """
 
-    # Verify data
+    # Verify data_dict
     assert session.query(Role).count() == 8
     # assert session.query(User).count() == 8
     # assert session.query(Group).count() == 2

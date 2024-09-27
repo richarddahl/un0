@@ -5,19 +5,20 @@
 """
 This module contains the global fixtures for the tests in all test modules.
 Each test module has its own conftest.py file that containts the fixtures for that module.
-Each TestClass in a test module has its own setup_class and teardown_class methods.
-The setup_class method is called before any tests in the class are run.
-It creates a new database for that modules tests.
 """
-
 
 import pytest
 
 from un0.config import settings as sttngs
 
 
-# Not a pytest.fixture as need to call it with various parameters for testing
-def mock_session_variables_for_user(email, is_superuser, is_tenant_admin, tenant_id):
+# Not a pytest.fixture as need to call it with parameters not known until runtime
+def mock_s_vars(
+    email: str,
+    is_superuser: str = "false",
+    is_tenant_admin: str = "false",
+    tenant_id: str = "",
+):
     """Mocks the session variables for a user."""
     return f"""
         SELECT SET_CONFIG('s_var.user_email', '{email}', true);
@@ -29,7 +30,7 @@ def mock_session_variables_for_user(email, is_superuser, is_tenant_admin, tenant
 
 # Fixtures start here
 @pytest.fixture(scope="session")
-def mock_superuser_session_variables():
+def mock_su_s_vars():
     """Mocks the session variables for a superuser."""
     return f"""
         SELECT SET_CONFIG('s_var.user_email', '{sttngs.SUPERUSER_EMAIL}', true);
