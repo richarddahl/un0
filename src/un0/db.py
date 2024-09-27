@@ -142,20 +142,6 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 class BaseMixin:
     # Columns
-    id: Mapped[str_26] = mapped_column(
-        primary_key=True,
-        index=True,
-        server_default=sa.func.un0.generate_ulid(),
-        doc="Primary Key",
-    )
-    related_object_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
-        unique=True,
-        index=True,
-        nullable=True,
-        doc="Related Object of the record",
-        info={"edge": "HAS_RELATED_OBJECT"},
-    )
     is_active: Mapped[bool] = mapped_column(
         server_default=sa.text("true"), doc="Active"
     )
@@ -166,112 +152,99 @@ class BaseMixin:
         server_default=sa.func.current_timestamp(),
         doc="Time the record was created",
     )
+    owner_id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "IS_OWNED_BY"},
+    )
     modified_at: Mapped[datetime.datetime] = mapped_column(
         doc="Time the record was last modified",
         server_default=sa.func.current_timestamp(),
     )
+    modified_by_id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "WAS_LAST_MODIFIED_BY"},
+    )
     deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         doc="Time the record was deleted"
+    )
+    deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "WAS_DELETED_BY"},
     )
     import_id: Mapped[Optional[int]] = mapped_column(
         doc="Primary Key of the original system of the record"
     )
+
     import_key: Mapped[Optional[str]] = mapped_column(
         doc="Unique identifier of the original system of the record"
     )
 
-    # When importing from other systems we need to ensure that the import_id
-    # and import_key are unique for the table_type
-    sa.UniqueConstraint(
-        "table_type_id", "import_id", name="uq_audit_meta_table_type_import_id"
-    )
-    # the import_id is the primary key of the source system and the import_key
-    # is a unique identifier that may exist in the source system
-    sa.UniqueConstraint(
-        "table_type_id", "import_key", name="uq_audit_meta_table_type_import_key"
-    )
-
     # Relationships
     # @declared_attr
+    # @classmethod
     # def related_object(cls) -> Mapped["RelatedObject"]:
     #    return relationship(
     #        back_populates="related_object",
     #        doc="Related Object of the record",
     #    )
 
+    # @declared_attr
+    # @classmethod
+    # def modified_by(cls) -> Mapped["User"]:
+    #    return relationship(
+    #        back_populates="modified_by",
+    #        foreign_keys=[cls.modified_by_id],
+    #        doc="User that last modified the record",
+    #    )
+
+    # @declared_attr
+    # @classmethod
+    # def deleted_by(cls) -> Mapped["User"]:
+    #    return relationship(
+    #        back_populates="deleted_by",
+    #        foreign_keys=[cls.deleted_by_id],
+    #        doc="User that deleted the record",
+    #    )
+
 
 class RBACMixin:
     # Columns
-    tenant_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-        info={"edge": "HAS_CUSTOMER"},
-    )
-    owner_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-        info={"edge": "WAS_CREATED_BY"},
-    )
-    modified_by_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-        info={"edge": "WAS_LAST_MODIFIED_BY"},
-    )
-    deleted_by_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
-        index=True,
-        nullable=True,
-        info={"edge": "WAS_DELETED_BY"},
-    )
-    group_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.group.id", ondelete="CASCADE"),
-        index=True,
-        nullable=True,
-        info={"edge": "IS_ACCESSIBLE_BY"},
-    )
+    @declared_attr
+    @classmethod
+    def tenant_id(cls) -> Mapped[str_26]:
+        return mapped_column(
+            sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+            index=True,
+            nullable=False,
+            info={"edge": "HAS_CUSTOMER"},
+        )
+
+    @declared_attr
+    @classmethod
+    def group_id(cls) -> Mapped[str_26]:
+        return mapped_column(
+            sa.ForeignKey("un0.group.id", ondelete="CASCADE"),
+            index=True,
+            nullable=True,
+            info={"edge": "IS_ACCESSIBLE_BY"},
+        )
 
     # Relationships
-    """
-    @declared_attr
-    def tenant(cls) -> Mapped["Tenant"]:
-        return relationship(
-            foreign_keys=[cls.tenant_id],
-            back_populates="related_object",
-            doc="Tenant",
-        )
+    # @declared_attr
+    # def tenant(cls) -> Mapped["Tenant"]:
+    #    return relationship(
+    #        foreign_keys=[cls.tenant_id],
+    #        back_populates="tenant",
+    #        doc="Tenant",
+    #    )
 
-    @declared_attr
-    def owner(cls) -> Mapped["User"]:
-        return relationship(
-            foreign_keys=[cls.owner_id],
-            back_populates="owned",
-            doc="User that owns the record",
-        )
-
-    @declared_attr
-    def modified_by(cls) -> Mapped["User"]:
-        return relationship(
-            back_populates="modified",
-            foreign_keys=[cls.modified_by_id],
-            doc="User that last modified the record",
-        )
-
-    @declared_attr
-    def deleted_by(cls) -> Mapped["User"]:
-        return relationship(
-            back_populates="deleted",
-            foreign_keys=[cls.deleted_by_id],
-            doc="User that deleted the record",
-        )
-
-    @declared_attr
-    def group(cls) -> Mapped["Group"]:
-        return relationship(
-            back_populates="related_object",
-            foreign_keys=[cls.group_id],
-            doc="Group of the record",
-        )
-    """
+    # @declared_attr
+    # def group(cls) -> Mapped["Group"]:
+    #    return relationship(
+    #        back_populates="related_object",
+    #        foreign_keys=[cls.group_id],
+    #        doc="Group of the record",
+    #    )

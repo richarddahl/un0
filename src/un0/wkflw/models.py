@@ -24,7 +24,7 @@ from un0.rltd.models import RelatedObject, TableType
 from un0.fltr.models import Query
 
 
-class Workflow(Base, BaseMixin):
+class Workflow(Base):
     __tablename__ = "workflow"
     __table_args__ = {
         "schema": "un0",
@@ -32,6 +32,12 @@ class Workflow(Base, BaseMixin):
         "info": {"rls_policy": "superuser"},
     }
 
+    id: Mapped[int] = mapped_column(
+        sa.Identity(start=1, cycle=False),
+        primary_key=True,
+        index=True,
+        doc="Primary Key",
+    )
     name: Mapped[str_255] = mapped_column(doc="Name of the workflow")
     explanation: Mapped[str] = mapped_column(
         doc="Explanation of the workflow indicating the purpose and the expected outcome"
@@ -95,12 +101,10 @@ class Workflow(Base, BaseMixin):
     )
     applicable_table_type_id: Mapped[int] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
         info={"edge": "IS_WORKFLOW_FOR_TABLE_TYPE"},
     )
     record_table_type_id: Mapped[Optional[int]] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
         info={"edge": "HAS_WORKFLOW_RECORD_OF_TABLE_TYPE"},
     )
     objectfunction_id: Mapped[Optional[str_26]] = mapped_column(
@@ -112,39 +116,18 @@ class Workflow(Base, BaseMixin):
         server_default=sa.text("true"),
         doc="The value returned by the Object Function that indicates that any child Workflows must be processed",
     )
+    sa.Index(
+        "ix_workflow_applicable_table_type_id",
+        "applicable_table_type_id",
+        unique=True,
+    )
+    sa.Index(
+        "ix_workflow_record_table_type_id",
+        "record_table_type_id",
+        unique=True,
+    )
 
     # Relationships
-    """
-    limiting_query: Mapped["Query"] = relationship(
-        back_populates="workflow",
-        foreign_keys=[limiting_query_id],
-        doc="Query that limits the applicability of the workflow",
-    )
-    parent: Mapped["Workflow"] = relationship(
-        back_populates="children",
-        remote_side=[id],
-        doc="Parent Workflow",
-    )
-    children: Mapped[list["Workflow"]] = relationship(
-        back_populates="parent",
-        foreign_keys=[parent_id],
-        doc="Child Workflows",
-    )
-    applicable_table_type: Mapped[TableType] = relationship(
-        back_populates="workflow",
-        foreign_keys=[applicable_table_type_id],
-        doc="Type of Table subject to the workflow",
-    )
-    record_table_type: Mapped[TableType] = relationship(
-        back_populates="workflow",
-        foreign_keys=[record_table_type_id],
-        doc="Type of Table object that records the workflow's execution",
-    )
-    object_function: Mapped["ObjectFunction"] = relationship(
-        back_populates="workflow",
-        doc="Function called by auto run workflows to determine if the workflow is complete",
-    )
-    """
 
 
 class WorkflowEvent(Base, BaseMixin, RBACMixin):
@@ -154,6 +137,14 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
         "comment": "Manually created or trigger created workflow activities",
     }
 
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     workflow_id: Mapped[int] = mapped_column(
         sa.ForeignKey("un0.workflow.id", ondelete="CASCADE"),
         index=True,
@@ -170,18 +161,6 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     )
 
     # Relationships
-    """
-    workflow: Mapped[Workflow] = relationship(
-        back_populates="workflow_event",
-        foreign_keys=[workflow_id],
-        doc="Workflow with which the event is associated",
-    )
-    workflow_object: Mapped[RelatedObject] = relationship(
-        back_populates="workflow_event",
-        foreign_keys=[object_id],
-        doc="Object for which the workflow is completed",
-    )
-    """
 
 
 class WorkflowRecord(Base, BaseMixin, RBACMixin):
@@ -191,6 +170,14 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
         "comment": "Records of workflow events",
     }
 
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     workflow_event_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.workflow_event.id", ondelete="CASCADE"),
         index=True,
@@ -220,21 +207,43 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
         doc="User defined or auto-generated comment on the workflow execution",
     )
     workflow_record_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        # sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "RECORDS_EXECUTION"},
     )
+    # sa.ForeignKeyConstraint(
+    #    ["workflow_record_id"],
+    #    ["un0.related_object.id"],
+    #    name="fk_workflow_record_record_related_object_id",
+    #    ondelete="CASCADE",
+    # )
 
     # Relationships
-    """
-    workflow_event: Mapped[WorkflowEvent] = relationship(
-        back_populates="workflow_record",
-        foreign_keys=[workflow_event_id],
-        doc="Workflow Event that triggered the record",
+
+
+class ObjectFunction(Base):
+    __tablename__ = "object_function"
+    __table_args__ = {
+        "schema": "un0",
+        "comment": "Functions that can be called by user-defined workflows and reports",
+        "info": {"rls_policy": "superuser"},
+    }
+    # Columns
+
+    id: Mapped[int] = mapped_column(
+        sa.Identity(start=1, cycle=False),
+        primary_key=True,
+        index=True,
+        doc="Primary Key",
     )
-    record: Mapped[RelatedObject] = relationship(
-        back_populates="workflow_record",
-        foreign_keys=[record_id],
-        doc="Record of the workflows execution",
+    label: Mapped[str] = mapped_column(doc="Label of the function")
+    documentation: Mapped[Optional[str]] = mapped_column(
+        doc="Documentation of the function"
     )
-    """
+    name: Mapped[str] = mapped_column(doc="Name of the function")
+    function_table_type_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "IS_OF_TABLE_TYPE"},
+    )
+    # Relationships

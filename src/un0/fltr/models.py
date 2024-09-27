@@ -15,9 +15,81 @@ from un0.fltr.enums import (  # type: ignore
     Include,
     Match,
     Lookup,
+    ColumnSecurity,
+    FieldType,
 )
 from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
+
+
+class Field(Base, BaseMixin):
+    __tablename__ = "field"
+    __table_args__ = (
+        sa.UniqueConstraint("field_table_type_id", "field_name"),
+        {
+            "schema": "un0",
+            "comment": "Describes a column in a db table.",
+            "info": {"rls_policy": "superuser"},
+        },
+    )
+
+    # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
+    field_table_type_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "IS_OF_TABLE_TYPE"},
+    )
+    field_name: Mapped[str_255] = mapped_column()
+    label: Mapped[str_255] = mapped_column()
+    field_type: Mapped[FieldType] = mapped_column(
+        ENUM(
+            FieldType,
+            name="fieldtype",
+            create_type=True,
+            schema="un0",
+        ),
+    )
+    includes: Mapped[list[Include]] = mapped_column(
+        ENUM(
+            Include,
+            name="include",
+            create_type=True,
+            schema="un0",
+        )
+    )
+    matches: Mapped[list[Match]] = mapped_column(
+        ENUM(
+            Match,
+            name="match",
+            create_type=True,
+            schema="un0",
+        )
+    )
+    lookups: Mapped[list[Lookup]] = mapped_column(
+        ENUM(
+            Lookup,
+            name="lookup",
+            create_type=True,
+            schema="un0",
+        )
+    )
+    column_security: Mapped[ColumnSecurity] = mapped_column(
+        ENUM(
+            ColumnSecurity,
+            name="columsecurity",
+            create_type=True,
+            schema="un0",
+        ),
+        default=ColumnSecurity.PUBLIC,
+    )
 
 
 class FilterKey(Base, BaseMixin):
@@ -29,6 +101,14 @@ class FilterKey(Base, BaseMixin):
     }
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     name: Mapped[str_255] = mapped_column(doc="Name")
     source_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
@@ -115,6 +195,14 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     )
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     field_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.field.id", ondelete="CASCADE"),
         index=True,
@@ -189,8 +277,16 @@ class Query(Base, BaseMixin, RBACMixin):
     )
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     name: Mapped[str_255] = mapped_column(doc="The name of the query.")
-    table_type_id: Mapped[str_26] = mapped_column(
+    queries_table_type_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "QUERIES_TABLE_TYPE"},

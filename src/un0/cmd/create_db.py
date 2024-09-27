@@ -20,6 +20,9 @@ from un0.cmd.sql import (
     change_table_owner_and_set_privileges,
     create_table_type_record,
     enable_auditing,
+    CREATE_INSERT_RELATED_OBJECT_FUNCTION,
+    CREATE_SET_USERS_FUNCTION,
+    create_set_users_trigger,
 )
 
 from un0.grph.sql import (
@@ -110,6 +113,12 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
 
         print("Setting role search paths\n")
         conn.execute(sa.text(set_search_paths(db_name=db_name)))
+
+        print("Creating the insert related object function\n")
+        conn.execute(sa.text(CREATE_INSERT_RELATED_OBJECT_FUNCTION))
+
+        print("Creating the set users function\n")
+        conn.execute(sa.text(CREATE_SET_USERS_FUNCTION))
 
         # Create the tables
         print("Creating the database tables\n")
@@ -224,17 +233,16 @@ def create_graph_functions_and_triggers(
 def create_table_type_for_table(
     table: sa.Table, conn: sa.Connection, db_name: str = settings.DB_NAME
 ) -> None:
-    table_name = table.name
-    table_schema = table.schema
     table_info = getattr(table, "info", {})
     conn.execute(sa.text(set_role_writer(db_name=db_name)))
     # Dont create any records in the database until the graph functions and triggers are created.
     # Create the table_type record for each table created.
     if table_info.get("edge", False) is False:
         # Do not create a table_type record for the edge (association) tables.
-        print(f"Creating TableType record for {table_name}\n")
-        conn.execute(sa.text(create_table_type_record(table_schema, table_name)))
+        print(f"Creating TableType record for {table.name}\n")
+        conn.execute(sa.text(create_table_type_record(table.schema, table.name)))
         conn.commit()
+    conn.execute(sa.text(set_role_admin(db_name=db_name)))
 
 
 def enable_auditing_for_table(
@@ -285,6 +293,8 @@ def create(db_name: str = settings.DB_NAME) -> None:
         create_graph_functions_and_triggers(conn, db_name=db_name)
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
+            if "owner_id" in table.columns.keys():
+                conn.execute(sa.text(create_set_users_trigger(schema_table_name)))
             enable_auditing_for_table(schema_table_name, conn, db_name=db_name)
             conn.execute(sa.text(set_role_writer(db_name=db_name)))
             create_table_type_for_table(table, conn, db_name=db_name)
@@ -304,4 +314,7 @@ def create(db_name: str = settings.DB_NAME) -> None:
 
 
 if __name__ == "__main__":
+    from un0.cmd import drop_db
+
+    drop_db.drop()
     create()

@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 import textwrap
+import datetime
 
 from typing import Optional
 
@@ -32,6 +33,14 @@ class Tenant(Base, BaseMixin):
     )
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     name: Mapped[str_255] = mapped_column(unique=True, doc="Tenant name")
     tenant_type: Mapped[TenantType] = mapped_column(
         ENUM(TenantType, name="tenanttype", create_type=True, schema="un0"),
@@ -39,37 +48,21 @@ class Tenant(Base, BaseMixin):
         doc="Tenant type",
     )
 
-    # Relationships
-    # related_object: Mapped[list[RelatedObject]] = relationship(
-    #    viewonly=True,
-    #    doc="Related objects assigned to the tenant",
-    # )
-    # users: Mapped[list["User"]] = relationship(
-    #    back_populates="tenant",
-    #    doc="Users assigned to the tenant",
-    # )
-    # roles: Mapped[list["Role"]] = relationship(
-    #    back_populates="tenant",
-    #    doc="Roles assigned to the tenant",
-    # )
-    # groups: Mapped[list["Group"]] = relationship(
-    #    back_populates="tenant",
-    #    doc="Groups assigned to the tenant",
-    # )
-    # queries: Mapped[list["Query"]] = relationship(
-    #    back_populates="tenant",
-    #    doc="Queries assigned to the tenant",
-    # )
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"<Tenant {self.name}>"
 
 
-class User(Base, BaseMixin):
+class User(Base):
     __tablename__ = "user"
     __table_args__ = (
         sa.CheckConstraint(
             textwrap.dedent(
                 """
-                --is_superuser = 'false' AND default_group_id IS NOT NULL OR 
-                --is_superuser = 'true' AND default_group_id IS NULL AND
+                is_superuser = 'false' AND default_group_id IS NOT NULL OR 
+                is_superuser = 'true' AND default_group_id IS NULL AND
                 is_superuser = 'false' AND is_tenant_admin = 'false' OR
                 is_superuser = 'true' AND is_tenant_admin = 'false' OR
                 is_superuser = 'false' AND is_tenant_admin = 'true'
@@ -85,6 +78,14 @@ class User(Base, BaseMixin):
     )
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     email: Mapped[str_255] = mapped_column(
         unique=True, index=True, doc="Email address, used as login ID"
     )
@@ -110,20 +111,39 @@ class User(Base, BaseMixin):
     is_tenant_admin: Mapped[bool] = mapped_column(
         server_default=sa.text("false"), index=True, doc="Tenant admin status"
     )
+    is_active: Mapped[bool] = mapped_column(
+        server_default=sa.text("true"), doc="Active"
+    )
+    is_deleted: Mapped[bool] = mapped_column(
+        server_default=sa.text("false"), doc="Deleted"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        server_default=sa.func.current_timestamp(),
+        doc="Time the record was created",
+    )
+    owner_id: Mapped[Optional[str_26]] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "IS_OWNED_BY"},
+    )
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        doc="Time the record was last modified",
+        server_default=sa.func.current_timestamp(),
+    )
+    modified_by_id: Mapped[Optional[str_26]] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "WAS_LAST_MODIFIED_BY"},
+    )
+    deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        doc="Time the record was deleted"
+    )
+    deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
+        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "WAS_DELETED_BY"},
+    )
 
-    # Relationships
-    # tenant: Mapped[Tenant] = relationship(
-    #    back_populates="users",
-    #    doc="Tenants to which the user is assigned",
-    # )
-    # default_group: Mapped["Group"] = relationship(
-    #    back_populates="users",
-    #    doc="User's default group, used as default for creating new objects",
-    # )
-    # user_group_role: Mapped[list["UserGroupRole"]] = relationship(
-    #    back_populates="user",
-    #    doc="Roles assigned to the user for a group",
-    # )
     def __str__(self) -> str:
         return self.email
 
@@ -135,7 +155,9 @@ class TablePermission(Base):
     __tablename__ = "table_permission"
     __table_args__ = (
         sa.UniqueConstraint(
-            "table_type_id", "actions", name="uq_table_type_permission_actions"
+            "permissive_table_type_id",
+            "actions",
+            name="uq_permissive_table_type_permission_actions",
         ),
         {
             "schema": "un0",
@@ -154,7 +176,7 @@ class TablePermission(Base):
         },
     )
     id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True)
-    table_type_id: Mapped[TableType] = mapped_column(
+    permissive_table_type_id: Mapped[TableType] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "HAS_PERMISSIVE_ACTIONS_FOR_TABLE_TYPE"},
@@ -171,19 +193,11 @@ class TablePermission(Base):
         doc="Actions that are permissible",
     )
 
-    # Relationships
-    # table_type: Mapped["TableType"] = relationship(
-    #    back_populates="table_permissions",
-    #    foreign_keys=[table_type_id],
-    #    doc="Table type to which the actions are permissible",
-    # )
-    # role_table_permission: Mapped[list["RoleTablePermission"]] = relationship(
-    #    back_populates="table_permission",
-    #    doc="Roles containing the table permission",
-    # )
-
     def __str__(self) -> str:
         return f"{self.table_type} - {self.actions}"
+
+    def __repr__(self) -> str:
+        return f"<TablePermission {self.table_type} - {self.actions}>"
 
 
 class Role(Base, BaseMixin):
@@ -202,6 +216,14 @@ class Role(Base, BaseMixin):
     )
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     tenant_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         nullable=False,
@@ -211,19 +233,11 @@ class Role(Base, BaseMixin):
     name: Mapped[str_255] = mapped_column(doc="Role name")
     description: Mapped[str] = mapped_column(doc="Role description")
 
-    # Relationships
-    # tenant: Mapped["Tenant"] = relationship(
-    #    back_populates="roles",
-    #    doc="Tenant to which the role belongs",
-    # )
-    # user_group_role: Mapped[list["UserGroupRole"]] = relationship(
-    #    back_populates="role",
-    #    doc="Roles assigned to the user for a group",
-    # )
-    # role_table_permission: Mapped[list["RoleTablePermission"]] = relationship(
-    #    back_populates="role",
-    #    doc="Table permissions assigned to the role",
-    # )
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"<Role {self.name}>"
 
 
 class RoleTablePermission(Base):
@@ -252,11 +266,11 @@ class RoleTablePermission(Base):
         info={"edge": "HAS_TABLE_PERMISSION"},
     )
 
-    # Relationships
-    # role: Mapped[Role] = relationship(back_populates="role_table_permission")
-    # table_permission: Mapped[TablePermission] = relationship(
-    #    back_populates="role_table_permission"
-    # )
+    def __str__(self) -> str:
+        return f"{self.role_id} - {self.table_permission_id}"
+
+    def __repr__(self) -> str:
+        return f"<RoleTablePermission {self.role_id} - {self.table_permission_id}>"
 
 
 class Group(Base, BaseMixin):
@@ -273,6 +287,14 @@ class Group(Base, BaseMixin):
 
     # Columns
 
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     tenant_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
@@ -281,19 +303,11 @@ class Group(Base, BaseMixin):
     )
     name: Mapped[str_255] = mapped_column(doc="Group name")
 
-    # Relationships
-    # tenant: Mapped[list["Tenant"]] = relationship(
-    #    back_populates="groups",
-    #    doc="Tenant to which the group belongs",
-    # )
-    # users: Mapped[list["User"]] = relationship(
-    #    back_populates="default_group",
-    #    doc="Users assigned to the group",
-    # )
-    # user_group_role: Mapped[list["UserGroupRole"]] = relationship(
-    #    back_populates="group",
-    #    doc="Roles assigned to the user for a group",
-    # )
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return f"<Group {self.name}>"
 
 
 class UserGroupRole(Base, BaseMixin):
@@ -304,7 +318,7 @@ class UserGroupRole(Base, BaseMixin):
                 Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
             """,
             "schema": "un0",
-            "info": {"rls_policy": "admin"},
+            "info": {"rls_policy": "admin", "edge": "HAS_USER_GROUP_ROLE"},
         },
     )
 
@@ -313,22 +327,20 @@ class UserGroupRole(Base, BaseMixin):
         sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
+        primary_key=True,
         info={"edge": "HAS_USER"},
     )
     group_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.group.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
+        primary_key=True,
         info={"edge": "HAS_GROUP"},
     )
     role_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.role.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
+        primary_key=True,
         info={"edge": "HAS_ROLE"},
     )
-
-    # Relationships
-    # user: Mapped[User] = relationship(back_populates="user_group_role")
-    # group: Mapped[Group] = relationship(back_populates="user_group_role")
-    # role: Mapped[Role] = relationship(back_populates="user_group_role")

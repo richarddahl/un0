@@ -27,6 +27,14 @@ class Message(Base, BaseMixin, RBACMixin):
     }
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     sender_id: Mapped[str_26] = mapped_column(
         sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
@@ -49,39 +57,6 @@ class Message(Base, BaseMixin, RBACMixin):
     )
 
     # Relationships
-    """
-    addressed_to: Mapped[list["User"]] = relationship(
-        back_populates="addressed_to",
-        secondary="message_addressed_to",
-        doc="Users the message is addressed to",
-    )
-    copied_to: Mapped[list["User"]] = relationship(
-        back_populates="copied_to",
-        secondary="message_copied_to",
-        doc="Users the message is copied to",
-    )
-    message_attachment: Mapped[list["Attachment"]] = relationship(
-        back_populates="message",
-        secondary="message_attachment",
-        doc="Attachments to the message",
-    )
-    previous_message: Mapped["Message"] = relationship(
-        back_populates="next_message",
-        foreign_keys=[previous_message_id],
-        doc="Previous message in the conversation",
-    )
-    next_message: Mapped["Message"] = relationship(
-        back_populates="previous_message",
-        uselist=False,
-        remote_side="Message.id",
-        doc="Next message in the conversation",
-    )
-    message_objects: Mapped[list[RelatedObject]] = relationship(
-        back_populates="message_objects",
-        secondary="message_object.message_id",
-        doc="Objects associated with the message",
-    )
-    """
 
 
 class MessageAddressedTo(Base):
@@ -114,18 +89,6 @@ class MessageAddressedTo(Base):
     read_at: Mapped[datetime.datetime] = mapped_column()
 
     # Relationships
-    """
-    message: Mapped["Message"] = relationship(
-        back_populates="addressed_to",
-        foreign_keys=[message_id],
-        doc="Message addressed to the user",
-    )
-    addressed_to: Mapped["User"] = relationship(
-        back_populates="addressed_to",
-        foreign_keys=[addressed_to_id],
-        doc="User the message is addressed to",
-    )
-    """
 
 
 class MessageCopiedTo(Base):
@@ -158,18 +121,6 @@ class MessageCopiedTo(Base):
     read_at: Mapped[datetime.datetime] = mapped_column()
 
     # Relationships
-    """
-    message: Mapped["Message"] = relationship(
-        back_populates="copied_to",
-        foreign_keys=[message_id],
-        doc="Message copied to the user",
-    )
-    copied_to: Mapped["User"] = relationship(
-        back_populates="copied_to",
-        foreign_keys=[copied_to_id],
-        doc="User the message is copied to",
-    )
-    """
 
 
 class MessageAttachment(Base):
@@ -197,82 +148,6 @@ class MessageAttachment(Base):
     )
 
     # Relationships
-    """
-    message: Mapped["Message"] = relationship(
-        back_populates="message_attachment",
-        foreign_keys=[message_id],
-        doc="Message the attachment is associated with",
-    )
-    attachment: Mapped["Attachment"] = relationship(
-        back_populates="message_attachment",
-        foreign_keys=[attachment_id],
-        doc="Attachment associated with the message",
-    )
-    """
-
-
-message_object = sa.Table(
-    "message_object",
-    Base.metadata,
-    sa.Column(
-        "message_id",
-        sa.String(26),
-        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        nullable=False,
-        info={"edge": "HAS_OBJECT"},
-    ),
-    sa.Column(
-        "object_id",
-        sa.String(26),
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        nullable=False,
-        info={"edge": "HAS_MESSAGE"},
-    ),
-    schema="un0",
-    comment="Objects associated with messages",
-    info={"edge": "HAS_OBJECTS", "rls_policy": "none"},
-)
-
-
-# class MessageObject(Base):
-#    __tablename__ = "message_object"
-#    __table_args__ = {
-#        "schema": "un0",
-#        "comment": "Objects associated with messages",
-#        "info": {"edge": "HAS_OBJECTS", "rls_policy": "none"},
-#    }
-#
-#    # Columns
-#    message_id: Mapped[str_26] = mapped_column(
-#        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
-#        index=True,
-#        primary_key=True,
-#        nullable=False,
-#        info={"edge": "HAS_OBJECT"},
-#    )
-#    object_id: Mapped[str_26] = mapped_column(
-#        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
-#        index=True,
-#        primary_key=True,
-#        nullable=False,
-#        info={"edge": "HAS_MESSAGE"},
-#    )
-#
-#    # Relationships
-##    message: Mapped["Message"] = relationship(
-#        back_populates="message",
-#        foreign_keys=[message_id],
-#        doc="Message the object is associated with",
-#    )
-#    object: Mapped["RelatedObject"] = relationship(
-#        back_populates="object",
-#        foreign_keys=[object_id],
-#        doc="Object associated with the message",
-#    )
 
 
 class Attachment(Base, BaseMixin):
@@ -283,13 +158,15 @@ class Attachment(Base, BaseMixin):
     }
 
     # Columns
+    id: Mapped[str_26] = mapped_column(
+        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        doc="Primary Key",
+        info={"edge": "HAS_RELATED_OBJECT"},
+    )
     name: Mapped[str_255] = mapped_column(unique=True, doc="Name of the file")
     file: Mapped[str_255] = mapped_column(doc="Path to the file")
 
     # Relationships
-    """
-    messages: Mapped[list["Message"]] = relationship(
-        back_populates="attachment",
-        secondary="message_attachment",
-    )
-    """

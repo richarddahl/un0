@@ -9,6 +9,8 @@
     
     That said, Don't inject SQL into your own database!
 """
+import textwrap
+
 import sqlalchemy as sa
 
 from un0.config import settings
@@ -394,6 +396,75 @@ $$
 LANGUAGE plpgsql
 VOLATILE;
 """
+
+
+CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.insert_related_object(schema_name VARCHAR, table_name VARCHAR)
+    RETURNS VARCHAR(26)
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    rel_obj_id VARCHAR(26);
+    table_type_id INT;
+BEGIN
+    SELECT id
+        FROM un0.table_type
+        WHERE schema = schema_name AND name = table_name
+        INTO table_type_id;
+
+    rel_obj_id := un0.generate_ulid(); 
+
+    INSERT INTO un0.related_object (id, table_type_id)
+    VALUES (rel_obj_id, table_type_id);
+
+    RETURN rel_obj_id;
+END;
+$$;
+"""
+
+CREATE_SET_USERS_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_users()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    user_email VARCHAR(26):= current_setting('s_var.user_email', true);
+    user_id VARCHAR(26);
+BEGIN
+
+    SELECT id INTO user_id FROM un0.user WHERE email = user_email;
+
+    IF user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        NEW.owner_id = user_id;
+        NEW.modified_by_id = user_id;
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        NEW.modified_by_id = user_id;
+    END IF;
+
+    IF NEW.is_deleted AND OLD.is_deleted IS FALSE THEN
+        NEW.deleted_by_id = user_id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+"""
+
+
+def create_set_users_trigger(schema_table_name):
+    return textwrap.dedent(
+        f"""
+        CREATE TRIGGER set_users
+        BEFORE INSERT OR UPDATE ON {schema_table_name}
+        FOR EACH ROW
+        EXECUTE FUNCTION un0.set_users();
+    """
+    )
 
 
 def change_table_owner_and_set_privileges(

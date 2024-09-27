@@ -326,15 +326,15 @@ CREATE OR REPLACE FUNCTION un0.insert_table_permissions()
     LANGUAGE plpgsql
 AS $$
 BEGIN
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']::un0.permission_name[]);
     RETURN NEW;
 END;
