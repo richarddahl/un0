@@ -54,15 +54,11 @@ class RelatedObject(Base):
     # Columns
     id: Mapped[str_26] = mapped_column(
         primary_key=True,
-        nullable=False,
-        index=True,
         doc="Primary Key",
     )
 
     table_type_id: Mapped[int] = mapped_column(
         sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
         info={"edge": "HAS_TABLE_TYPE"},
     )
 
