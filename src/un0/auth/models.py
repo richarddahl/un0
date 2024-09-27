@@ -48,6 +48,13 @@ class Tenant(Base, BaseMixin):
         doc="Tenant type",
     )
 
+    # Relationships
+    users: Mapped[list["User"]] = relationship(
+        back_populates="tenant",
+        foreign_keys="User.tenant_id",
+        doc="Users that belong to the tenant",
+    )
+
     def __str__(self) -> str:
         return self.name
 
@@ -143,6 +150,52 @@ class User(Base):
         index=True,
         info={"edge": "WAS_DELETED_BY"},
     )
+
+    # Relationships
+    tenant: Mapped[Tenant] = relationship(
+        back_populates="users",
+        foreign_keys=[tenant_id],
+        doc="Tenant the user belongs to",
+    )
+    default_group: Mapped["Group"] = relationship(
+        back_populates="users_default_group",
+        foreign_keys=[default_group_id],
+        doc="Default group for the user",
+    )
+    # owner: Mapped["User"] = relationship(
+    #    foreign_keys=[owner_id],
+    #    doc="User that owns the record",
+    # )
+    # owned_users: Mapped[list["User"]] = relationship(
+    #    primaryjoin="User.id == User.owner_id",
+    #    doc="Users owned by the user",
+    # )
+    """
+    modified_by: Mapped["User"] = relationship(
+        back_populates="modified_users",
+        foreign_keys=[modified_by_id],
+        remote_side=[id],
+        doc="User that last modified the record",
+    )
+    deleted_by: Mapped["User"] = relationship(
+        back_populates="deleted_users",
+        foreign_keys=[deleted_by_id],
+        remote_side=[id],
+        doc="User that deleted the record",
+    )
+    modified_users: Mapped[list["User"]] = relationship(
+        back_populates="modified_by",
+        foreign_keys=[id],
+        remote_side=[modified_by_id],
+        doc="Users modified by the user",
+    )
+    deleted_users: Mapped[list["User"]] = relationship(
+        back_populates="deleted_by",
+        foreign_keys=[id],
+        remote_side=[deleted_by_id],
+        doc="Users deleted by the user",
+    )
+    """
 
     def __str__(self) -> str:
         return self.email
@@ -302,6 +355,13 @@ class Group(Base, BaseMixin):
         info={"edge": "BELONGS_TO_CUSTOMER"},
     )
     name: Mapped[str_255] = mapped_column(doc="Group name")
+
+    # Relationships
+    users_default_group: Mapped[list["User"]] = relationship(
+        back_populates="default_group",
+        foreign_keys="User.default_group_id",
+        doc="Users that have this group as their default group",
+    )
 
     def __str__(self) -> str:
         return self.name
