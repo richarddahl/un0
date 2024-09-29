@@ -49,9 +49,9 @@ class General(BaseSettings):
     MAX_ENTERPRISE_USERS: int = -1
 
     # Superuser settings
-    SUPERUSER_EMAIL: str
-    SUPERUSER_HANDLE: str
-    SUPERUSER_FULL_NAME: str
+    ROOT_EMAIL: str
+    ROOT_HANDLE: str
+    ROOT_FULL_NAME: str
 
 
 class Prod(General):

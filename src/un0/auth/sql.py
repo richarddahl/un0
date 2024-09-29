@@ -4,7 +4,7 @@
 
 import textwrap
 
-from un0.config import settings
+from un0.config import settings as sttngs
 
 CREATE_SUPERUSER = f"""
 /*
@@ -13,7 +13,7 @@ Done before RLS is enabled on the user table
 */
 
 INSERT INTO un0.user(email, handle, full_name, is_superuser)
-VALUES('{settings.SUPERUSER_EMAIL}', '{settings.SUPERUSER_HANDLE}', '{settings.SUPERUSER_FULL_NAME}', true);
+VALUES('{sttngs.ROOT_EMAIL}', '{sttngs.ROOT_HANDLE}', '{sttngs.ROOT_FULL_NAME}', true);
 """
 
 
@@ -25,7 +25,6 @@ AS $$
 BEGIN
     RETURN jsonb_build_object(
         'id', current_setting('s_var.user_id', true),
-        'email', current_setting('s_var.user_email', true),
         'is_superuser', current_setting('s_var.is_superuser', true),
         'is_tenant_admin', current_setting('s_var.is_tenant_admin', true),
         'tenant_id', current_setting('s_var.tenant_id', true)
@@ -35,19 +34,25 @@ $$;
 """
 
 
-def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
+def create_verify_jwt_and_set_vars_function(db_name: str = sttngs.DB_NAME):
     return textwrap.dedent(
         f"""
         CREATE OR REPLACE FUNCTION un0.verify_jwt_and_set_vars(token TEXT)
         /*
         Function to verify a JWT token and set the session variables necessary for enforcing RLS
         Ensures that:
-            The token is valid or raises an Exception (Invalid Token)
-            The token contains a sub (which is an email address) or raises an Exception (Token does not contain a sub)
-            The email address provided in the sub is for an active user record in the user table or raises an Exception (User not found)
+            The token is valid or
+                raises an Exception (Invalid Token)
+            The token contains a sub (which is an email address) or
+                raises an Exception (Token does not contain a sub)
+            The email address provided in the sub is for an active user record in the user table or
+                raises an Exception (User not found)
 
-        If all checks pass, sets the session variables used to enforce RLS and returns True, otherwise returns False:
-            user_email: The email address of the user (a natural key and the sub in the token)
+        If all checks pass, calls un0.set_s_vars to set the session variables used to enforce RLS
+            and returns True, otherwise returns False.
+
+        The session variables are:
+            user_id: The ID of the user 
             is_superuser: Whether the user is a superuser
             is_tenant_admin: Whether the user is a tenant admin
             tenant_id: The ID of the tenant to which the user is associated
@@ -73,7 +78,7 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
         BEGIN
             -- Verify the token
             SELECT header, payload, valid
-            FROM un0.verify(token, '{settings.TOKEN_SECRET}')
+            FROM un0.verify(token, '{sttngs.TOKEN_SECRET}')
             INTO token_header, token_payload, token_valid;
 
             IF token_valid THEN
@@ -91,10 +96,7 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
                     RAISE EXCEPTION 'token has no expiration';
                 END IF;
 
-                -- Set the role to the admin role to query the user table bypassing the RLS policy
-                SET ROLE {db_name}_admin;
-
-                -- Query the user table for the user to get the relevant session variables
+                -- Query the user table for the user to get the values for the session variables
                 SELECT id, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
                 FROM un0.user
                 WHERE email = sub
@@ -118,15 +120,14 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
                     RAISE EXCEPTION 'user was deleted';
                 END IF; 
 
-                -- Set the role to the reader
-                SET ROLE {db_name}_reader;
-
                 -- Set the session variables used for RLS
-                PERFORM set_config('s_var.user_email', sub, true);
-                PERFORM set_config('s_var.user_id', user_user_id, true);
-                PERFORM set_config('s_var.is_superuser', user_is_superuser, true);
-                PERFORM set_config('s_var.is_tenant_admin', user_is_tenant_admin, true);
-                PERFORM set_config('s_var.tenant_id', user_tenant_id, true);
+                PERFORM un0.set_s_vars(
+                    user_user_email,
+                    user_user_id,
+                    user_is_superuser,
+                    user_is_tenant_admin,
+                    user_tenant_id
+                );
 
             ELSE
                 -- Token failed verification
@@ -139,6 +140,30 @@ def create_verify_jwt_and_set_vars_function(db_name: str = settings.DB_NAME):
         """
     )
 
+
+CREATE_SET_S_VARS_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_s_vars(
+    user_email VARCHAR(255),
+    user_id VARCHAR(26),
+    is_superuser VARCHAR,
+    is_tenant_admin VARCHAR,
+    tenant_id VARCHAR(26)
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    /*
+    Function to set the session variables used for RLS
+    */
+    PERFORM set_config('s_var.user_email', user_email, true);
+    PERFORM set_config('s_var.user_id', user_id, true);
+    PERFORM set_config('s_var.is_superuser', is_superuser, true);
+    PERFORM set_config('s_var.is_tenant_admin', is_tenant_admin, true);
+    PERFORM set_config('s_var.tenant_id', tenant_id, true);
+END;
+$$;
+"""
 
 CREATE_USER_TABLE_RLS_SELECT_POLICY = """
 /*
@@ -184,14 +209,15 @@ The policy to allow:
 */
 CREATE POLICY user_update_policy
 ON un0.user FOR UPDATE
-WITH CHECK (
+USING (
     current_setting('s_var.is_superuser', true)::BOOLEAN OR
     email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
     (
         current_setting('s_var.is_tenant_admin', true)::BOOLEAN AND
         tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
-    )
+    ) 
 );
+
 
 /*
 The policy to allow:
@@ -203,7 +229,6 @@ CREATE POLICY user_delete_policy
 ON un0.user FOR DELETE
 USING (
     current_setting('s_var.is_superuser', true)::BOOLEAN OR
-    email = current_setting('s_var.user_email', true)::VARCHAR(26) OR
     (
         current_setting('s_var.is_tenant_admin', true)::BOOLEAN AND
         tenant_id = current_setting('s_var.tenant_id', true)::VARCHAR(26)
@@ -229,26 +254,26 @@ BEGIN
     WHERE tenant_id = tenantid;
 
     IF tenanttype = 'INDIVIDUAL' AND
-        {settings.MAX_INDIVIDUAL_GROUPS} > 0 AND
-        group_count >= {settings.MAX_INDIVIDUAL_GROUPS} THEN
+        {sttngs.MAX_INDIVIDUAL_GROUPS} > 0 AND
+        group_count >= {sttngs.MAX_INDIVIDUAL_GROUPS} THEN
             RETURN false;
     END IF;
     IF
         tenanttype = 'SMALL_BUSINESS' AND
-        {settings.MAX_SMALL_BUSINESS_GROUPS} > 0 AND
-        group_count >= {settings.MAX_SMALL_BUSINESS_GROUPS} THEN
+        {sttngs.MAX_SMALL_BUSINESS_GROUPS} > 0 AND
+        group_count >= {sttngs.MAX_SMALL_BUSINESS_GROUPS} THEN
             RETURN false;
     END IF;
     IF
         tenanttype = 'CORPORATE' AND
-        {settings.MAX_CORPORATE_GROUPS} > 0 AND
-        group_count >= {settings.MAX_CORPORATE_GROUPS} THEN
+        {sttngs.MAX_CORPORATE_GROUPS} > 0 AND
+        group_count >= {sttngs.MAX_CORPORATE_GROUPS} THEN
             RETURN false;
     END IF;
     IF
         tenanttype = 'ENTERPRISE' AND
-        {settings.MAX_ENTERPRISE_GROUPS} > 0 AND
-        group_count >= {settings.MAX_ENTERPRISE_GROUPS} THEN
+        {sttngs.MAX_ENTERPRISE_GROUPS} > 0 AND
+        group_count >= {sttngs.MAX_ENTERPRISE_GROUPS} THEN
             RETURN false;
     END IF;
     RETURN true;
@@ -280,7 +305,7 @@ CREATE OR REPLACE TRIGGER set_user_owner_id_trigger
 """
 
 
-def create_insert_group_check_constraint(db_name: str = settings.DB_NAME):
+def create_insert_group_check_constraint(db_name: str = sttngs.DB_NAME):
     return f"""
         SET ROLE {db_name}_admin;
         ALTER TABLE {db_name}.group ADD CONSTRAINT ck_can_insert_group

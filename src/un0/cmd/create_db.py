@@ -12,7 +12,8 @@ from un0.cmd.sql import (
     create_database,
     create_schemas,
     revoke_acess,
-    configure_role_privileges,
+    configure_role_schema_privileges,
+    configure_role_table_privileges,
     set_search_paths,
     CREATE_EXTENSIONS,
     configuring_age_extension,
@@ -21,8 +22,10 @@ from un0.cmd.sql import (
     create_table_type_record,
     enable_auditing,
     CREATE_INSERT_RELATED_OBJECT_FUNCTION,
-    CREATE_SET_USERS_FUNCTION,
+    CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION,
     create_set_users_trigger,
+    CREATE_SET_ROLE_FUNCTION,
+    CREATE_RAISE_CURRENT_ROLE_FUNCTION,
 )
 
 from un0.grph.sql import (
@@ -46,6 +49,7 @@ from un0.auth.sql import (
     create_verify_jwt_and_set_vars_function,
     CREATE_LIST_SESSION_VARIABLES_FUNCTION,
     CREATE_SUPERUSER,
+    CREATE_SET_S_VARS_FUNCTION,
 )
 
 from un0.db import Base
@@ -105,33 +109,51 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
         print("Configuring the Age extension\n")
         conn.execute(sa.text(configuring_age_extension(db_name=db_name)))
 
-        print("Creating the pgulid function\n")
-        conn.execute(sa.text(CREATE_PGULID))
-
         print("Revoking public access to schemas\n")
         conn.execute(sa.text(revoke_acess(db_name=db_name)))
+
+        print("Configuring the privileges for the tables\n")
+        conn.execute(sa.text(configure_role_schema_privileges(db_name=db_name)))
 
         print("Setting role search paths\n")
         conn.execute(sa.text(set_search_paths(db_name=db_name)))
 
+        conn.close()
+    eng.dispose()
+
+    eng = sa.create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
+    with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(sa.text((set_role_admin(db_name=db_name))))
+
+        print("Creating the pgulid function\n")
+        conn.execute(sa.text(CREATE_PGULID))
+
         print("Creating the insert related object function\n")
         conn.execute(sa.text(CREATE_INSERT_RELATED_OBJECT_FUNCTION))
 
-        print("Creating the set users function\n")
-        conn.execute(sa.text(CREATE_SET_USERS_FUNCTION))
+        print("Creating the set users before insert or update function\n")
+        conn.execute(sa.text(CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION))
+
+        print("Creating the set_s_vars function\n")
+        conn.execute(sa.text(CREATE_SET_S_VARS_FUNCTION))
+
+        print("Creating the set_role function\n")
+        conn.execute(sa.text(CREATE_SET_ROLE_FUNCTION))
+        conn.execute(sa.text(CREATE_RAISE_CURRENT_ROLE_FUNCTION))
 
         # Create the tables
         print("Creating the database tables\n")
-        Base.metadata.create_all(eng)
+        Base.metadata.create_all(bind=conn)
 
         print("Configuring the privileges for the tables\n")
-        conn.execute(sa.text(configure_role_privileges(db_name=db_name)))
+        conn.execute(sa.text(configure_role_table_privileges(db_name=db_name)))
 
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             conn.execute(
                 sa.text(change_table_owner_and_set_privileges(table, db_name=db_name))
             )
+        conn.close()
     eng.dispose()
 
 
@@ -139,7 +161,7 @@ def create_auth_functions_and_triggers(db_name: str = settings.DB_NAME) -> None:
     # Connect to the new database to create the Auth functions and triggers
     eng = sa.create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(sa.text((set_role_admin(db_name=db_name))))
+        conn.execute(sa.func.un0.set_role("admin"))
 
         print("Creating the can_insert_group function and check constraint\n")
         # conn.execute(sa.text(create_insert_group_check_constraint))
@@ -234,15 +256,15 @@ def create_table_type_for_table(
     table: sa.Table, conn: sa.Connection, db_name: str = settings.DB_NAME
 ) -> None:
     table_info = getattr(table, "info", {})
-    conn.execute(sa.text(set_role_writer(db_name=db_name)))
     # Dont create any records in the database until the graph functions and triggers are created.
     # Create the table_type record for each table created.
     if table_info.get("edge", False) is False:
         # Do not create a table_type record for the edge (association) tables.
         print(f"Creating TableType record for {table.name}\n")
+        # conn.execute(sa.text(set_role_writer(db_name=db_name)))
+        conn.execute(sa.func.un0.set_role("writer"))
         conn.execute(sa.text(create_table_type_record(table.schema, table.name)))
         conn.commit()
-    conn.execute(sa.text(set_role_admin(db_name=db_name)))
 
 
 def enable_auditing_for_table(
@@ -287,16 +309,12 @@ def create(db_name: str = settings.DB_NAME) -> None:
     )
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(sa.text(set_role_admin(db_name=db_name)))
-        conn.execute(
-            sa.text(f"SET search_path TO ag_catalog, graph, un0, audit, {db_name};")
-        )
         create_graph_functions_and_triggers(conn, db_name=db_name)
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             if "owner_id" in table.columns.keys():
                 conn.execute(sa.text(create_set_users_trigger(schema_table_name)))
             enable_auditing_for_table(schema_table_name, conn, db_name=db_name)
-            conn.execute(sa.text(set_role_writer(db_name=db_name)))
             create_table_type_for_table(table, conn, db_name=db_name)
         conn.execute(sa.text(CREATE_SUPERUSER))
         conn.execute(sa.text(set_role_admin(db_name=db_name)))

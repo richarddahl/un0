@@ -13,33 +13,81 @@ import textwrap
 
 import sqlalchemy as sa
 
-from un0.config import settings
+from un0.config import settings as sttngs
 
 
-def set_role_login(db_name: str = settings.DB_NAME):
+def set_role_login(db_name: str = sttngs.DB_NAME):
     return f"SET ROLE {db_name}_login;"
 
 
-def set_role_reader(db_name: str = settings.DB_NAME):
+def set_role_reader(db_name: str = sttngs.DB_NAME):
     return f"SET ROLE {db_name}_reader;"
 
 
-def set_role_writer(db_name: str = settings.DB_NAME):
+def set_role_writer(db_name: str = sttngs.DB_NAME):
     return f"SET ROLE {db_name}_writer;"
 
 
-def set_role_admin(db_name: str = settings.DB_NAME):
+def set_role_admin(db_name: str = sttngs.DB_NAME):
     return f"SET ROLE {db_name}_admin;"
 
 
-def drop_database(db_name: str = settings.DB_NAME):
+CREATE_SET_ROLE_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_role(role_name VARCHAR)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    db_name VARCHAR;
+    full_role_name VARCHAR;
+BEGIN
+    /*
+    Function used to set the role of the current session to
+    the appropriate role for the operation being performed.
+    ADMIN for DDL
+    READER for SELCT
+    WRITER for INSERT, UPDATE, or DELETE
+    LOGIN for login
+    */
+
+    db_name := current_database();
+
+    IF role_name NOT IN ('admin', 'reader', 'writer', 'login') THEN
+        RAISE EXCEPTION 'Invalid role name: %', role_name;
+    END IF;
+    SELECT db_name || '_' || role_name AS full_role_name INTO full_role_name;
+    EXECUTE 'SET ROLE ' || full_role_name;
+END;
+$$;
+"""
+
+CREATE_RAISE_CURRENT_ROLE_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.raise_current_role()
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    current_role VARCHAR;
+BEGIN
+    /*
+    Function used to raise an exception if the current role is not the login role.
+    */
+
+    SELECT current_setting('role') INTO current_role;
+    RAISE EXCEPTION 'Current role: %', current_role;
+END;
+$$;
+"""
+
+
+def drop_database(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Drop the database if it exists
         DROP DATABASE IF EXISTS {db_name} WITH (FORCE);
     """
 
 
-def drop_roles(db_name: str = settings.DB_NAME):
+def drop_roles(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Drop the roles if they exist
         DROP ROLE IF EXISTS {db_name}_writer;
@@ -50,7 +98,7 @@ def drop_roles(db_name: str = settings.DB_NAME):
     """
 
 
-def create_roles(db_name: str = settings.DB_NAME):
+def create_roles(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Create the base role with permissions that all other users will inherit
         DO $$
@@ -78,7 +126,7 @@ def create_roles(db_name: str = settings.DB_NAME):
 
             -- Create the authentication role
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_login') THEN
-                CREATE ROLE {db_name}_login NOINHERIT LOGIN PASSWORD '{settings.DB_USER_PW}' IN ROLE
+                CREATE ROLE {db_name}_login NOINHERIT LOGIN PASSWORD '{sttngs.DB_USER_PW}' IN ROLE
                     {db_name}_base_role;
             END IF;
 
@@ -97,18 +145,18 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 """
 
 
-def create_database(db_name: str = settings.DB_NAME):
+def create_database(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Create the database
         CREATE DATABASE {db_name} WITH OWNER = {db_name}_admin;
     """
 
 
-def create_schemas(db_name: str = settings.DB_NAME):
+def create_schemas(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Create the un0 schemas
         CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {db_name}_admin;
-        CREATE SCHEMA IF NOT EXISTS {settings.DB_SCHEMA} AUTHORIZATION {db_name}_admin;
+        CREATE SCHEMA IF NOT EXISTS {sttngs.DB_SCHEMA} AUTHORIZATION {db_name}_admin;
     """
 
 
@@ -133,7 +181,7 @@ CREATE EXTENSION IF NOT EXISTS age;
 """
 
 
-def configuring_age_extension(db_name: str = settings.DB_NAME):
+def configuring_age_extension(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Configuring the age extension
         GRANT USAGE ON SCHEMA ag_catalog TO
@@ -142,6 +190,8 @@ def configuring_age_extension(db_name: str = settings.DB_NAME):
             {db_name}_writer;
         ALTER SCHEMA ag_catalog OWNER TO {db_name}_admin;
         SELECT * FROM ag_catalog.create_graph('graph');
+        ALTER TABLE ag_catalog.ag_graph OWNER TO {db_name}_admin;
+        ALTER TABLE ag_catalog.ag_label OWNER TO {db_name}_admin;
         ALTER TABLE graph._ag_label_edge OWNER TO {db_name}_admin;
         ALTER TABLE graph._ag_label_vertex OWNER TO {db_name}_admin;
         ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {db_name}_admin;
@@ -150,7 +200,7 @@ def configuring_age_extension(db_name: str = settings.DB_NAME):
     """
 
 
-def revoke_acess(db_name: str = settings.DB_NAME):
+def revoke_acess(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Explicitly revoke all privileges on all schemas and tables
         REVOKE ALL ON SCHEMA
@@ -158,7 +208,7 @@ def revoke_acess(db_name: str = settings.DB_NAME):
             audit,
             graph,
             ag_catalog,
-            {settings.DB_SCHEMA} 
+            {sttngs.DB_SCHEMA} 
         FROM
             public,
             {db_name}_base_role,
@@ -172,7 +222,7 @@ def revoke_acess(db_name: str = settings.DB_NAME):
             audit,
             graph,
             ag_catalog,
-            {settings.DB_SCHEMA} 
+            {sttngs.DB_SCHEMA} 
         FROM
             public,
             {db_name}_base_role,
@@ -190,7 +240,7 @@ def revoke_acess(db_name: str = settings.DB_NAME):
     """
 
 
-def set_search_paths(db_name: str = settings.DB_NAME):
+def set_search_paths(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Set the search paths for the roles
         ALTER ROLE
@@ -240,13 +290,16 @@ def set_search_paths(db_name: str = settings.DB_NAME):
     """
 
 
-def configure_role_privileges(db_name: str = settings.DB_NAME):
+def configure_role_schema_privileges(db_name: str = sttngs.DB_NAME):
     return f"""
         -- Grant ownership of the un0 schemas to the DB admin role
         ALTER SCHEMA audit OWNER TO {db_name}_admin;
         ALTER SCHEMA un0 OWNER TO {db_name}_admin;
         ALTER SCHEMA graph OWNER TO {db_name}_admin;
-        ALTER SCHEMA {settings.DB_SCHEMA} OWNER TO {db_name}_admin;
+        ALTER SCHEMA ag_catalog OWNER TO {db_name}_admin;
+
+        ALTER SCHEMA {sttngs.DB_SCHEMA} OWNER TO {db_name}_admin;
+        ALTER TABLE audit.record_version OWNER TO {db_name}_admin;
 
         -- Grant connect privileges to the DB login role
         GRANT CONNECT ON DATABASE {db_name} TO {db_name}_login;
@@ -257,8 +310,9 @@ def configure_role_privileges(db_name: str = settings.DB_NAME):
             audit,
             graph,
             ag_catalog,
-            {settings.DB_SCHEMA}
+            {sttngs.DB_SCHEMA}
         TO
+            {db_name}_login,
             {db_name}_admin,
             {db_name}_reader,
             {db_name}_writer;
@@ -267,7 +321,7 @@ def configure_role_privileges(db_name: str = settings.DB_NAME):
             un0,
             audit,
             graph,
-            {settings.DB_SCHEMA}
+            {sttngs.DB_SCHEMA}
         TO
             {db_name}_admin;
 
@@ -276,35 +330,45 @@ def configure_role_privileges(db_name: str = settings.DB_NAME):
             audit,
             graph,
             ag_catalog,
-            {settings.DB_SCHEMA}
+            {sttngs.DB_SCHEMA}
         TO
+            {db_name}_login,
             {db_name}_admin,
             {db_name}_reader,
             {db_name}_writer;
 
+        GRANT {db_name}_admin TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
+        GRANT {db_name}_writer TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
+        GRANT {db_name}_reader TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
+"""
+
+
+def configure_role_table_privileges(db_name: str = sttngs.DB_NAME):
+    return f"""
         GRANT SELECT ON ALL TABLES IN SCHEMA
             un0,
             audit,
             graph,
             ag_catalog,
-            {settings.DB_SCHEMA}
+            {sttngs.DB_SCHEMA}
         TO
             {db_name}_reader,
             {db_name}_writer;
 
-        GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA
+        GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
             un0,
             audit,
             graph,
-            {settings.DB_SCHEMA} 
+            {sttngs.DB_SCHEMA} 
         TO
-            {db_name}_writer;
-
-        REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA
-            un0,
-            {settings.DB_SCHEMA} 
-        FROM
+            {db_name}_writer,
             {db_name}_admin;
+
+        --REVOKE SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
+        --    un0,
+        --    {sttngs.DB_SCHEMA} 
+        --FROM
+        --    {db_name}_admin;
 
         GRANT ALL ON ALL TABLES IN SCHEMA
             audit,
@@ -407,6 +471,10 @@ DECLARE
     rel_obj_id VARCHAR(26);
     table_type_id INT;
 BEGIN
+    /*
+    Function used to insert a record into the related_object table, when a record is inserted
+    into a table that has a PK that is a FK to the related_object table.
+    */
     SELECT id
         FROM un0.table_type
         WHERE schema = schema_name AND name = table_name
@@ -422,7 +490,7 @@ END;
 $$;
 """
 
-CREATE_SET_USERS_FUNCTION = """
+CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
 CREATE OR REPLACE FUNCTION un0.set_users()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -431,6 +499,10 @@ DECLARE
     user_email VARCHAR(26):= current_setting('s_var.user_email', true);
     user_id VARCHAR(26);
 BEGIN
+    /* 
+    Function used to set the owner_id, modified_by_id, and deleted_by_id fields
+    of a table to the user_id of the user making the change. 
+    */
 
     SELECT id INTO user_id FROM un0.user WHERE email = user_email;
 
@@ -468,7 +540,7 @@ def create_set_users_trigger(schema_table_name):
 
 
 def change_table_owner_and_set_privileges(
-    table: sa.Table, db_name: str = settings.DB_NAME
+    table: sa.Table, db_name: str = sttngs.DB_NAME
 ):
     return f"""
     ALTER TABLE {table.schema}.{table.name} OWNER TO {db_name}_admin;
