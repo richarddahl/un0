@@ -4,14 +4,14 @@
 
 import pytest  # type: ignore
 
-from sqlalchemy import create_engine, func, select, delete
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import sessionmaker
 
 from tests.conftest import get_mock_user_vars
 
 from un0.cmd import create_db, drop_db
-from un0.config import settings as sttngs
 from un0.auth.models import User
+from un0.config import settings as sttngs
 
 
 @pytest.fixture(scope="session")
@@ -30,56 +30,16 @@ def engine(db_url):
 
 
 @pytest.fixture(scope="session")
-def connection(engine):
-    yield engine.connect()
-    engine.dispose()
-
-
-@pytest.fixture(scope="session")
-def db(db_name):
+def superuser_id(db_name):
+    """Creates the database and returns the superuser id."""
+    print(f"Creating database {db_name}")
     drop_db.drop(db_name)
-    create_db.create(db_name)
+    superuser_id = create_db.create(db_name)
+    yield superuser_id
 
 
 @pytest.fixture(scope="session")
-def session(db, engine, connection):
-    session = sessionmaker(bind=connection, expire_on_commit=False)
+def session(engine, superuser_id, create_test_functions):
+    session = sessionmaker(bind=engine)
     yield session()
-    connection.close()
     engine.dispose()
-
-
-@pytest.fixture(scope="function")
-def load_inactive_user(session: Session) -> None:
-    user = User(
-        email="inactive@user.com",
-        handle="inactive_user",
-        full_name="Inactive User",
-        is_active=False,
-    )
-    with session.begin():
-        session.execute(func.un0.test_set_mock_user_vars(*get_mock_user_vars()))
-        session.execute(func.un0.set_role("writer"))
-        session.add(user)
-        session.commit()
-
-
-@pytest.fixture(scope="function")
-def load_deleted_user(session: Session) -> None:
-    user = User(
-        email="deleted@user.com",
-        handle="deleted_user",
-        full_name="Deleted User",
-        is_deleted=True,
-    )
-    with session.begin():
-        session.execute(func.un0.test_set_mock_user_vars(*get_mock_user_vars()))
-        session.execute(func.un0.set_role("writer"))
-        session.add(user)
-        session.commit()
-
-
-@pytest.fixture(scope="session")
-def test_list_user_vars():
-    """Returns the function name for the test_list_user_vars function."""
-    return "SELECT * FROM un0.test_list_user_vars();"

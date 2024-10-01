@@ -10,7 +10,7 @@ from sqlalchemy.engine import Connection
 from un0.config import settings as sttngs
 
 from un0.cmd.sql import (
-    create_set_users_trigger,
+    create_set_owner_modified_deleted_users_trigger,
     change_table_owner_and_set_privileges,
     create_table_type_record,
     enable_auditing,
@@ -25,7 +25,7 @@ from un0.cmd.sql import (
     CREATE_EXTENSIONS,
     SET_PGMETA_CONFIG,
     CREATE_INSERT_RELATED_OBJECT_FUNCTION,
-    CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION,
+    CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION,
     CREATE_PGULID,
 )
 
@@ -39,11 +39,6 @@ from un0.auth.sql import (
     CREATE_USER_TABLE_RLS_SELECT_POLICY,
     CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER,
     CREATE_INSERT_TABLE_PERMISSION_FUNCTION_AND_TRIGGER,
-    # TESTING CONSTANTS FOLLOW
-    CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION,
-    CREATE_TEST_LIST_SESSION_VARIABLES_FUNCTION,
-    CREATE_TEST_SET_RLS_VARIABLES_FUNCTION,
-    # END OF TESTING CONSTANTS
 )
 
 from un0.grph.sql import (
@@ -139,14 +134,11 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
         conn.execute(text(CREATE_INSERT_RELATED_OBJECT_FUNCTION))
 
         print("Creating the set users before insert or update function\n")
-        conn.execute(text(CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION))
-
-        # CREATE THE TEST FUNCTIONS (used to test rls without jwt validation)
-        if settings.ENV == "test":
-            print("Creating the test_set_mock_user_vars function\n")
-            conn.execute(text(CREATE_TEST_SET_RLS_VARIABLES_FUNCTION))
-            conn.execute(text(CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION))
-            conn.execute(text(CREATE_TEST_LIST_SESSION_VARIABLES_FUNCTION))
+        conn.execute(
+            text(
+                CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION
+            )
+        )
 
         print("Creating the set_role function\n")
         conn.execute(text(CREATE_SET_ROLE_FUNCTION))
@@ -289,7 +281,7 @@ def enable_auditing_for_table(
 # conn.execute(text(CREATE_GROUP_PERMISSION_FUNCTION))
 
 
-def create(db_name: str = settings.DB_NAME) -> None:
+def create(db_name: str = settings.DB_NAME) -> str:
     """
     Create the database, schemas, extensions, tables, and functions
     Configure the basic privileges for the tables
@@ -301,28 +293,32 @@ def create(db_name: str = settings.DB_NAME) -> None:
     """
     # Redirect the stdout stream to a StringIO object when running tests
     # to prevent the print statements from being displayed in the test output.
-    # if settings.ENV == "test":
-    #    output_stream = io.StringIO()
-    #    sys.stdout = output_stream
+    if settings.ENV == "test":
+        output_stream = io.StringIO()
+        sys.stdout = output_stream
 
     initial_creation_steps(db_name)
     create_schemas_extensions_and_tables(db_name)
     create_auth_functions_and_triggers(db_name)
     # Connect to the new database to create the Graph functions and triggers
-    eng = create_engine(
-        f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}",
-    )
+    eng = create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(func.un0.set_role("admin"))
         create_graph_functions_and_triggers(conn, db_name)
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             if "owner_id" in table.columns.keys():
-                conn.execute(text(create_set_users_trigger(schema_table_name)))
+                conn.execute(
+                    text(
+                        create_set_owner_modified_deleted_users_trigger(
+                            schema_table_name
+                        )
+                    )
+                )
             enable_auditing_for_table(schema_table_name, conn)
             create_table_type_for_table(table, conn)
-        id = conn.execute(text(CREATE_SUPERUSER))
-        sttngs.SUPERUSER_ID = id.scalar()
+        superuser = conn.execute(text(CREATE_SUPERUSER))
+        superuser_id = superuser.scalar()
         conn.execute(func.un0.set_role("admin"))
         conn.execute(text(CREATE_USER_TABLE_RLS_SELECT_POLICY))
         conn.commit()
@@ -335,6 +331,8 @@ def create(db_name: str = settings.DB_NAME) -> None:
     # Reset the stdout stream
     if settings.ENV == "test":
         sys.stdout = sys.__stdout__
+
+    return superuser_id
 
 
 if __name__ == "__main__":

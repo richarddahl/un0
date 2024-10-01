@@ -25,13 +25,13 @@ from un0.config import settings as sttngs
 #########################################################
 
 
-def create_set_users_trigger(schema_table_name):
+def create_set_owner_modified_deleted_users_trigger(schema_table_name):
     return textwrap.dedent(
         f"""
-        CREATE TRIGGER set_users
+        CREATE TRIGGER set_owner_modified_deleted_users_trigger
         BEFORE INSERT OR UPDATE ON {schema_table_name}
         FOR EACH ROW
-        EXECUTE FUNCTION un0.set_users();
+        EXECUTE FUNCTION un0.set_owner_modified_deleted_users();
     """
     )
 
@@ -412,21 +412,22 @@ END;
 $$;
 """
 
-CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.set_users()
+CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_owner_modified_deleted_users()
     RETURNS TRIGGER
     LANGUAGE plpgsql
 AS $$
 DECLARE
-    user_email VARCHAR(26):= current_setting('user_var.user_email', true);
-    user_id VARCHAR(26);
+    -- user_email VARCHAR(26):= current_setting('user_var.email', true);
+    -- user_id VARCHAR(26);
+    user_id VARCHAR(26) := current_setting('user_var.id', true);
 BEGIN
     /* 
     Function used to set the owner_id, modified_by_id, and deleted_by_id fields
     of a table to the user_id of the user making the change. 
     */
 
-    SELECT id INTO user_id FROM un0.user WHERE email = user_email;
+    -- SELECT id INTO user_id FROM un0.user WHERE email = user_email;
 
     IF user_id IS NULL THEN
         RETURN NEW;

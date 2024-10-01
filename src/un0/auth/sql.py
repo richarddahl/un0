@@ -200,7 +200,7 @@ DECLARE
     sub VARCHAR;
     expiration INT;
     user_email VARCHAR; 
-    user_rls_id VARCHAR(26);
+    user_id VARCHAR(26);
     user_is_superuser VARCHAR(5);
     user_is_tenant_admin VARCHAR(5);
     user_tenant_id VARCHAR(26);
@@ -240,19 +240,19 @@ BEGIN
         PERFORM set_config('user_var.email', sub, true);
 
         -- Query the user table for the user to get the values for the session variables
-        SELECT email, id, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
+        SELECT id, email, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
         FROM un0.user
         WHERE email = sub
         INTO
+            user_id,
             user_email,
-            user_rls_id,
             user_is_superuser,
             user_is_tenant_admin,
             user_tenant_id,
             user_is_active,
             user_is_deleted;
 
-        IF user_rls_id IS NULL THEN
+        IF user_id IS NULL THEN
             RAISE EXCEPTION 'user not found';
         END IF;
 
@@ -266,7 +266,7 @@ BEGIN
 
         -- Set the session variables used for RLS
         PERFORM set_config('user_var.email', user_email, true);
-        PERFORM set_config('user_var.id', user_rls_id, true);
+        PERFORM set_config('user_var.id', user_id, true);
         PERFORM set_config('user_var.is_superuser', user_is_superuser, true);
         PERFORM set_config('user_var.is_tenant_admin', user_is_tenant_admin, true);
         PERFORM set_config('user_var.tenant_id', user_tenant_id, true);
@@ -470,82 +470,4 @@ BEGIN
 END;
 $$;
 
-"""
-
-
-#######################################
-# CONSTANTS FOR TESTING PURPOSES ONLY #
-#######################################
-
-
-CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.raise_current_role()
-RETURNS VOID
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    current_role VARCHAR;
-BEGIN
-    /*
-    Function used to raise an exception to show the current role of the session
-    Used for testing purposes
-    */
-
-    SELECT current_setting('role') INTO current_role;
-    RAISE EXCEPTION 'Current role: %', current_role;
-END;
-$$;
-"""
-
-
-CREATE_TEST_LIST_SESSION_VARIABLES_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_list_user_vars()
-    RETURNS JSONB
-    LANGUAGE plpgsql
-AS $$
-BEGIN
-    /*
-    Function to list the session variables used for RLS
-    Used for testing purposes
-    */
-    RETURN jsonb_build_object(
-        'id', current_setting('user_var.user_id', true),
-        'email', current_setting('user_var.email', true),
-        'is_superuser', current_setting('user_var.is_superuser', true),
-        'is_tenant_admin', current_setting('user_var.is_tenant_admin', true),
-        'tenant_id', current_setting('user_var.tenant_id', true)
-    );
-END;
-$$;
-"""
-
-
-CREATE_TEST_SET_RLS_VARIABLES_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_set_mock_user_vars(
-    id VARCHAR(26),
-    user_email VARCHAR(255),
-    is_superuser VARCHAR,
-    is_tenant_admin VARCHAR,
-    tenant_id VARCHAR(26)
-)
-RETURNS VOID
-LANGUAGE plpgsql
-AS $$
-DECLARE
-BEGIN
-    /*
-    Function to set the session variables used for RLS and set the role to the reader role
-    */
-
-    --Set the session variables
-    PERFORM set_config('user_var.id', id, true);
-    PERFORM set_config('user_var.email', user_email, true);
-    PERFORM set_config('user_var.is_superuser', is_superuser, true);
-    PERFORM set_config('user_var.is_tenant_admin', is_tenant_admin, true);
-    PERFORM set_config('user_var.tenant_id', tenant_id, true);
-
-    --Set the role to the databases reader role
-    PERFORM un0.set_role('reader');
-END;
-$$;
 """

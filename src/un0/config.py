@@ -52,7 +52,6 @@ class General(BaseSettings):
     SUPERUSER_EMAIL: str
     SUPERUSER_HANDLE: str
     SUPERUSER_FULL_NAME: str
-    SUPERUSER_ID: str | None
 
 
 class Prod(General):

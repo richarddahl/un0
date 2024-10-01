@@ -25,9 +25,9 @@ def drop(db_name: str = sttngs.DB_NAME) -> None:
 
     # Redirect the stdout stream to a StringIO object when running tests
     # to prevent the print statements from being displayed in the test output.
-    # if sttngs.ENV == "test":
-    #    output_stream = io.StringIO()
-    #    sys.stdout = output_stream
+    if sttngs.ENV == "test":
+        output_stream = io.StringIO()
+        sys.stdout = output_stream
 
     eng = create_engine("postgresql+psycopg://postgres@/postgres", echo=False)
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
