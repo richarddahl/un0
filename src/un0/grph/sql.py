@@ -6,11 +6,26 @@ import textwrap
 
 from pydantic import BaseModel
 
-import sqlalchemy as sa
+from sqlalchemy import Table, Column
 
 from un0.utilities import convert_snake_to_capital_word
+from un0.config import settings as sttngs
 
-from un0.config import settings
+
+def init_settings():
+    sttngs.__init__()
+
+
+################
+# MATCH SYNTAX #
+################
+"""
+SET search_path TO ag_catalog;
+SELECT * FROM cypher('graph', $$
+MATCH (s)-[r:IS_OWNED_BY]-(d)
+return s, r, d
+$$) AS (source agtype, Relationship agtype, Destination agtype);
+"""
 
 
 def create_vlabel(table_name):
@@ -21,7 +36,7 @@ def create_elabel(edge_name):
     return f"SELECT ag_catalog.create_elabel('graph', '{edge_name}');"
 
 
-def get_column_type(column: sa.Column, prefix: str = "NEW", update: bool = True) -> str:
+def get_column_type(column: Column, prefix: str = "NEW", update: bool = True) -> str:
     """Get the column type for a given column"""
     if update is False:
         if issubclass(column.type.python_type, list):
@@ -39,7 +54,7 @@ def get_column_type(column: sa.Column, prefix: str = "NEW", update: bool = True)
 
 
 def get_column_properties(
-    column: sa.Column, update: bool = True
+    column: Column, update: bool = True
 ) -> tuple[str, str] | None:
     if column.foreign_keys:
         return None
@@ -62,15 +77,20 @@ class EdgeData(BaseModel):
     edge_name: str
 
 
-def vertex_properties(table: sa.Table, update: bool = True) -> tuple[str, str]:
+def vertex_properties(table: Table, update: bool = True) -> tuple[str, str]:
     """Get the graph properties for a given table"""
     property_names = []
     property_values = []
 
     for column in table.columns:
+        if column.info.get("exclude_from_graph_properties", False) is True:
+            continue
         if column.foreign_keys:
             for fk in column.foreign_keys:
-                if column.info.get("graph_properties", False) is True:
+                if (
+                    column.info.get("graph_properties", False) is True
+                    or column.name == "id"
+                ):
                     for fk_column in fk.column.table.columns:
                         col_props_and_vals = get_column_properties(
                             fk_column, update=update
@@ -91,7 +111,7 @@ def vertex_properties(table: sa.Table, update: bool = True) -> tuple[str, str]:
     return ",".join(property_names), ",".join(property_values)
 
 
-def vertex_edges(table: sa.Table, update: bool = True) -> list:
+def vertex_edges(table: Table, update: bool = True) -> list:
     """Get the graph edges (based on foreign keys) for a given table"""
     table_name = table.name
     edges = []
@@ -161,13 +181,13 @@ def create_edge_statements(
 
 
 def function_body(
-    table: sa.Table,
+    table: Table,
     function_name: str,
     execution_string: str,
     operation: str = "UPDATE",
     for_each: str = "ROW",
     include_trigger: bool = False,
-    db_name: str = settings.DB_NAME,
+    db_name: str = sttngs.DB_NAME,
 ) -> str:
     table_name = table.name
     schema_name = table.schema
@@ -195,9 +215,7 @@ def function_body(
 
 
 # INSERT Vertex Function and Trigger
-def insert_vertex_functions_and_triggers(
-    table: sa.Table, db_name=settings.DB_NAME
-) -> str:
+def insert_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
     """Creates a new vertex record when a new relational table record is inserted"""
     table_name = table.name
     edges: list[EdgeData] = []
@@ -224,9 +242,7 @@ def insert_vertex_functions_and_triggers(
 
 
 # UPDATE Vertex Function and Trigger
-def update_vertex_functions_and_triggers(
-    table: sa.Table, db_name=settings.DB_NAME
-) -> str:
+def update_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
     """Updates an existing vertex record when its relational table record is updated"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -250,9 +266,7 @@ def update_vertex_functions_and_triggers(
 
 
 # DELETE Vertex Function and Trigger
-def delete_vertex_functions_and_triggers(
-    table: sa.Table, db_name=settings.DB_NAME
-) -> str:
+def delete_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
     """Deleted an existing vertex record when its relational table record is deleted"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -276,9 +290,7 @@ def delete_vertex_functions_and_triggers(
 
 
 # TRUNCATE Vertex Function and Trigger
-def truncate_vertex_functions_and_triggers(
-    table: sa.Table, db_name=settings.DB_NAME
-) -> str:
+def truncate_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
     """Deletes all corresponding vertices for a relation table when the table is truncated"""
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
@@ -304,7 +316,7 @@ def truncate_vertex_functions_and_triggers(
 # EDGE WITH PROPERTIES FUNCTIONS AND TRIGGERS
 
 
-def edge_properties(table: sa.Table, update: bool = True) -> tuple[str, str]:
+def edge_properties(table: Table, update: bool = True) -> tuple[str, str]:
     """Get the graph properties for an association table"""
     property_names = []
     property_values = []
@@ -320,7 +332,7 @@ def edge_properties(table: sa.Table, update: bool = True) -> tuple[str, str]:
     return ", ".join(property_names), ", ".join(property_values)
 
 
-def edge_w_props_vertices_old(table: sa.Table, update: bool = True) -> list:
+def edge_w_props_vertices_old(table: Table, update: bool = True) -> list:
     """Returns the vertices for an association table"""
     start_vertices = []
     end_vertices = []
@@ -354,7 +366,7 @@ def edge_w_props_vertices_old(table: sa.Table, update: bool = True) -> list:
     return edges
 
 
-def edge_w_props_vertices(table: sa.Table, update: bool = True) -> EdgeData:
+def edge_w_props_vertices(table: Table, update: bool = True) -> EdgeData:
     """Returns the vertices for an association table"""
     return EdgeData(
         start_vertex_label=convert_snake_to_capital_word(
@@ -369,7 +381,7 @@ def edge_w_props_vertices(table: sa.Table, update: bool = True) -> EdgeData:
     )
 
 
-def edge_with_properties(table: sa.Table, update: bool = True) -> str:
+def edge_with_properties(table: Table, update: bool = True) -> str:
     """Creates the edge table definition for association tables"""
     edge = edge_w_props_vertices(table, update=update)
     property_names, property_values = edge_properties(table, update=update)
@@ -382,7 +394,7 @@ def edge_with_properties(table: sa.Table, update: bool = True) -> str:
     return edge_creation_statements
 
 
-def insert_edge_w_props_functions_and_triggers(table: sa.Table) -> str:
+def insert_edge_w_props_functions_and_triggers(table: Table) -> str:
     """Create a new edge record when a new association table record is inserted"""
     _execution_string = " ".join(
         [
@@ -409,7 +421,7 @@ def insert_edge_w_props_functions_and_triggers(table: sa.Table) -> str:
     return textwrap.dedent(sql_string)
 
 
-def get_edge_match_statements(table: sa.Table):
+def get_edge_match_statements(table: Table):
     """Get the match statements for an association table's edge record from the fks
     Works with any number of foreign keys in the association table.
     """
@@ -437,7 +449,7 @@ def get_edge_match_statements(table: sa.Table):
     return match_stmt
 
 
-def delete_edge_w_props_functions_and_triggers(table: sa.Table) -> str:
+def delete_edge_w_props_functions_and_triggers(table: Table) -> str:
     """Deleted an existing edge record when its association table record is deleted"""
     match_stmt = get_edge_match_statements(table)
     _execution_string = f"""
@@ -458,7 +470,7 @@ def delete_edge_w_props_functions_and_triggers(table: sa.Table) -> str:
     return textwrap.dedent(sql_string)
 
 
-def truncate_edge_w_props_functions_and_triggers(table: sa.Table) -> str:
+def truncate_edge_w_props_functions_and_triggers(table: Table) -> str:
     """Truncate all edges for an association table"""
     edge_label = table.info.get("edge", "")
     _execution_string = f"""

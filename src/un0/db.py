@@ -219,7 +219,7 @@ class RBACMixin:
             sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
             index=True,
             nullable=False,
-            info={"edge": "HAS_CUSTOMER"},
+            info={"edge": "HAS_TENANT"},
         )
 
     @declared_attr

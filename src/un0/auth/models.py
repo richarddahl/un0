@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
+
 import textwrap
 import datetime
 
@@ -68,11 +69,11 @@ class User(Base):
         sa.CheckConstraint(
             textwrap.dedent(
                 """
-                is_superuser = 'false' AND default_group_id IS NOT NULL OR 
-                is_superuser = 'true' AND default_group_id IS NULL AND
-                is_superuser = 'false' AND is_tenant_admin = 'false' OR
-                is_superuser = 'true' AND is_tenant_admin = 'false' OR
-                is_superuser = 'false' AND is_tenant_admin = 'true'
+                (is_superuser = 'false' AND default_group_id IS NOT NULL) OR 
+                (is_superuser = 'true' AND default_group_id IS NULL) AND
+                (is_superuser = 'false' AND is_tenant_admin = 'false') OR
+                (is_superuser = 'true' AND is_tenant_admin = 'false') OR
+                (is_superuser = 'false' AND is_tenant_admin = 'true') 
             """
             ),
             name="ck_user_is_superuser",
@@ -281,7 +282,7 @@ class Role(Base, BaseMixin):
         sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        info={"edge": "BELONGS_TO_CUSTOMER"},
+        info={"edge": "BELONGS_TO_TENANT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Role name")
     description: Mapped[str] = mapped_column(doc="Role description")
@@ -352,7 +353,7 @@ class Group(Base, BaseMixin):
         sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
-        info={"edge": "BELONGS_TO_CUSTOMER"},
+        info={"edge": "BELONGS_TO_TENANT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Group name")
 

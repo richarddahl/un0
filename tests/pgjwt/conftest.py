@@ -2,89 +2,84 @@
 #
 # SPDX-License-Identifier: MIT
 
-import datetime
 import pytest  # type: ignore
-import jwt
 
-from typing import Any
+from sqlalchemy import create_engine, func, select, delete
+from sqlalchemy.orm import sessionmaker, Session
 
-import sqlalchemy as sa
+from tests.conftest import get_mock_user_vars
 
-from un0.cmd.sql import set_role_writer
+from un0.cmd import create_db, drop_db
 from un0.config import settings as sttngs
 from un0.auth.models import User
 
 
-@pytest.fixture
-def db_name() -> str:
+@pytest.fixture(scope="session")
+def db_name():
     return "un0_test_jwt"
 
 
-@pytest.fixture
-def db_url(db_name: str) -> str:
+@pytest.fixture(scope="session")
+def db_url(db_name):
     return f"{sttngs.DB_DRIVER}://{db_name}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{db_name}"
 
 
-@pytest.fixture
-def session(db_url: str) -> sa.orm.Session:
-    return sa.orm.sessionmaker(sa.create_engine(db_url))()
+@pytest.fixture(scope="session")
+def engine(db_url):
+    yield create_engine(db_url)
 
 
-@pytest.fixture
-def load_inactive_user(
-    session: sa.orm.Session, mock_superuser_session_variables: str, db_name: str
-) -> None:
+@pytest.fixture(scope="session")
+def connection(engine):
+    yield engine.connect()
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def db(db_name):
+    drop_db.drop(db_name)
+    create_db.create(db_name)
+
+
+@pytest.fixture(scope="session")
+def session(db, engine, connection):
+    session = sessionmaker(bind=connection, expire_on_commit=False)
+    yield session()
+    connection.close()
+    engine.dispose()
+
+
+@pytest.fixture(scope="function")
+def load_inactive_user(session: Session) -> None:
     user = User(
         email="inactive@user.com",
         handle="inactive_user",
         full_name="Inactive User",
         is_active=False,
     )
-    with session as session:
-        session.execute(sa.text(mock_superuser_session_variables))
-        session.execute(sa.text(set_role_writer(db_name=db_name)))
+    with session.begin():
+        session.execute(func.un0.test_set_mock_user_vars(*get_mock_user_vars()))
+        session.execute(func.un0.set_role("writer"))
         session.add(user)
         session.commit()
 
 
-@pytest.fixture
-def load_deleted_user(
-    session: sa.orm.Session, mock_superuser_session_variables: str, db_name: str
-) -> None:
+@pytest.fixture(scope="function")
+def load_deleted_user(session: Session) -> None:
     user = User(
         email="deleted@user.com",
         handle="deleted_user",
         full_name="Deleted User",
         is_deleted=True,
     )
-    with session as session:
-        session.execute(sa.text(mock_superuser_session_variables))
-        session.execute(sa.text(set_role_writer(db_name=db_name)))
+    with session.begin():
+        session.execute(func.un0.test_set_mock_user_vars(*get_mock_user_vars()))
+        session.execute(func.un0.set_role("writer"))
         session.add(user)
         session.commit()
 
 
-# Not marked as a fixture as need to call it with different parameters for testing
-def encode_test_token(
-    email: str = sttngs.SUPERUSER_EMAIL,  # Email for sub
-    has_sub: bool = True,  # Has subject
-    has_exp: bool = True,  # Has expiration
-    is_expired: bool = False,  # Expired token
-    invalid_secret: bool = False,  # Invalid secret
-) -> str:
-    """Returns a JWT token for use in tests."""
-    token_payload: dict[str, Any] = {}
-    if has_exp and not is_expired:
-        token_payload["exp"] = datetime.datetime.now(
-            datetime.timezone.utc
-        ) + datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
-    elif has_exp and is_expired:
-        token_payload["exp"] = datetime.datetime.now(
-            datetime.timezone.utc
-        ) - datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
-    if has_sub:
-        token_payload["sub"] = email
-
-    if invalid_secret:
-        return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
-    return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
+@pytest.fixture(scope="session")
+def test_list_user_vars():
+    """Returns the function name for the test_list_user_vars function."""
+    return "SELECT * FROM un0.test_list_user_vars();"

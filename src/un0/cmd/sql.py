@@ -3,103 +3,89 @@
 # SPDX-License-Identifier: MIT
 """
     NOTE - The use of f strings to provide the schema name and database name DOES NOT 
-    provide any protection against SQL injection. You cannot paramaterize postgres DDL 
-    statements. The names are defined in the .env file, are not user input, and are only
-    used at the beginning of projects to create the initial db.  
+    provide any protection against SQL injection. 
+    
+    You cannot paramaterize postgres DDL statements.
+    The names are defined in the .env file or are derived from the mapped classes.
+    They are not user input, and are only used to create or update the db during
+    developement, testing, and deployment.
     
     That said, Don't inject SQL into your own database!
 """
+
 import textwrap
 
-import sqlalchemy as sa
+from sqlalchemy import Table
 
 from un0.config import settings as sttngs
 
 
-def set_role_login(db_name: str = sttngs.DB_NAME):
-    return f"SET ROLE {db_name}_login;"
+#########################################################
+# SQL FUNCTIONS THAT REQUIRE A SCHEMA AND/OR TABLE NAME #
+#########################################################
 
 
-def set_role_reader(db_name: str = sttngs.DB_NAME):
-    return f"SET ROLE {db_name}_reader;"
+def create_set_users_trigger(schema_table_name):
+    return textwrap.dedent(
+        f"""
+        CREATE TRIGGER set_users
+        BEFORE INSERT OR UPDATE ON {schema_table_name}
+        FOR EACH ROW
+        EXECUTE FUNCTION un0.set_users();
+    """
+    )
 
 
-def set_role_writer(db_name: str = sttngs.DB_NAME):
-    return f"SET ROLE {db_name}_writer;"
-
-
-def set_role_admin(db_name: str = sttngs.DB_NAME):
-    return f"SET ROLE {db_name}_admin;"
-
-
-CREATE_SET_ROLE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.set_role(role_name VARCHAR)
-RETURNS VOID
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    db_name VARCHAR;
-    full_role_name VARCHAR;
-BEGIN
-    /*
-    Function used to set the role of the current session to
-    the appropriate role for the operation being performed.
-    ADMIN for DDL
-    READER for SELCT
-    WRITER for INSERT, UPDATE, or DELETE
-    LOGIN for login
-    */
-
-    db_name := current_database();
-
-    IF role_name NOT IN ('admin', 'reader', 'writer', 'login') THEN
-        RAISE EXCEPTION 'Invalid role name: %', role_name;
-    END IF;
-    SELECT db_name || '_' || role_name AS full_role_name INTO full_role_name;
-    EXECUTE 'SET ROLE ' || full_role_name;
-END;
-$$;
-"""
-
-CREATE_RAISE_CURRENT_ROLE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.raise_current_role()
-RETURNS VOID
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    current_role VARCHAR;
-BEGIN
-    /*
-    Function used to raise an exception if the current role is not the login role.
-    */
-
-    SELECT current_setting('role') INTO current_role;
-    RAISE EXCEPTION 'Current role: %', current_role;
-END;
-$$;
-"""
-
-
-def drop_database(db_name: str = sttngs.DB_NAME):
+def change_table_owner_and_set_privileges(table: Table, db_name: str):
     return f"""
-        -- Drop the database if it exists
-        DROP DATABASE IF EXISTS {db_name} WITH (FORCE);
+    ALTER TABLE {table.schema}.{table.name} OWNER TO {db_name}_admin;
+    GRANT SELECT ON {table.schema}.{table.name} TO
+        {db_name}_reader,
+        {db_name}_writer;
+    GRANT INSERT, UPDATE, DELETE ON {table.schema}.{table.name} TO
+        {db_name}_writer;
     """
 
 
-def drop_roles(db_name: str = sttngs.DB_NAME):
+def create_table_type_record(schema, name):
     return f"""
+    -- Create the table_type record
+    INSERT INTO un0.table_type (schema, name) VALUES ('{schema}', '{name}');
+    """
+
+
+def enable_auditing(schema_table_name):
+    return f"""
+    -- Enable auditing for the table
+    SELECT audit.enable_tracking('{schema_table_name}'::regclass);
+    """
+
+
+def drop_database(db_name):
+    return textwrap.dedent(
+        f"""
+        -- Drop the database if it exists
+        DROP DATABASE IF EXISTS {db_name} WITH (FORCE);
+        """
+    )
+
+
+def drop_roles(db_name):
+    return textwrap.dedent(
+        f"""
         -- Drop the roles if they exist
         DROP ROLE IF EXISTS {db_name}_writer;
         DROP ROLE IF EXISTS {db_name}_reader;
         DROP ROLE IF EXISTS {db_name}_admin;
         DROP ROLE IF EXISTS {db_name}_login;
         DROP ROLE IF EXISTS {db_name}_base_role;
-    """
+        """
+    )
 
 
-def create_roles(db_name: str = sttngs.DB_NAME):
-    return f"""
+def create_roles(db_name):
+    return textwrap.dedent(
+        f"""
         -- Create the base role with permissions that all other users will inherit
         DO $$
         BEGIN
@@ -135,54 +121,32 @@ def create_roles(db_name: str = sttngs.DB_NAME):
             GRANT {db_name}_reader,  {db_name}_writer, {db_name}_admin TO
                 {db_name}_login;
         END $$;
-    """
+        """
+    )
 
 
-SET_PGMETA_CONFIG = """
-SET pgmeta.log = 'all';
-SET pgmeta.log_relation = on;
-SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
-"""
-
-
-def create_database(db_name: str = sttngs.DB_NAME):
-    return f"""
+def create_database(db_name):
+    return textwrap.dedent(
+        f"""
         -- Create the database
         CREATE DATABASE {db_name} WITH OWNER = {db_name}_admin;
-    """
+        """
+    )
 
 
-def create_schemas(db_name: str = sttngs.DB_NAME):
-    return f"""
+def create_schemas(db_name):
+    return textwrap.dedent(
+        f"""
         -- Create the un0 schemas
         CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {db_name}_admin;
         CREATE SCHEMA IF NOT EXISTS {sttngs.DB_SCHEMA} AUTHORIZATION {db_name}_admin;
-    """
+        """
+    )
 
 
-CREATE_EXTENSIONS = """
--- Create the extensions
-SET search_path TO un0;
-
--- Creating the btree_gist extension
-CREATE EXTENSION IF NOT EXISTS btree_gist;
-
--- Creating the supa_audit extension
-CREATE EXTENSION IF NOT EXISTS supa_audit CASCADE;
-
--- Creating the pgcrypto extension
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Creating the pgjwt extension
-CREATE EXTENSION IF NOT EXISTS pgjwt;
-
--- Creating the age extension
-CREATE EXTENSION IF NOT EXISTS age;
-"""
-
-
-def configuring_age_extension(db_name: str = sttngs.DB_NAME):
-    return f"""
+def configure_age_extension(db_name):
+    return textwrap.dedent(
+        f"""
         -- Configuring the age extension
         GRANT USAGE ON SCHEMA ag_catalog TO
             {db_name}_admin,
@@ -197,11 +161,13 @@ def configuring_age_extension(db_name: str = sttngs.DB_NAME):
         ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {db_name}_admin;
         ALTER SEQUENCE graph._ag_label_vertex_id_seq OWNER TO {db_name}_admin;
         ALTER SEQUENCE graph._label_id_seq OWNER TO {db_name}_admin;
-    """
+        """
+    )
 
 
-def revoke_acess(db_name: str = sttngs.DB_NAME):
-    return f"""
+def revoke_access(db_name):
+    return textwrap.dedent(
+        f"""
         -- Explicitly revoke all privileges on all schemas and tables
         REVOKE ALL ON SCHEMA
             un0,
@@ -237,11 +203,13 @@ def revoke_acess(db_name: str = sttngs.DB_NAME):
             {db_name}_reader,
             {db_name}_writer,
             {db_name}_admin;
-    """
+        """
+    )
 
 
-def set_search_paths(db_name: str = sttngs.DB_NAME):
-    return f"""
+def set_search_paths(db_name):
+    return textwrap.dedent(
+        f"""
         -- Set the search paths for the roles
         ALTER ROLE
             {db_name}_base_role
@@ -250,7 +218,7 @@ def set_search_paths(db_name: str = sttngs.DB_NAME):
             un0,
             audit,
             graph,
-            {db_name};
+            {sttngs.DB_SCHEMA};
 
         ALTER ROLE
             {db_name}_login
@@ -259,7 +227,7 @@ def set_search_paths(db_name: str = sttngs.DB_NAME):
             un0,
             audit,
             graph,
-            {db_name};
+            {sttngs.DB_SCHEMA};
 
         ALTER ROLE
             {db_name}_admin
@@ -268,7 +236,7 @@ def set_search_paths(db_name: str = sttngs.DB_NAME):
             un0,
             audit,
             graph,
-            {db_name};
+            {sttngs.DB_SCHEMA};
 
         ALTER ROLE
             {db_name}_reader
@@ -277,7 +245,7 @@ def set_search_paths(db_name: str = sttngs.DB_NAME):
             un0,
             audit,
             graph,
-            {db_name};
+            {sttngs.DB_SCHEMA};
 
         ALTER ROLE
             {db_name}_writer 
@@ -286,12 +254,14 @@ def set_search_paths(db_name: str = sttngs.DB_NAME):
             un0,
             audit,
             graph,
-            {db_name};
-    """
+            {sttngs.DB_SCHEMA};
+        """
+    )
 
 
-def configure_role_schema_privileges(db_name: str = sttngs.DB_NAME):
-    return f"""
+def configure_role_schema_privileges(db_name):
+    return textwrap.dedent(
+        f"""
         -- Grant ownership of the un0 schemas to the DB admin role
         ALTER SCHEMA audit OWNER TO {db_name}_admin;
         ALTER SCHEMA un0 OWNER TO {db_name}_admin;
@@ -340,11 +310,14 @@ def configure_role_schema_privileges(db_name: str = sttngs.DB_NAME):
         GRANT {db_name}_admin TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
         GRANT {db_name}_writer TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
         GRANT {db_name}_reader TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
-"""
+        """
+    )
 
 
-def configure_role_table_privileges(db_name: str = sttngs.DB_NAME):
-    return f"""
+def configure_role_table_privileges(db_name):
+    return textwrap.dedent(
+        f"""
+        -- Grant table privileges to the roles
         GRANT SELECT ON ALL TABLES IN SCHEMA
             un0,
             audit,
@@ -364,11 +337,9 @@ def configure_role_table_privileges(db_name: str = sttngs.DB_NAME):
             {db_name}_writer,
             {db_name}_admin;
 
-        --REVOKE SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
-        --    un0,
-        --    {sttngs.DB_SCHEMA} 
-        --FROM
-        --    {db_name}_admin;
+        REVOKE SELECT, INSERT, UPDATE (id) ON un0.user FROM 
+            {db_name}_reader,
+            {db_name}_writer;
 
         GRANT ALL ON ALL TABLES IN SCHEMA
             audit,
@@ -376,7 +347,107 @@ def configure_role_table_privileges(db_name: str = sttngs.DB_NAME):
             ag_catalog
         TO
             {db_name}_admin;
-    """
+        """
+    )
+
+
+#################
+# SQL CONSTANTS #
+#################
+
+
+CREATE_EXTENSIONS = """
+-- Create the extensions
+SET search_path TO un0;
+
+-- Creating the btree_gist extension
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- Creating the supa_audit extension
+CREATE EXTENSION IF NOT EXISTS supa_audit CASCADE;
+
+-- Creating the pgcrypto extension
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Creating the pgjwt extension
+CREATE EXTENSION IF NOT EXISTS pgjwt;
+
+-- Creating the age extension
+CREATE EXTENSION IF NOT EXISTS age;
+"""
+
+SET_PGMETA_CONFIG = """
+-- Set the pgmeta configuration for supa_audit
+SET pgmeta.log = 'all';
+SET pgmeta.log_relation = on;
+SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
+"""
+
+
+CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.insert_related_object(schema_name VARCHAR, table_name VARCHAR)
+    RETURNS VARCHAR(26)
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    rel_obj_id VARCHAR(26);
+    table_type_id INT;
+BEGIN
+    /*
+    Function used to insert a record into the related_object table, when a record is inserted
+    into a table that has a PK that is a FK to the related_object table.
+    */
+    SELECT id
+        FROM un0.table_type
+        WHERE schema = schema_name AND name = table_name
+        INTO table_type_id;
+
+    rel_obj_id := un0.generate_ulid(); 
+
+    INSERT INTO un0.related_object (id, table_type_id)
+    VALUES (rel_obj_id, table_type_id);
+
+    RETURN rel_obj_id;
+END;
+$$;
+"""
+
+CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_users()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS $$
+DECLARE
+    user_email VARCHAR(26):= current_setting('user_var.user_email', true);
+    user_id VARCHAR(26);
+BEGIN
+    /* 
+    Function used to set the owner_id, modified_by_id, and deleted_by_id fields
+    of a table to the user_id of the user making the change. 
+    */
+
+    SELECT id INTO user_id FROM un0.user WHERE email = user_email;
+
+    IF user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        NEW.owner_id = user_id;
+        NEW.modified_by_id = user_id;
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        NEW.modified_by_id = user_id;
+    END IF;
+
+    IF NEW.is_deleted AND OLD.is_deleted IS FALSE THEN
+        NEW.deleted_by_id = user_id;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+"""
 
 
 CREATE_PGULID: str = """
@@ -460,107 +531,3 @@ $$
 LANGUAGE plpgsql
 VOLATILE;
 """
-
-
-CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.insert_related_object(schema_name VARCHAR, table_name VARCHAR)
-    RETURNS VARCHAR(26)
-    LANGUAGE plpgsql
-AS $$
-DECLARE
-    rel_obj_id VARCHAR(26);
-    table_type_id INT;
-BEGIN
-    /*
-    Function used to insert a record into the related_object table, when a record is inserted
-    into a table that has a PK that is a FK to the related_object table.
-    */
-    SELECT id
-        FROM un0.table_type
-        WHERE schema = schema_name AND name = table_name
-        INTO table_type_id;
-
-    rel_obj_id := un0.generate_ulid(); 
-
-    INSERT INTO un0.related_object (id, table_type_id)
-    VALUES (rel_obj_id, table_type_id);
-
-    RETURN rel_obj_id;
-END;
-$$;
-"""
-
-CREATE_SET_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.set_users()
-    RETURNS TRIGGER
-    LANGUAGE plpgsql
-AS $$
-DECLARE
-    user_email VARCHAR(26):= current_setting('s_var.user_email', true);
-    user_id VARCHAR(26);
-BEGIN
-    /* 
-    Function used to set the owner_id, modified_by_id, and deleted_by_id fields
-    of a table to the user_id of the user making the change. 
-    */
-
-    SELECT id INTO user_id FROM un0.user WHERE email = user_email;
-
-    IF user_id IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    IF TG_OP = 'INSERT' THEN
-        NEW.owner_id = user_id;
-        NEW.modified_by_id = user_id;
-    END IF;
-
-    IF TG_OP = 'UPDATE' THEN
-        NEW.modified_by_id = user_id;
-    END IF;
-
-    IF NEW.is_deleted AND OLD.is_deleted IS FALSE THEN
-        NEW.deleted_by_id = user_id;
-    END IF;
-    RETURN NEW;
-END;
-$$;
-"""
-
-
-def create_set_users_trigger(schema_table_name):
-    return textwrap.dedent(
-        f"""
-        CREATE TRIGGER set_users
-        BEFORE INSERT OR UPDATE ON {schema_table_name}
-        FOR EACH ROW
-        EXECUTE FUNCTION un0.set_users();
-    """
-    )
-
-
-def change_table_owner_and_set_privileges(
-    table: sa.Table, db_name: str = sttngs.DB_NAME
-):
-    return f"""
-    ALTER TABLE {table.schema}.{table.name} OWNER TO {db_name}_admin;
-    GRANT SELECT ON {table.schema}.{table.name} TO
-        {db_name}_reader,
-        {db_name}_writer;
-    GRANT INSERT, UPDATE, DELETE ON {table.schema}.{table.name} TO
-        {db_name}_writer;
-    """
-
-
-def create_table_type_record(schema, name):
-    return f"""
-    -- Create the table_type record
-    INSERT INTO un0.table_type (schema, name) VALUES ('{schema}', '{name}');
-    """
-
-
-def enable_auditing(schema_table_name):
-    return f"""
-    -- Enable auditing for the table
-    SELECT audit.enable_tracking('{schema_table_name}'::regclass);
-    """
