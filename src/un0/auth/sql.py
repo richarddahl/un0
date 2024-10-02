@@ -294,17 +294,14 @@ ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
 /* 
 The policy to allow:
     Superusers to select all user records;
-    All other users to select all users records associated with the tenant;
+    All other users to select all users records associated with their tenant;
 */
 CREATE POLICY user_select_policy
 ON un0.user FOR SELECT
 USING (
     email = current_setting('user_var.email', true)::VARCHAR OR
     current_setting('user_var.is_superuser', true)::BOOLEAN OR
-    (
-        current_setting('user_var.is_tenant_admin', true)::BOOLEAN AND
-        tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26)
-    )
+    tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26)
 );
 
 /*
