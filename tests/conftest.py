@@ -10,7 +10,9 @@ Each test module has its own conftest.py file that containts the fixtures for th
 import pytest
 
 from sqlalchemy import func, select, delete, text, create_engine
+from sqlalchemy.orm import sessionmaker
 
+from un0.cmd import create_db, drop_db
 from un0.auth.models import Tenant, Group, User
 from un0.auth.enums import TenantType
 from un0.config import settings as sttngs
@@ -114,7 +116,33 @@ def get_mock_user_vars(
 ############
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
+def db_url(db_name):
+    return f"{sttngs.DB_DRIVER}://{db_name}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{db_name}"
+
+
+@pytest.fixture(scope="class")
+def engine(db_url):
+    yield create_engine(db_url)
+
+
+@pytest.fixture(scope="class")
+def superuser_id(db_name):
+    """Creates the database and returns the superuser id."""
+    print(f"Creating database {db_name}")
+    drop_db.drop(db_name)
+    superuser_id = create_db.create(db_name)
+    yield superuser_id
+
+
+@pytest.fixture(scope="class")
+def session(engine, superuser_id, create_test_functions):
+    session = sessionmaker(bind=engine)
+    yield session()
+    engine.dispose()
+
+
+@pytest.fixture(scope="class")
 def create_test_functions(db_name) -> None:
     eng = create_engine(f"{sttngs.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -124,7 +152,7 @@ def create_test_functions(db_name) -> None:
         conn.execute(text(CREATE_TEST_SET_MOCK_USER_VARS))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def tenant_dict(session, superuser_id):
     tenant_list = [
         ["Acme Inc.", TenantType.ENTERPRISE],
@@ -150,7 +178,7 @@ def tenant_dict(session, superuser_id):
     session.execute(delete(Tenant).where(Tenant.id != ""))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def group_dict(session, superuser_id):
     with session.begin():
         session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
@@ -164,7 +192,7 @@ def group_dict(session, superuser_id):
     session.execute(delete(Group).where(Group.id != ""))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def user_dict(session, superuser_id, tenant_dict, group_dict):
     users = []
     for tenant_name, tenant_value in tenant_dict.items():
@@ -221,6 +249,6 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
     session.execute(delete(User).where(User.email != sttngs.SUPERUSER_EMAIL))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="class")
 def data_dict(user_dict, tenant_dict, group_dict):
     yield {"users": user_dict, "tenants": tenant_dict, "groups": group_dict}
