@@ -25,13 +25,24 @@ from un0.config import settings as sttngs
 #########################################################
 
 
-def create_set_owner_modified_deleted_users_trigger(schema_table_name):
+def create_set_owner_and_modified_trigger(schema_table_name):
     return textwrap.dedent(
         f"""
-        CREATE TRIGGER set_owner_modified_deleted_users_trigger
+        CREATE TRIGGER set_owner_and_modified_trigger
         BEFORE INSERT OR UPDATE ON {schema_table_name}
         FOR EACH ROW
-        EXECUTE FUNCTION un0.set_owner_modified_deleted_users();
+        EXECUTE FUNCTION un0.set_owner_and_modified();
+    """
+    )
+
+
+def create_validate_delete_trigger(schema_table_name):
+    return textwrap.dedent(
+        f"""
+        CREATE TRIGGER validate_delete_trigger 
+        BEFORE DELETE ON {schema_table_name}
+        FOR EACH ROW
+        EXECUTE FUNCTION un0.validate_delete();
     """
     )
 
@@ -74,9 +85,9 @@ def drop_roles(db_name):
     return textwrap.dedent(
         f"""
         -- Drop the roles if they exist
+        DROP ROLE IF EXISTS {db_name}_admin;
         DROP ROLE IF EXISTS {db_name}_writer;
         DROP ROLE IF EXISTS {db_name}_reader;
-        DROP ROLE IF EXISTS {db_name}_admin;
         DROP ROLE IF EXISTS {db_name}_login;
         DROP ROLE IF EXISTS {db_name}_base_role;
         """
@@ -106,6 +117,11 @@ def create_roles(db_name):
             END IF;
 
             -- Create the admin role
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_security') THEN
+                CREATE ROLE {db_name}_security INHERIT IN ROLE {db_name}_base_role;
+            END IF;
+
+            -- Create the admin role
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_admin') THEN
                 CREATE ROLE {db_name}_admin INHERIT IN ROLE {db_name}_base_role;
             END IF;
@@ -118,7 +134,7 @@ def create_roles(db_name):
 
             -- Grant the reader, writer, and admin roles to the authentication role
             -- Allows the login role to SET ROLE to any of the other roles
-            GRANT {db_name}_reader,  {db_name}_writer, {db_name}_admin TO
+            GRANT {db_name}_reader, {db_name}_writer, {db_name}_admin TO
                 {db_name}_login;
         END $$;
         """
@@ -179,9 +195,9 @@ def revoke_access(db_name):
             public,
             {db_name}_base_role,
             {db_name}_login,
-            {db_name}_admin,
             {db_name}_reader,
-            {db_name}_writer;
+            {db_name}_writer,
+            {db_name}_admin;
 
         REVOKE ALL ON ALL TABLES IN SCHEMA
             un0,
@@ -193,9 +209,9 @@ def revoke_access(db_name):
             public,
             {db_name}_base_role,
             {db_name}_login,
-            {db_name}_admin,
             {db_name}_reader,
-            {db_name}_writer;
+            {db_name}_writer,
+            {db_name}_admin;
 
         REVOKE CONNECT ON DATABASE {db_name} FROM
             public,
@@ -229,14 +245,6 @@ def set_search_paths(db_name):
             graph,
             {sttngs.DB_SCHEMA};
 
-        ALTER ROLE
-            {db_name}_admin
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
 
         ALTER ROLE
             {db_name}_reader
@@ -249,6 +257,24 @@ def set_search_paths(db_name):
 
         ALTER ROLE
             {db_name}_writer 
+        SET search_path TO
+            ag_catalog,
+            un0,
+            audit,
+            graph,
+            {sttngs.DB_SCHEMA};
+       
+        ALTER ROLE
+            {db_name}_admin
+        SET search_path TO
+            ag_catalog,
+            un0,
+            audit,
+            graph,
+            {sttngs.DB_SCHEMA}; 
+
+        ALTER ROLE
+            {db_name}_security
         SET search_path TO
             ag_catalog,
             un0,
@@ -282,6 +308,7 @@ def configure_role_schema_privileges(db_name):
             ag_catalog,
             {sttngs.DB_SCHEMA}
         TO
+            {db_name}_security,
             {db_name}_login,
             {db_name}_admin,
             {db_name}_reader,
@@ -293,6 +320,7 @@ def configure_role_schema_privileges(db_name):
             graph,
             {sttngs.DB_SCHEMA}
         TO
+            {db_name}_security,
             {db_name}_admin;
 
         GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
@@ -302,6 +330,7 @@ def configure_role_schema_privileges(db_name):
             ag_catalog,
             {sttngs.DB_SCHEMA}
         TO
+            {db_name}_security,
             {db_name}_login,
             {db_name}_admin,
             {db_name}_reader,
@@ -310,6 +339,7 @@ def configure_role_schema_privileges(db_name):
         GRANT {db_name}_admin TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
         GRANT {db_name}_writer TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
         GRANT {db_name}_reader TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
+        GRANT {db_name}_security TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
         """
     )
 
@@ -351,6 +381,49 @@ def configure_role_table_privileges(db_name):
     )
 
 
+def create_history_table(table_schema, table_name):
+    return textwrap.dedent(
+        f"""
+        CREATE TABLE audit.{table_schema}_{table_name}
+        AS (SELECT * FROM {table_schema}.{table_name})
+        WITH NO DATA;
+
+        ALTER TABLE audit.{table_schema}_{table_name}
+        ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+
+        CREATE INDEX {table_schema}_{table_name}_pk_idx
+        ON audit.{table_schema}_{table_name} (pk);
+
+        CREATE INDEX {table_schema}_{table_name}_id_modified_at_idx
+        ON audit.{table_schema}_{table_name} (id, modified_at);
+        """
+    )
+
+
+def create_history_table_trigger(table_schema, table_name) -> str:
+    return textwrap.dedent(
+        f"""
+        CREATE OR REPLACE FUNCTION {table_schema}.{table_name}_audit()
+        RETURNS TRIGGER
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        AS $$
+        BEGIN
+            INSERT INTO audit.{table_schema}_{table_name}
+            SELECT *
+            FROM {table_schema}.{table_name}
+            WHERE id = NEW.id;
+            RETURN NEW;
+        END;
+        $$;
+
+        CREATE OR REPLACE TRIGGER {table_name}_audit_trigger
+        AFTER INSERT OR UPDATE ON {table_schema}.{table_name}
+        FOR EACH ROW EXECUTE FUNCTION {table_schema}.{table_name}_audit();
+        """
+    )
+
+
 #################
 # SQL CONSTANTS #
 #################
@@ -386,8 +459,8 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 
 CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
 CREATE OR REPLACE FUNCTION un0.insert_related_object(schema_name VARCHAR, table_name VARCHAR)
-    RETURNS VARCHAR(26)
-    LANGUAGE plpgsql
+RETURNS VARCHAR(26)
+LANGUAGE plpgsql
 AS $$
 DECLARE
     rel_obj_id VARCHAR(26);
@@ -412,25 +485,33 @@ END;
 $$;
 """
 
-CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.set_owner_modified_deleted_users()
-    RETURNS TRIGGER
-    LANGUAGE plpgsql
+CREATE_SET_OWNER_AND_MODIFIED_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.set_owner_and_modified()
+RETURNS TRIGGER
+LANGUAGE plpgsql
 AS $$
 DECLARE
-    -- user_email VARCHAR(26):= current_setting('user_var.email', true);
-    -- user_id VARCHAR(26);
     user_id VARCHAR(26) := current_setting('user_var.id', true);
+    estimate INT;
 BEGIN
     /* 
-    Function used to set the owner_id, modified_by_id, and deleted_by_id fields
+    Function used to set the owner_id and modified_by_id fields
     of a table to the user_id of the user making the change. 
     */
 
-    -- SELECT id INTO user_id FROM un0.user WHERE email = user_email;
+    SELECT reltuples AS estimate FROM PG_CLASS where relname = TG_TABLE_NAME INTO estimate;
+    SELECT current_setting('user_var.id', true) into user_id;
 
+    /*
+    This should only happen when the very first user is created
+    and therefore a user_id cannot be set in the session variables
+    */
     IF user_id IS NULL THEN
-        RETURN NEW;
+        IF TG_TABLE_NAME = 'user' AND estimate < 1 THEN
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'user_id is NULL';
+        END IF;
     END IF;
 
     IF TG_OP = 'INSERT' THEN
@@ -442,10 +523,42 @@ BEGIN
         NEW.modified_by_id = user_id;
     END IF;
 
-    IF NEW.is_deleted AND OLD.is_deleted IS FALSE THEN
-        NEW.deleted_by_id = user_id;
-    END IF;
     RETURN NEW;
+END;
+$$;
+"""
+
+CREATE_VALIDATE_DELETE_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.validate_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    user_id VARCHAR(26);
+BEGIN
+    /* 
+    Function used to validate that a record can be deleted.
+    IF the record previously had is_deleted set to false the function
+    returns the record, allowing the delete to proceed.
+    otherwise Sets the is_deleted field to true and the deleted_by_id field to the user_id
+    */
+
+    SELECT current_setting('user_var.id', true) into user_id;
+
+    IF user_id IS NULL THEN
+        RAISE EXCEPTION 'user_id is NULL';
+    END IF;
+
+    IF OLD.is_deleted IS TRUE THEN
+        RETURN OLD;
+    ELSE
+        EXECUTE format('
+            UPDATE %I 
+            SET is_deleted = true, deleted_by_id = %L 
+            WHERE id = %L', TG_TABLE_NAME, user_id, OLD.id
+        );
+        RETURN NULL;
+    END IF;
 END;
 $$;
 """

@@ -10,7 +10,8 @@ from sqlalchemy.engine import Connection
 from un0.config import settings as sttngs
 
 from un0.cmd.sql import (
-    create_set_owner_modified_deleted_users_trigger,
+    create_set_owner_and_modified_trigger,
+    create_validate_delete_trigger,
     change_table_owner_and_set_privileges,
     create_table_type_record,
     enable_auditing,
@@ -22,20 +23,21 @@ from un0.cmd.sql import (
     set_search_paths,
     configure_role_schema_privileges,
     configure_role_table_privileges,
+    create_history_table,
+    create_history_table_trigger,
     CREATE_EXTENSIONS,
     SET_PGMETA_CONFIG,
     CREATE_INSERT_RELATED_OBJECT_FUNCTION,
-    CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION,
+    CREATE_SET_OWNER_AND_MODIFIED_FUNCTION,
+    CREATE_VALIDATE_DELETE_FUNCTION,
     CREATE_PGULID,
 )
 
 from un0.auth.sql import (
-    create_set_role_writer_function_and_trigger,
-    CREATE_SUPERUSER,
+    create_superuser,
     CREATE_TOKEN_SECRET,
     CREATE_TOKEN_SECRET_TABLE,
-    CREATE_SET_ROLE_FUNCTION,
-    CREATE_SET_USER_VARS_FUNCTION,
+    create_authorize_user_function,
     CREATE_USER_TABLE_RLS_SELECT_POLICY,
     CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER,
     CREATE_INSERT_TABLE_PERMISSION_FUNCTION_AND_TRIGGER,
@@ -127,21 +129,17 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
         conn.execute(text(CREATE_TOKEN_SECRET_TABLE))
         conn.execute(text(CREATE_TOKEN_SECRET))
 
-        print("Creating the pgulid function\n")
-        conn.execute(text(CREATE_PGULID))
-
         print("Creating the insert related object function\n")
         conn.execute(text(CREATE_INSERT_RELATED_OBJECT_FUNCTION))
 
         print("Creating the set users before insert or update function\n")
-        conn.execute(
-            text(
-                CREATE_SET_OWNER_MODIFIED_DELETED_USERS_BEFORE_INSERT_OR_UPDATE_FUNCTION
-            )
-        )
+        conn.execute(text(CREATE_SET_OWNER_AND_MODIFIED_FUNCTION))
 
-        print("Creating the set_role function\n")
-        conn.execute(text(CREATE_SET_ROLE_FUNCTION))
+        print("Creating the validate delete function\n")
+        conn.execute(text(CREATE_VALIDATE_DELETE_FUNCTION))
+
+        print("Creating the pgulid function\n")
+        conn.execute(text(CREATE_PGULID))
 
         # Create the tables
         print("Creating the database tables\n")
@@ -153,7 +151,6 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             conn.execute(text(change_table_owner_and_set_privileges(table, db_name)))
-            conn.execute(text(create_set_role_writer_function_and_trigger(table)))
         conn.close()
     eng.dispose()
 
@@ -162,7 +159,7 @@ def create_auth_functions_and_triggers(db_name: str = settings.DB_NAME) -> None:
     # Connect to the new database to create the Auth functions and triggers
     eng = create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(func.un0.set_role("admin"))
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
 
         print("Creating the can_insert_group function and check constraint\n")
         # conn.execute(text(create_insert_group_check_constraint))
@@ -170,8 +167,7 @@ def create_auth_functions_and_triggers(db_name: str = settings.DB_NAME) -> None:
         print("Creating auth functions and triggers\n")
         conn.execute(text(CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER))
         conn.execute(text(CREATE_INSERT_TABLE_PERMISSION_FUNCTION_AND_TRIGGER))
-        conn.execute(text(CREATE_SET_USER_VARS_FUNCTION))
-        conn.execute(text(CREATE_TOKEN_SECRET))
+        conn.execute(text(create_authorize_user_function(db_name=db_name)))
         # conn.execute(text(CREATE_GET_PERMISSIBLE_TABLE_PERMISSIONS_FUNCTION))
 
     conn.close()
@@ -260,21 +256,39 @@ def create_table_type_for_table(
     if table_info.get("edge", False) is False:
         # Do not create a table_type record for the edge (association) tables.
         print(f"Creating TableType record for {table.name}\n")
-        conn.execute(func.un0.set_role("writer"))
+        conn.execute(text(f"SET ROLE {db_name}_writer"))
         conn.execute(text(create_table_type_record(table.schema, table.name)))
         conn.commit()
 
 
 def enable_auditing_for_table(
-    schema_table_name, conn: Connection, db_name: str = settings.DB_NAME
+    table: Table, schema_table_name, conn: Connection, db_name: str = settings.DB_NAME
 ) -> None:
-    # audited = table_info.get("audited", False)
+    """Enables auditing for the table if the audit_type is not set to None in the tables info dictionary.
+
+    If the audit_type is set to "history", then the history table and trigger are created for the table
+        - A duplicate of the table is created as audit.[table_schema]_[table_name]
+        - The trigger is created to insert a duplicate record into the history table after insert or update
+        - A function is created to restore a record from the history table to the actual table
+
+    If the audit_type is set to None, then no un0 auditing occurs.
+
+    Otherwise, the audit trigger is created as a default:
+        - all changes will be audited in the audit.record_version table, using supabase_audit.
+    """
+    audit_type = table.info.get("audit_type", True)
     # Create the audit trigger for all tables that have the info dictionary set to audited.
-    # if audited is True:
-    conn.execute(func.un0.set_role("admin"))
-    print(f"Enabling auditing for {schema_table_name}\n")
-    conn.execute(text(enable_auditing(schema_table_name)))
-    conn.commit()
+    if audit_type is True:
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
+        print(f"Enabling auditing for {schema_table_name}\n")
+        conn.execute(text(enable_auditing(schema_table_name)))
+        conn.commit()
+    elif audit_type == "history":
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
+        print(f"Creating history table for {schema_table_name}\n")
+        conn.execute(text(create_history_table(table.schema, table.name)))
+        conn.execute(text(create_history_table_trigger(table.schema, table.name)))
+        conn.commit()
 
 
 # Create the get_permissable_groups function
@@ -303,23 +317,20 @@ def create(db_name: str = settings.DB_NAME) -> str:
     # Connect to the new database to create the Graph functions and triggers
     eng = create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(func.un0.set_role("admin"))
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
         create_graph_functions_and_triggers(conn, db_name)
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             if "owner_id" in table.columns.keys():
                 conn.execute(
-                    text(
-                        create_set_owner_modified_deleted_users_trigger(
-                            schema_table_name
-                        )
-                    )
+                    text(create_set_owner_and_modified_trigger(schema_table_name))
                 )
-            enable_auditing_for_table(schema_table_name, conn)
-            create_table_type_for_table(table, conn)
-        superuser = conn.execute(text(CREATE_SUPERUSER))
+                conn.execute(text(create_validate_delete_trigger(schema_table_name)))
+            enable_auditing_for_table(table, schema_table_name, conn, db_name)
+            create_table_type_for_table(table, conn, db_name)
+        superuser = conn.execute(text(create_superuser()))
         superuser_id = superuser.scalar()
-        conn.execute(func.un0.set_role("admin"))
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
         conn.execute(text(CREATE_USER_TABLE_RLS_SELECT_POLICY))
         conn.commit()
         conn.close()
