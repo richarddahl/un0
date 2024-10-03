@@ -274,7 +274,7 @@ def delete_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -
         EXECUTE format('SELECT * FROM cypher(''graph'', $$
             MATCH (v:{vertex_label})
             WHERE (v.id = %s)
-            DELETE v
+            DETACH DELETE v
         $$) AS (a agtype);', quote_nullable(OLD.id));
         RETURN NEW;
         """
