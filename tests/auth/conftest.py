@@ -4,12 +4,8 @@
 
 import pytest  # type: ignore
 
-from sqlalchemy import func, select
-
 from un0.auth.models import User
-from un0.config import settings as sttngs
-
-from tests.conftest import get_mock_user_vars
+from tests.conftest import mock_rls_vars
 
 
 @pytest.fixture(scope="session")
@@ -27,3 +23,35 @@ def new_user(tenant_dict, group_dict):
         default_group_id=group_dict.get("Acme Inc.").get("id"),
     )
     yield user
+
+
+@pytest.fixture(scope="function")
+def acme_admin(user_dict):
+    yield user_dict.get("admin@acme.com")
+
+
+@pytest.fixture(scope="function")
+def acme_tenant(tenant_dict):
+    yield tenant_dict.get("Acme Inc.")
+
+
+@pytest.fixture(scope="function")
+def nacme_tenant(tenant_dict):
+    yield tenant_dict.get("Nacme Corp")
+
+
+@pytest.fixture(scope="function")
+def acme_group(group_dict):
+    yield group_dict.get("Acme Inc.")
+
+
+@pytest.fixture(scope="function")
+def acme_admin_vars(acme_admin, acme_tenant):
+    yield mock_rls_vars(
+        acme_admin.get("id"),
+        acme_admin.get("email"),
+        "false",
+        "true",
+        acme_tenant.get("id"),
+        role_name="writer",
+    )

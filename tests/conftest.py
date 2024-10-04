@@ -7,12 +7,13 @@ This module contains the global fixtures for the tests in all test modules.
 Each test module has its own conftest.py file that containts the fixtures for that module.
 """
 
+import textwrap
 import pytest
 
 from sqlalchemy import func, select, delete, text, create_engine
 from sqlalchemy.orm import sessionmaker
 
-from un0.cmd import create_db, drop_db
+from un0.cmd import create_db, drop_db, create_superuser
 from un0.auth.models import Tenant, Group, User
 from un0.auth.enums import TenantType
 from un0.config import settings as sttngs
@@ -24,7 +25,7 @@ from un0.config import settings as sttngs
 
 
 CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_raise_current_role()
+CREATE OR REPLACE FUNCTION un0.test_raise_role()
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
@@ -44,7 +45,7 @@ $$;
 
 
 CREATE_TEST_LIST_USER_VARS_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_list_user_vars()
+CREATE OR REPLACE FUNCTION un0.test_list_rls_vars()
     RETURNS JSONB
     LANGUAGE plpgsql
 AS $$
@@ -65,13 +66,14 @@ $$;
 """
 
 
-CREATE_TEST_SET_MOCK_USER_VARS = """
-CREATE OR REPLACE FUNCTION un0.test_mock_user_vars(
+CREATE_TEST_MOCK_AUTHORIZE_USER_FUNCTION = """
+CREATE OR REPLACE FUNCTION un0.mock_authorize_user(
     id VARCHAR,
     email VARCHAR,
     is_superuser VARCHAR,
     is_tenant_admin VARCHAR,
-    tenant_id VARCHAR
+    tenant_id VARCHAR,
+    role_name VARCHAR DEFAULT 'reader'
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -90,10 +92,39 @@ BEGIN
     PERFORM set_config('user_var.tenant_id', tenant_id, true);
 
     --Set the role to the databases reader role
-    PERFORM un0.set_role('reader');
+    PERFORM un0.mock_role(role_name);
 END;
 $$;
 """
+
+
+def create_mock_role_function(db_name: str = sttngs.DB_NAME):
+    return textwrap.dedent(
+        f"""
+        CREATE OR REPLACE FUNCTION un0.mock_role(role_name VARCHAR)
+        RETURNS VOID
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            full_role_name VARCHAR:= '{db_name}_' || role_name;
+        BEGIN
+            /*
+            Function used to set the role of the current session to
+            the appropriate role for the operation being performed.
+            ADMIN for DDL
+            READER for SELCT
+            WRITER for INSERT, UPDATE, or DELETE
+            LOGIN for login
+            */
+
+            IF role_name NOT IN ('admin', 'reader', 'writer', 'login') THEN
+                RAISE EXCEPTION 'Invalid role name: %', role_name;
+            END IF;
+            EXECUTE 'SET ROLE ' || full_role_name;
+        END;
+        $$;
+        """
+    )
 
 
 #############################
@@ -101,14 +132,15 @@ $$;
 #############################
 
 
-def get_mock_user_vars(
+def mock_rls_vars(
     id: str,
     email: str = sttngs.SUPERUSER_EMAIL,
     is_superuser: str = "true",
     is_tenant_admin: str = "false",
     tenant_id: str = "",
+    role_name: str = "reader",
 ):
-    return (id, email, is_superuser, is_tenant_admin, tenant_id)
+    return (id, email, is_superuser, is_tenant_admin, tenant_id, role_name)
 
 
 ############
@@ -129,7 +161,6 @@ def engine(db_url):
 @pytest.fixture(scope="class")
 def superuser_id(db_name):
     """Creates the database and returns the superuser id."""
-    print(f"Creating database {db_name}")
     drop_db.drop(db_name)
     superuser_id = create_db.create(db_name)
     yield superuser_id
@@ -137,7 +168,7 @@ def superuser_id(db_name):
 
 @pytest.fixture(scope="class")
 def session(engine, superuser_id, create_test_functions):
-    session = sessionmaker(bind=engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False)
     yield session()
     engine.dispose()
 
@@ -146,14 +177,22 @@ def session(engine, superuser_id, create_test_functions):
 def create_test_functions(db_name) -> None:
     eng = create_engine(f"{sttngs.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(func.un0.set_role("admin"))
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
+        conn.execute(text(create_mock_role_function(db_name)))
         conn.execute(text(CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION))
         conn.execute(text(CREATE_TEST_LIST_USER_VARS_FUNCTION))
-        conn.execute(text(CREATE_TEST_SET_MOCK_USER_VARS))
+        conn.execute(text(CREATE_TEST_MOCK_AUTHORIZE_USER_FUNCTION))
 
 
 @pytest.fixture(scope="class")
 def tenant_dict(session, superuser_id):
+    """Creates tenants and returns a dictionary of tenant names and ids.
+    Used in the following modules:
+        pgjwt
+        user
+        tenant
+        group
+    """
     tenant_list = [
         ["Acme Inc.", TenantType.ENTERPRISE],
         ["Nacme Corp", TenantType.CORPORATE],
@@ -164,8 +203,8 @@ def tenant_dict(session, superuser_id):
         Tenant(name=name, tenant_type=tenant_type) for name, tenant_type in tenant_list
     ]
     with session.begin():
-        session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
-        session.execute(func.un0.set_role("writer"))
+        session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+        session.execute(func.un0.mock_role("writer"))
         session.add_all(tenants)
         result = session.execute(select(Tenant))
     db_tenants = result.scalars().all()
@@ -173,23 +212,17 @@ def tenant_dict(session, superuser_id):
         t.name: {"id": t.id, "tenant_type": t.tenant_type} for t in db_tenants
     }
     yield tenant_dict
-    session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
-    session.execute(func.un0.set_role("writer"))
-    session.execute(delete(Tenant).where(Tenant.id != ""))
 
 
 @pytest.fixture(scope="class")
 def group_dict(session, superuser_id):
     with session.begin():
-        session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
+        session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
         result = session.execute(select(Group))
         db_groups = result.scalars().all()
         group_dict = {g.name: {"id": g.id} for g in db_groups}
 
     yield group_dict
-    session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
-    session.execute(func.un0.set_role("writer"))
-    session.execute(delete(Group).where(Group.id != ""))
 
 
 @pytest.fixture(scope="class")
@@ -228,8 +261,8 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
                 )
             )
     with session.begin():
-        session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
-        session.execute(func.un0.set_role("writer"))
+        session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+        session.execute(func.un0.mock_role("writer"))
         session.add_all(users)
         result = session.execute(select(User))
         db_users = result.scalars().all()
@@ -244,9 +277,6 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
             for u in db_users
         }
     yield user_dict
-    session.execute(func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id)))
-    session.execute(func.un0.set_role("writer"))
-    session.execute(delete(User).where(User.email != sttngs.SUPERUSER_EMAIL))
 
 
 @pytest.fixture(scope="class")

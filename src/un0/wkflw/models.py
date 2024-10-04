@@ -29,7 +29,7 @@ class Workflow(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "User-defined workflows",
-        "info": {"rls_policy": "superuser"},
+        "info": {"rls_policy": "superuser", "vertex": False},
     }
 
     id: Mapped[int] = mapped_column(
@@ -226,7 +226,7 @@ class ObjectFunction(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "Functions that can be called by user-defined workflows and reports",
-        "info": {"rls_policy": "superuser"},
+        "info": {"rls_policy": "superuser", "vertex": False},
     }
     # Columns
 

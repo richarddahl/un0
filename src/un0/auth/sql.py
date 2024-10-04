@@ -296,9 +296,12 @@ CREATE POLICY user_update_policy
 ON un0.user FOR UPDATE
 USING (
     current_setting('user_var.is_superuser', true)::BOOLEAN OR
-    email = current_setting('user_var.user_email', true)::VARCHAR(26) OR
     (
-        current_setting('user_var.is_tenant_admin', true)::BOOLEAN AND
+        email = current_setting('user_var.user_email', true)::VARCHAR(26) AND
+        tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26) 
+    ) OR
+    (
+        current_setting('user_var.is_tenant_admin', true)::BOOLEAN = true AND
         tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26)
     ) 
 );
@@ -315,9 +318,13 @@ ON un0.user FOR DELETE
 USING (
     current_setting('user_var.is_superuser', true)::BOOLEAN OR
     (
-        current_setting('user_var.is_tenant_admin', true)::BOOLEAN AND
+        email = current_setting('user_var.user_email', true)::VARCHAR(26) AND
+        tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26) 
+    ) OR
+    (
+        current_setting('user_var.is_tenant_admin', true)::BOOLEAN = true AND
         tenant_id = current_setting('user_var.tenant_id', true)::VARCHAR(26)
-    )
+    ) 
 );
 """
 
@@ -363,15 +370,15 @@ BEGIN
         [SELECT, INSERT, UPDATE, DELETE]
     Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
     */
-    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
+    INSERT INTO un0.table_permission(table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
+    INSERT INTO un0.table_permission(table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
+    INSERT INTO un0.table_permission(table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
+    INSERT INTO un0.table_permission(table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(permissive_table_type_id, actions)
+    INSERT INTO un0.table_permission(table_type_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']::un0.permission_name[]);
     RETURN NEW;
 END;

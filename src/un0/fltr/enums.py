@@ -55,40 +55,6 @@ class Match(str, enum.Enum):
     NOT = "NOT"
 
 
-class FieldType(str, enum.Enum):
-    """
-    Enumeration class representing the possible field types in the Uno application.
-
-    Attributes:
-        ARRAY (str): Represents a list field type.
-        BIGINT (str): Represents an integer field type.
-        BOOLEAN (str): Represents a boolean field type.
-        DATE (str): Represents a date field type.
-        DECIMAL (str): Represents a decimal field type.
-        ENUM (str): Represents an enumeration field type.
-        INTERVAL (str): Represents a time interval field type.
-        JSON (str): Represents a JSON field type.
-        TEXT (str): Represents a text field type.
-        TIME (str): Represents a time field type.
-        TIMESTAMP (str): Represents a timestamp field type.
-        VARCHAR (str): Represents a variable-length character field type.
-
-    """
-
-    ARRAY = "list"
-    BIGINT = "int"
-    BOOLEAN = "bool"
-    DATE = "date"
-    DECIMAL = "Decimal"
-    ENUM = "Enum"
-    INTERVAL = "timedelta"
-    JSON = "dict"
-    TEXT = "str"
-    TIME = "time"
-    TIMESTAMP = "datetime"
-    VARCHAR = "str"
-
-
 class Lookup(str, enum.Enum):
     """
     Enumeration class for Uno lookup operations.
@@ -138,38 +104,38 @@ class Lookup(str, enum.Enum):
 
 
 selectlookups = [
-    Lookup.EQUAL,
-    Lookup.NOT_EQUAL,
-    Lookup.NULL,
-    Lookup.NOT_NULL,
-    Lookup.IN,
-    Lookup.NOT_IN,
+    Lookup.EQUAL.name,
+    Lookup.NOT_EQUAL.name,
+    Lookup.NULL.name,
+    Lookup.NOT_NULL.name,
+    Lookup.IN.name,
+    Lookup.NOT_IN.name,
 ]
 
 numeric_lookups = [
-    Lookup.EQUAL,
-    Lookup.NOT_EQUAL,
-    Lookup.BETWEEN,
-    Lookup.GREATER_THAN,
-    Lookup.GREATER_THAN_OR_EQUAL,
-    Lookup.LESS_THAN,
-    Lookup.LESS_THAN_OR_EQUAL,
-    Lookup.NULL,
-    Lookup.NOT_NULL,
-    Lookup.IN,
-    Lookup.NOT_IN,
+    Lookup.EQUAL.name,
+    Lookup.NOT_EQUAL.name,
+    Lookup.BETWEEN.name,
+    Lookup.GREATER_THAN.name,
+    Lookup.GREATER_THAN_OR_EQUAL.name,
+    Lookup.LESS_THAN.name,
+    Lookup.LESS_THAN_OR_EQUAL.name,
+    Lookup.NULL.name,
+    Lookup.NOT_NULL.name,
+    Lookup.IN.name,
+    Lookup.NOT_IN.name,
 ]
 
 string_lookups = [
-    Lookup.EQUAL,
-    Lookup.NOT_EQUAL,
-    Lookup.LIKE,
-    Lookup.NOT_LIKE,
-    Lookup.ILIKE,
-    Lookup.NOT_ILIKE,
-    Lookup.STARTS_WITH,
-    Lookup.ENDS_WITH,
-    Lookup.CONTAINS,
-    Lookup.NULL,
-    Lookup.NOT_NULL,
+    Lookup.EQUAL.name,
+    Lookup.NOT_EQUAL.name,
+    Lookup.LIKE.name,
+    Lookup.NOT_LIKE.name,
+    Lookup.ILIKE.name,
+    Lookup.NOT_ILIKE.name,
+    Lookup.STARTS_WITH.name,
+    Lookup.ENDS_WITH.name,
+    Lookup.CONTAINS.name,
+    Lookup.NULL.name,
+    Lookup.NOT_NULL.name,
 ]

@@ -5,7 +5,7 @@ import sys
 import io
 
 from un0.cmd import drop_db
-from sqlalchemy import func, text, create_engine, Table
+from sqlalchemy import text, create_engine, Table
 from sqlalchemy.engine import Connection
 from un0.config import settings as sttngs
 
@@ -175,7 +175,7 @@ def create_auth_functions_and_triggers(db_name: str = settings.DB_NAME) -> None:
 
 
 def create_graph_functions_and_triggers(
-    conn: Connection, db_name: str = settings.DB_NAME
+    superuser_id: str, conn: Connection, db_name: str = settings.DB_NAME
 ) -> None:
     vertices = []  # List of tables that are vertices, to ensure we only create them once
     edges = []  # List of tables or table columns that are edges, to ensure we only create them once
@@ -185,16 +185,19 @@ def create_graph_functions_and_triggers(
         table_info = getattr(table, "info", {})
 
         # The following code is used to create the graph functions and triggers for the tables.
-        # Generally, the tables will have a vertex key in the table.info dictionary.
-        # This is indicated by the tables info dictionary having a key of "vertex", and the value will be True.
-
-        # TRYING TO CREATE VERTEXES FOR ALL TABLES
         # A Vertex is a node in a graph, and it is created from a table in the database.
+        # Each vertex is created with a label that is the same as the TitleCase table name with underscores removed.
+        # Each vertext is created with properties that are the non-FK columns in the table.
+        # All properties of a vertex are used to create fltr.models.Field objects.
         # An Edge is a relationship between two vertices, and it is created from a
         # column in a table that is a foreign key to another table.
+        # Each edge is created with the label provided in the fields info "edge" entry or the ALL_CAPS column_name.
+        # Each edge is also used to create a fltr.models.Field object.
+
         table_is_edge = table_info.get("edge", False)
         table_is_vertex = table_info.get("vertex", True)
         if not isinstance(table_is_edge, str) and table_is_vertex is True:
+            fltr_models.create_fields(table, conn, db_name, superuser_id)
             # Create the vertex label for the table
             if table_name in vertices:
                 continue
@@ -220,11 +223,10 @@ def create_graph_functions_and_triggers(
             # Create the edge labels for the columns that are FKs.
             for column in table.columns:
                 column_edge = column.info.get("edge", False)
-                if column_edge is not False:
-                    if column_edge not in edges:
-                        edges.append(column_edge)
-                        print(f"Creating Graph Edge Label for Column: {column.name}")
-                        conn.execute(text(create_elabel(column_edge)))
+                if column_edge is not False and column_edge not in edges:
+                    edges.append(column_edge)
+                    print(f"Creating Graph Edge Label for Column: {column.name}")
+                    conn.execute(text(create_elabel(column_edge)))
             continue
         # Association tables will not be created as vertices, but as edges.
         # The tables info dictionary will reflect this with a key of "edge", and the value will be the edge name.
@@ -318,7 +320,6 @@ def create(db_name: str = settings.DB_NAME) -> str:
     eng = create_engine(f"{settings.DB_DRIVER}://{db_name}_login@/{db_name}")
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(text(f"SET ROLE {db_name}_admin"))
-        create_graph_functions_and_triggers(conn, db_name)
         for schema_table_name in Base.metadata.tables.keys():
             table = Base.metadata.tables[schema_table_name]
             if "owner_id" in table.columns.keys():
@@ -328,8 +329,14 @@ def create(db_name: str = settings.DB_NAME) -> str:
                 conn.execute(text(create_validate_delete_trigger(schema_table_name)))
             enable_auditing_for_table(table, schema_table_name, conn, db_name)
             create_table_type_for_table(table, conn, db_name)
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
         superuser = conn.execute(text(create_superuser()))
         superuser_id = superuser.scalar()
+
+        # Create the graph functions and triggers
+        conn.execute(text(f"SET ROLE {db_name}_admin"))
+        create_graph_functions_and_triggers(superuser_id, conn, db_name)
+
         conn.execute(text(f"SET ROLE {db_name}_admin"))
         conn.execute(text(CREATE_USER_TABLE_RLS_SELECT_POLICY))
         conn.commit()

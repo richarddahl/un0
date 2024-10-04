@@ -499,19 +499,23 @@ BEGIN
     of a table to the user_id of the user making the change. 
     */
 
-    SELECT reltuples AS estimate FROM PG_CLASS where relname = TG_TABLE_NAME INTO estimate;
-    SELECT current_setting('user_var.id', true) into user_id;
+    SELECT current_setting('user_var.id', true) INTO user_id;
 
-    /*
-    This should only happen when the very first user is created
-    and therefore a user_id cannot be set in the session variables
-    */
     IF user_id IS NULL THEN
+        /*
+        This should only happen when the very first user is created
+        and therefore a user_id cannot be set in the session variables
+        */
+        SELECT reltuples AS estimate FROM PG_CLASS WHERE relname = TG_TABLE_NAME INTO estimate;
         IF TG_TABLE_NAME = 'user' AND estimate < 1 THEN
             RETURN NEW;
         ELSE
             RAISE EXCEPTION 'user_id is NULL';
         END IF;
+    END IF;
+
+    IF user_id = '' THEN
+        RAISE EXCEPTION 'user_id is an empty string';
     END IF;
 
     IF TG_OP = 'INSERT' THEN

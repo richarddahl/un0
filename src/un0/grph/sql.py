@@ -33,7 +33,7 @@ def create_vlabel(table_name):
 
 
 def create_elabel(edge_name):
-    return f"SELECT ag_catalog.create_elabel('graph', '{edge_name}');"
+    return f"SELECT ag_catalog.create_elabel('graph', '{edge_name.upper()}');"
 
 
 def get_column_type(column: Column, prefix: str = "NEW", update: bool = True) -> str:
@@ -132,6 +132,15 @@ def vertex_edges(table: Table, update: bool = True) -> list:
                         edge_name=column.info.get("edge", ""),
                     )
                 )
+        edges.append(
+            EdgeData(
+                start_vertex_label=convert_snake_to_capital_word(table_name),
+                start_vertex_data_type=get_column_type(column, update=update),
+                end_vertex_label=convert_snake_to_capital_word(table_name),
+                end_vertex_data_type=get_column_type(column, update=update),
+                edge_name=column.name.upper(),
+            )
+        )
     return edges
 
 
@@ -152,7 +161,7 @@ def create_edge_statements(
             [
                 textwrap.dedent(
                     f"""
-                EXECUTE format('SELECT * FROM cypher(''graph'', $$
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                     MATCH (v:{edge.start_vertex_label} {{id: %s}})
                     MATCH (w:{edge.end_vertex_label} {{id: %s}})
                     CREATE (v)-[e:{edge.edge_name}]->(w)
@@ -167,7 +176,7 @@ def create_edge_statements(
             [
                 textwrap.dedent(
                     f"""
-                EXECUTE format('SELECT * FROM cypher(''graph'', $$
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                     MATCH (v:{edge.start_vertex_label} {{id: %s}})
                     MATCH (w:{edge.end_vertex_label} {{id: %s}})
                     CREATE (v)-[e:{edge.edge_name} {{{property_names}}}] ->(w)
@@ -224,7 +233,7 @@ def insert_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -
     vertex_label = convert_snake_to_capital_word(table_name)
     edge_creation_statements = create_edge_statements(edges, table_name)
     execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             CREATE (v:{vertex_label} {{{property_names}}})
         $$) AS (a agtype);', {property_values});
         {edge_creation_statements}
@@ -248,7 +257,7 @@ def update_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -
     vertex_label = convert_snake_to_capital_word(table_name)
     property_names, property_values = vertex_properties(table, update=True)
     execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             MATCH (v:{vertex_label})
             WHERE (v.id = %s)
             SET {property_names}
@@ -271,7 +280,7 @@ def delete_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
     execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             MATCH (v:{vertex_label})
             WHERE (v.id = %s)
             DETACH DELETE v
@@ -295,7 +304,7 @@ def truncate_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME)
     table_name = table.name
     vertex_label = convert_snake_to_capital_word(table_name)
     execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             MATCH (v:{vertex_label})
             DELETE v
         $$) AS (a agtype);');
@@ -399,7 +408,7 @@ def insert_edge_w_props_functions_and_triggers(table: Table) -> str:
     _execution_string = " ".join(
         [
             f"""
-                EXECUTE format('SELECT * FROM cypher(''graph'', $$
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                     MATCH (a:{edge.start_vertex_label}), (b:{edge.end_vertex_label})
                     WHERE (a.id = %s AND b.id = %s)
                     CREATE (a)-[e:{edge.edge_name}]->(b)
@@ -453,7 +462,7 @@ def delete_edge_w_props_functions_and_triggers(table: Table) -> str:
     """Deleted an existing edge record when its association table record is deleted"""
     match_stmt = get_edge_match_statements(table)
     _execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             {match_stmt}
             delete
         $$) AS (a agtype);', quote_nullable(OLD.id));
@@ -474,7 +483,7 @@ def truncate_edge_w_props_functions_and_triggers(table: Table) -> str:
     """Truncate all edges for an association table"""
     edge_label = table.info.get("edge", "")
     _execution_string = f"""
-        EXECUTE format('SELECT * FROM cypher(''graph'', $$
+        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
             MATCH (()-[e:{edge_label}]-())
             DELETE e
         $$) AS (a agtype);');

@@ -4,7 +4,7 @@
 
 import textwrap
 
-import sqlalchemy as sa
+from sqlalchemy import UniqueConstraint, Identity, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from un0.db import Base, str_26, str_255  # type: ignore
@@ -15,7 +15,7 @@ class TableType(Base):
 
     __tablename__ = "table_type"
     __table_args__ = (
-        sa.UniqueConstraint("schema", "name", name="uq_table_type_schema_name"),
+        UniqueConstraint("schema", "name", name="uq_table_type_schema_name"),
         {
             "schema": "un0",
             "comment": "Table Types identify the tables in the database, similar to contenttypes in Django",
@@ -24,7 +24,7 @@ class TableType(Base):
     )
 
     id: Mapped[int] = mapped_column(
-        sa.Identity(start=1, cycle=False),
+        Identity(start=1, cycle=False),
         primary_key=True,
         index=True,
         doc="Primary Key",
@@ -58,7 +58,7 @@ class RelatedObject(Base):
     )
 
     table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         info={"edge": "HAS_TABLE_TYPE"},
     )
 

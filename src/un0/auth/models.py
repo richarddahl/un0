@@ -7,7 +7,15 @@ import datetime
 
 from typing import Optional
 
-import sqlalchemy as sa
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    func,
+    text,
+    Identity,
+)
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -35,10 +43,10 @@ class Tenant(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
@@ -66,7 +74,7 @@ class Tenant(Base, BaseMixin):
 class User(Base):
     __tablename__ = "user"
     __table_args__ = (
-        sa.CheckConstraint(
+        CheckConstraint(
             textwrap.dedent(
                 """
                 (is_superuser = 'false' AND default_group_id IS NOT NULL) OR 
@@ -81,16 +89,16 @@ class User(Base):
         {
             "schema": "un0",
             "comment": "Application users",
-            "info": {"rls_policy": "admin"},
+            "info": {"audit_type": "history"},
         },
     )
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
@@ -102,44 +110,48 @@ class User(Base):
     )
     full_name: Mapped[str_255] = mapped_column(doc="User's full name")
     tenant_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+        ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=True,
         info={"edge": "WORKS_FOR"},
     )
     default_group_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.group.id", ondelete="SET NULL"),
+        ForeignKey("un0.group.id", ondelete="SET NULL"),
         index=True,
         nullable=True,
         info={"edge": "HAS_DEFAULT_GROUP"},
     )
     is_superuser: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), index=True, doc="Superuser status"
+        server_default=text("false"),
+        index=True,
+        doc="Superuser status",
+        info={"column_security": "Secret"},
     )
     is_tenant_admin: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), index=True, doc="Tenant admin status"
+        server_default=text("false"),
+        index=True,
+        doc="Tenant admin status",
+        info={"column_security": "Secret"},
     )
-    is_active: Mapped[bool] = mapped_column(
-        server_default=sa.text("true"), doc="Active"
-    )
+    is_active: Mapped[bool] = mapped_column(server_default=text("true"), doc="Active")
     is_deleted: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), doc="Deleted"
+        server_default=text("false"), doc="Deleted"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
-        server_default=sa.func.current_timestamp(),
+        server_default=func.current_timestamp(),
         doc="Time the record was created",
     )
     owner_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_OWNED_BY"},
     )
     modified_at: Mapped[datetime.datetime] = mapped_column(
         doc="Time the record was last modified",
-        server_default=sa.func.current_timestamp(),
+        server_default=func.current_timestamp(),
     )
     modified_by_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "WAS_LAST_MODIFIED_BY"},
     )
@@ -147,7 +159,7 @@ class User(Base):
         doc="Time the record was deleted"
     )
     deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "WAS_DELETED_BY"},
     )
@@ -208,10 +220,10 @@ class User(Base):
 class TablePermission(Base):
     __tablename__ = "table_permission"
     __table_args__ = (
-        sa.UniqueConstraint(
-            "permissive_table_type_id",
+        UniqueConstraint(
+            "table_type_id",
             "actions",
-            name="uq_permissive_table_type_permission_actions",
+            name="uq_table_type_actions",
         ),
         {
             "schema": "un0",
@@ -226,14 +238,12 @@ class TablePermission(Base):
                     [SELECT, INSERT, UPDATE, DELETE]
                 Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
             """,
-            "info": {"rls_policy": "superuser"},
+            "info": {"rls_policy": "superuser", "vertex": False},
         },
     )
-    id: Mapped[int] = mapped_column(sa.Identity(), primary_key=True)
-    permissive_table_type_id: Mapped[TableType] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        index=True,
-        info={"edge": "HAS_PERMISSIVE_ACTIONS_FOR_TABLE_TYPE"},
+    id: Mapped[int] = mapped_column(Identity(start=1, cycle=False), primary_key=True)
+    table_type_id: Mapped[TableType] = mapped_column(
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"), index=True
     )
     actions: Mapped[list[PermissionAction]] = mapped_column(
         ARRAY(
@@ -257,32 +267,30 @@ class TablePermission(Base):
 class Role(Base, BaseMixin):
     __tablename__ = "role"
     __table_args__ = (
-        sa.Index("ix_role_tenant_id_name", "tenant_id", "name"),
-        sa.UniqueConstraint("tenant_id", "name"),
+        Index("ix_role_tenant_id_name", "tenant_id", "name"),
+        UniqueConstraint("tenant_id", "name"),
         {
             "comment": """
                 Roles, created by end user group admins, enable assignment of group_permissions
                 by functionality, department, etc... to users.
             """,
             "schema": "un0",
-            "info": {"rls_policy": "admin"},
+            "info": {"rls_policy": "admin", "vertex": False},
         },
     )
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
     )
     tenant_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+        ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
-        info={"edge": "BELONGS_TO_TENANT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Role name")
     description: Mapped[str] = mapped_column(doc="Role description")
@@ -302,22 +310,20 @@ class RoleTablePermission(Base):
                 Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
             """,
             "schema": "un0",
-            "info": {"edge": "HAS_ROLE_TABLE_PERMISSION", "rls_policy": "none"},
+            "info": {"rls_policy": "none", "vertex": False},
         },
     )
 
     # Columns
     role_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.role.id", ondelete="CASCADE"),
+        ForeignKey("un0.role.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
-        info={"edge": "HAS_ROLE"},
     )
     table_permission_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_permission.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_permission.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
-        info={"edge": "HAS_TABLE_PERMISSION"},
     )
 
     def __str__(self) -> str:
@@ -330,8 +336,8 @@ class RoleTablePermission(Base):
 class Group(Base, BaseMixin):
     __tablename__ = "group"
     __table_args__ = (
-        sa.Index("ix_group_tenant_id_name", "tenant_id", "name"),
-        sa.UniqueConstraint("tenant_id", "name"),
+        Index("ix_group_tenant_id_name", "tenant_id", "name"),
+        UniqueConstraint("tenant_id", "name"),
         {
             "comment": "Application end-user groups",
             "schema": "un0",
@@ -342,15 +348,15 @@ class Group(Base, BaseMixin):
     # Columns
 
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
     tenant_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+        ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "BELONGS_TO_TENANT"},
@@ -379,29 +385,26 @@ class UserGroupRole(Base, BaseMixin):
                 Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
             """,
             "schema": "un0",
-            "info": {"rls_policy": "admin", "edge": "HAS_USER_GROUP_ROLE"},
+            "info": {"rls_policy": "admin", "vertex": False},
         },
     )
 
     # Columns
     user_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         primary_key=True,
-        info={"edge": "HAS_USER"},
     )
     group_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.group.id", ondelete="CASCADE"),
+        ForeignKey("un0.group.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         primary_key=True,
-        info={"edge": "HAS_GROUP"},
     )
     role_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.role.id", ondelete="CASCADE"),
+        ForeignKey("un0.role.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         primary_key=True,
-        info={"edge": "HAS_ROLE"},
     )

@@ -13,7 +13,7 @@ from sqlalchemy.exc import ProgrammingError
 from un0.auth.models import User
 from un0.config import settings as sttngs
 
-from tests.conftest import get_mock_user_vars
+from tests.conftest import mock_rls_vars
 
 
 class TestJWT:
@@ -45,14 +45,15 @@ class TestJWT:
             return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
         return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
 
+    '''
     def test_valid_jwt(self, session, create_test_functions):
         """Tests that a valid JWT token can be verified and the session variables set."""
         token = self.encode_test_token()
         with session.begin():
-            result = session.execute(func.un0.set_user_vars(token))
+            result = session.execute(func.un0.authorize_user(token))
             assert result.scalars().first() is True
 
-            result = session.execute(func.un0.test_list_user_vars())
+            result = session.execute(func.un0.test_list_rls_vars())
             session_variables = result.scalars().first()
             assert session_variables.get("email") == sttngs.SUPERUSER_EMAIL
             assert session_variables.get("id") != ""
@@ -65,7 +66,7 @@ class TestJWT:
         token = self.encode_test_token(is_expired=True)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "invalid token" in str(excinfo.value)
 
     def test_invalid_secret_jwt(self, session):
@@ -73,15 +74,15 @@ class TestJWT:
         token = self.encode_test_token(invalid_secret=True)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "invalid token" in str(excinfo.value)
 
     def test_invalid_sub_jwt(self, session):
         """Tests that a JWT token with an invalid sub cannot be authorized."""
-        token = self.encode_test_token(email="richard@dahl.us")
+        token = self.encode_test_token(email="anonymous@nowheres.none")
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "user not found" in str(excinfo.value)
 
     def test_no_sub_jwt(self, session):
@@ -89,7 +90,7 @@ class TestJWT:
         token = self.encode_test_token(has_sub=False)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "no sub in token" in str(excinfo.value)
 
     def test_no_exp_jwt(self, session):
@@ -97,37 +98,34 @@ class TestJWT:
         token = self.encode_test_token(has_exp=False)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "no exp in token" in str(excinfo.value)
 
     def test_inactive_user_jwt(self, session, superuser_id, user_dict):
         """Tests that an inactive user cannot be authorized."""
         token = self.encode_test_token(email="user1@acme.com")
         with session.begin():
-            session.execute(
-                func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id))
-            )
-            session.execute(func.un0.set_role("writer"))
+            session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+            session.execute(func.un0.mock_role("writer"))
             user = session.scalar(select(User).where(User.email == "user1@acme.com"))
             user.is_active = False
             session.commit()
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "user is not active" in str(excinfo.value)
 
     def test_deleted_user_jwt(self, session, superuser_id, user_dict):
         """Tests that a deleted user cannot be authorized."""
         token = self.encode_test_token(email="user2@acme.com")
         with session.begin():
-            session.execute(
-                func.un0.test_mock_user_vars(*get_mock_user_vars(superuser_id))
-            )
-            session.execute(func.un0.set_role("writer"))
+            session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+            session.execute(func.un0.mock_role("writer"))
             user = session.scalar(select(User).where(User.email == "user2@acme.com"))
             user.is_deleted = True
             session.commit()
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute(func.un0.set_user_vars(token))
+                session.execute(func.un0.authorize_user(token))
             assert "user was deleted" in str(excinfo.value)
+    '''

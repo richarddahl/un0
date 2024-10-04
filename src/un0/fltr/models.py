@@ -5,80 +5,185 @@
 import datetime
 from typing import Optional
 
-import sqlalchemy as sa
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    func,
+    text,
+    Identity,
+)
+
 from sqlalchemy.dialects.postgresql import (
     ENUM,
+    ARRAY,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import relationship, mapped_column, Mapped
 
 from un0.fltr.enums import (  # type: ignore
     Include,
     Match,
     Lookup,
     ColumnSecurity,
-    FieldType,
+    selectlookups,
+    numeric_lookups,
+    string_lookups,
 )
+from un0.utilities import convert_snake_to_capital_word
 from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 
-class Field(Base, BaseMixin):
-    __tablename__ = "field"
+def create_fields(table, conn, db_name, superuser_id):
+    print(f"Creating fields for {table.schema}.{table.name}")
+    print(f"Superuser ID: {superuser_id}")
+    for name, column in table.columns.items():
+        is_property = True
+        if column.info.get("column_security") == "Secret":
+            continue
+        field_type = column.type.python_type.__name__
+        if column.foreign_keys:
+            lookups = selectlookups
+            is_property = False
+        if field_type in ["int", "float", "Decimal", "datetime", "date", "time"]:
+            lookups = numeric_lookups
+        else:
+            lookups = string_lookups
+        field_label = column.info.get("edge", name.replace("_", " ").title())
+        vertex_label = convert_snake_to_capital_word(table.name)
+        conn.execute(
+            text(
+                f"""
+                SET ROLE {db_name}_admin;
+                INSERT INTO un0.field (
+                    field_name,
+                    field_label,
+                    field_type,
+                    is_property,
+                    includes,
+                    matches,
+                    lookups,
+                    column_security
+                )
+                VALUES (
+                    '{column.name}',
+                    '{field_label}',
+                    '{field_type}',
+                    {is_property},
+                    ARRAY['INCLUDE', 'EXCLUDE']::un0.include[],
+                    ARRAY['AND', 'OR', 'NOT']::un0.match[],
+                    ARRAY{lookups}::un0.lookup[],
+                    'PUBLIC'
+                )
+                ON CONFLICT (field_name, field_type) DO NOTHING;
+
+                INSERT INTO un0.vertex (
+                    table_type_id,
+                    vertex_label
+                )
+                SELECT
+                    t.id,
+                    '{vertex_label}'
+                FROM un0.table_type t
+                WHERE t.schema = '{table.schema}'
+                AND t.name = '{table.name}'
+                ON CONFLICT (table_type_id, vertex_label) DO NOTHING;
+
+                INSERT INTO un0.field_vertex (
+                    field_id,
+                    vertex_id
+                )
+                SELECT
+                    f.id,
+                    v.id
+                FROM un0.field f
+                JOIN un0.vertex v
+                ON f.field_name = '{column.name}'
+                AND v.vertex_label = '{vertex_label}'
+                ON CONFLICT (field_id, vertex_id) DO NOTHING
+                """
+            )
+        )
+        conn.commit()
+
+
+class Vertex(Base):
+    __tablename__ = "vertex"
     __table_args__ = (
-        sa.UniqueConstraint("field_table_type_id", "field_name"),
+        UniqueConstraint("table_type_id", "vertex_label"),
         {
             "schema": "un0",
             "comment": "Describes a column in a db table.",
-            "info": {"rls_policy": "superuser"},
+            "info": {"rls_policy": False, "vertex": False},
         },
     )
 
     # Columns
-    id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+    id: Mapped[int] = mapped_column(
+        Identity(start=1, cycle=False),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
     )
-    field_table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+    table_type_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "IS_OF_TABLE_TYPE"},
+    )
+    vertex_label: Mapped[str_255] = mapped_column()
+
+
+class Field(Base):
+    __tablename__ = "field"
+    __table_args__ = (
+        UniqueConstraint("field_name", "field_type", name="uq_field_name_field_type"),
+        Index("ix_field_name_field_type", "field_name", "field_type"),
+        {
+            "schema": "un0",
+            "comment": "Describes a column in a db table.",
+            "info": {"rls_policy": False, "vertex": False},
+        },
+    )
+
+    # Columns
+    id: Mapped[int] = mapped_column(
+        Identity(start=1, cycle=False),
+        primary_key=True,
+        index=True,
+        doc="Primary Key",
     )
     field_name: Mapped[str_255] = mapped_column()
-    label: Mapped[str_255] = mapped_column()
-    field_type: Mapped[FieldType] = mapped_column(
-        ENUM(
-            FieldType,
-            name="fieldtype",
-            create_type=True,
-            schema="un0",
-        ),
-    )
+    field_label: Mapped[str_255] = mapped_column()
+    field_type: Mapped[str_26] = mapped_column()
+    is_property: Mapped[bool] = mapped_column(server_default=text("true"))
     includes: Mapped[list[Include]] = mapped_column(
-        ENUM(
-            Include,
-            name="include",
-            create_type=True,
-            schema="un0",
+        ARRAY(
+            ENUM(
+                Include,
+                name="include",
+                create_type=True,
+                schema="un0",
+            )
         )
     )
     matches: Mapped[list[Match]] = mapped_column(
-        ENUM(
-            Match,
-            name="match",
-            create_type=True,
-            schema="un0",
+        ARRAY(
+            ENUM(
+                Match,
+                name="match",
+                create_type=True,
+                schema="un0",
+            )
         )
     )
     lookups: Mapped[list[Lookup]] = mapped_column(
-        ENUM(
-            Lookup,
-            name="lookup",
-            create_type=True,
-            schema="un0",
+        ARRAY(
+            ENUM(
+                Lookup,
+                name="lookup",
+                create_type=True,
+                schema="un0",
+            )
         )
     )
     column_security: Mapped[ColumnSecurity] = mapped_column(
@@ -92,32 +197,58 @@ class Field(Base, BaseMixin):
     )
 
 
+class FieldVertex(Base):
+    __tablename__ = "field_vertex"
+    __table_args__ = (
+        Index("ix_field_id_vertex_id", "field_id", "vertex_id"),
+        {
+            "schema": "un0",
+            "comment": "A field associated with a vertex.",
+            "info": {"rls_policy": False, "vertex": False},
+        },
+    )
+
+    # Columns
+    field_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.field.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="A field associated with a vertex.",
+    )
+    vertex_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.vertex.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="A vertex associated with a field.",
+    )
+
+
 class FilterKey(Base, BaseMixin):
     __tablename__ = "filter_key"
     __table_args__ = {
         "schema": "un0",
         "comment": "Filter keys for filtering data",
-        "info": {"rls_policy": "superuser"},
+        "info": {"rls_policy": False, "vertex": False},
     }
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Name")
     source_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "IS_OF_SOURCE"},
     )
     destination_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "IS_OF_DESTINATION"},
@@ -151,7 +282,7 @@ class FilterKey(Base, BaseMixin):
 class FilterValue(Base, BaseMixin, RBACMixin):
     __tablename__ = "filter_value"
     __table_args__ = (
-        sa.UniqueConstraint(
+        UniqueConstraint(
             "field_id",
             "lookup",
             "include",
@@ -167,14 +298,14 @@ class FilterValue(Base, BaseMixin, RBACMixin):
             "timestamp_value",
             postgresql_nulls_not_distinct=True,
         ),
-        sa.Index(
+        Index(
             "ix_filtervalue__unique_together",
             "field_id",
             "lookup",
             "include",
             "match",
         ),
-        sa.CheckConstraint(
+        CheckConstraint(
             """
                 bigint_value IS NOT NULL
                 OR boolean_value IS NOT NULL
@@ -196,15 +327,15 @@ class FilterValue(Base, BaseMixin, RBACMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
     field_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.field.id", ondelete="CASCADE"),
+        ForeignKey("un0.field.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "FILTERS_FIELD"},
@@ -240,7 +371,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     timestamp_value: Mapped[Optional[datetime.datetime]] = mapped_column()
     string_value: Mapped[Optional[str_255]] = mapped_column()
     object_value_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         nullable=True,
         info={"edge": "HAS_OBJECT_VALUE"},
@@ -273,26 +404,27 @@ class Query(Base, BaseMixin, RBACMixin):
         {
             "comment": "User definable queries",
             "schema": "un0",
+            "info": {"rls_policy": "default", "audit_type": "history"},
         },
     )
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_RELATED_OBJECT"},
     )
     name: Mapped[str_255] = mapped_column(doc="The name of the query.")
     queries_table_type_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "QUERIES_TABLE_TYPE"},
     )
     show_results_with_object: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"),
+        server_default=text("false"),
         doc="Indicates if the results of the query should be returned with objects from the queries table type.",
     )
     include_values: Mapped[Include] = mapped_column(
@@ -340,7 +472,7 @@ class Query(Base, BaseMixin, RBACMixin):
 class QueryFilterValue(Base, BaseMixin):
     __tablename__ = "query_filter_value"
     __table_args__ = (
-        sa.Index("ix_query_id__filtervalue_id", "query_id", "filtervalue_id"),
+        Index("ix_query_id__filtervalue_id", "query_id", "filtervalue_id"),
         {
             "schema": "un0",
             "comment": "The filter values associated with a query.",
@@ -350,10 +482,10 @@ class QueryFilterValue(Base, BaseMixin):
 
     # Columns
     query_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.query.id", ondelete="CASCADE"), index=True, primary_key=True
+        ForeignKey("un0.query.id", ondelete="CASCADE"), index=True, primary_key=True
     )
     filtervalue_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.filter_value.id", ondelete="CASCADE"),
+        ForeignKey("un0.filter_value.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
     )
@@ -370,7 +502,7 @@ class QueryFilterValue(Base, BaseMixin):
 class QuerySubquery(Base, BaseMixin):
     __tablename__ = "query_sub_query"
     __table_args__ = (
-        sa.Index("ix_query_id__subquery_id", "query_id", "subquery_id"),
+        Index("ix_query_id__subquery_id", "query_id", "subquery_id"),
         {
             "schema": "un0",
             "comment": "The subqueries associated with a query",
@@ -380,13 +512,13 @@ class QuerySubquery(Base, BaseMixin):
 
     # Columns
     query_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.query.id", ondelete="CASCADE"),
+        ForeignKey("un0.query.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="The query the subquery is associated with.",
     )
     subquery_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.query.id", ondelete="CASCADE"),
+        ForeignKey("un0.query.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="The subquery associated with the query.",
