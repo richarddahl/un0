@@ -2,6 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 import datetime
+
+def print_index_sql(vertex_label: str):
+    """Prints the SQL command to add an index to a graph vertex table"""
+    sql_command = f"CREATE INDEX ON graph.{vertex_label} (id);"
+    print(sql_command)
 import textwrap
 
 from pydantic import BaseModel
