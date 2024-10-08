@@ -69,7 +69,7 @@ class GraphBase(BaseModel):
     def table_name(self) -> str:
         return self.table.name
 
-    def create_sql_function(
+    def create_sql_stmt(
         self,
         function_name: str,
         execution_string: str,
@@ -163,10 +163,17 @@ class GraphVertex(GraphBase):
         return props
 
     def create_vlabel_sql(self):
-        return f"""
-            SELECT ag_catalog.create_vlabel('graph', '{self.label}');
-            CREATE INDEX ON graph."{self.label}" (id);
-        """
+        return textwrap.dedent(
+            f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label WHERE name = '{self.label}') THEN
+                    PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
+                    CREATE INDEX ON graph."{self.label}" (id);
+                END IF;
+            END $$;
+            """
+        )
 
 
 class GraphEdge(GraphBase):
@@ -213,7 +220,7 @@ class GraphEdge(GraphBase):
                     props.append(GraphProperty(column=column))
         return props
 
-    def create_edge_sql(self) -> str:
+    def edge_sql(self) -> str:
         """
         Creates the Cypher statements to create edges between vertices.
 
@@ -225,23 +232,22 @@ class GraphEdge(GraphBase):
         Returns:
             str: The SQL statement to create the edges.
         """
-        if not self.properties:
-            return textwrap.dedent(
-                f"""
-                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                    MATCH (v:{self.start_vertex.label} {{id: %s}})
-                    MATCH (w:{self.end_vertex.label} {{id: %s}})
-                    CREATE (v)-[e:{self.label}]->(w)
-                $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type});
-                """
+        property_keys_str = ""
+        property_values_str = ""
+        if self.properties:
+            property_keys_str = "SET " + ", ".join(
+                [prop.name for prop in self.properties if prop.name != "id"]
+            )
+            property_values_str = ", " + ", ".join(
+                [prop.data_type for prop in self.properties if prop.name != "id"]
             )
         return textwrap.dedent(
             f"""
             EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                 MATCH (v:{self.start_vertex.label} {{id: %s}})
                 MATCH (w:{self.end_vertex.label} {{id: %s}})
-                CREATE (v)-[e:{self.edge_name} {{{self.properties.keys()}}}] ->(w)
-            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type}, {self.properties.values()});
+                CREATE (v)-[e:{self.label} {{{property_keys_str}}}] ->(w)
+            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type}{property_values_str});
             """
         )
 
@@ -253,10 +259,17 @@ class GraphEdge(GraphBase):
             str: A formatted SQL query string that creates an edge label in the 'graph' schema
              and an index on the 'start_id' and 'end_id' columns of the created label.
         """
-        return f"""
-            SELECT ag_catalog.create_elabel('graph', '{self.label}');
-            CREATE INDEX ON graph."{self.label}"(start_id, end_id);
-        """
+        return textwrap.dedent(
+            f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label WHERE name = '{self.label}') THEN
+                    PERFORM ag_catalog.create_elabel('graph', '{self.label}');
+                    CREATE INDEX ON graph."{self.label}"(start_id, end_id);
+                END IF;
+            END $$;
+            """
+        )
 
 
 class TableGraph(GraphBase):
@@ -290,7 +303,20 @@ class TableGraph(GraphBase):
 
     @computed_field
     def edges(self) -> list["GraphEdge"]:
-        """Get the edges for a given table"""
+        """
+        Get the edges for a given table.
+
+        Returns:
+            list[GraphEdge]: A list of GraphEdge objects representing the edges
+            in the graph. The edges are determined based on whether the table
+            is a normal table or an association table.
+
+        For a normal table:
+            - Edges are created from the vertex representing the table itself
+
+        For an association table:
+            - Edges are created between each of the foreign keys in the table.
+        """
         edges = []
         if self.vertex:
             """
@@ -305,7 +331,6 @@ class TableGraph(GraphBase):
                     continue
                 for fk in column.foreign_keys:
                     if start_column.name == column.name:
-                        print("Skipping")
                         continue
                     end_vertex = GraphVertex(table=fk.column.table)
                     label = column.info.get("edge", "")
@@ -342,341 +367,170 @@ class TableGraph(GraphBase):
                         )
         return edges
 
+    def create_table_sql(self) -> str:
+        """
+        Generates SQL statements to create a table in the graph.
 
-'''
-def create_edge_statements(
-    edges: list[GraphEdge],
-    table_name: str,
-    property_names: str | None = None,
-    property_values: str | None = None,
-) -> str:
-    """Creates the cypher statements to create edges between vertices
+        This method generates SQL statements to create a table in a graph database.
+        The table is created based on the vertex information of the table.
+        If the table is a normal table, the vertex is created with an index on the 'id' column.
+        If the table is an association table, the edges are created between the foreign keys.
 
-    Edges are created between vertices based on the foreign keys of the table.
-    Edges created for association tables may have properties, e.g. non-foreign key
-    columns in the table.
-    """
-    # for edge in edges:
-    #    if edge.edge_name == "":
-    #        raise ValueError(
-    #            f"{table_name} {edge.start_vertex_label}: Edge name is required"
-    #        )
-    if property_names is None:
-        sql_string = " ".join(
+        Returns:
+            str: The SQL statement to create the table in the graph.
+        """
+        if self.vertex:
+            sql = self.vertex.create_vlabel_sql()
+        else:
+            sql = "\n".join([e.create_elabel_sql() for e in self.edges])
+
+        sql = "\n".join(
             [
-                textwrap.dedent(
-                    f"""
-                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                    MATCH (v:{edge.start_vertex_label} {{id: %s}})
-                    MATCH (w:{edge.end_vertex_label} {{id: %s}})
-                    CREATE (v)-[e:{edge.edge_name}]->(w)
-                $$) AS (e agtype);', {edge.start_vertex_data_type}, {edge.end_vertex_data_type});
-                """
-                )
-                for edge in edges
+                sql,
+                self.create_insert_sql(),
+                self.create_update_sql(),
+                self.create_delete_sql(),
+                self.create_truncate_sql(),
             ]
         )
-    else:
-        sql_string = " ".join(
-            [
-                textwrap.dedent(
-                    f"""
+        return textwrap.dedent(sql)
+
+    def create_insert_sql(self) -> str:
+        """Creates a new vertex record when a new relational table record is inserted"""
+        prop_key_str = ""
+        prop_val_str = ""
+        edge_sql = ""
+        if self.edges:
+            edge_sql = "\n".join([e.edge_sql() for e in self.edges])
+        if self.vertex:
+            if self.vertex.properties:
+                prop_key_str = ", ".join(
+                    f"{prop.name}: %s" for prop in self.vertex.properties
+                )
+                prop_val_str = ", " + ", ".join(
+                    [prop.data_type for prop in self.vertex.properties]
+                )
+            sql = textwrap.dedent(
+                f"""
                 EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                    MATCH (v:{edge.start_vertex_label} {{id: %s}})
-                    MATCH (w:{edge.end_vertex_label} {{id: %s}})
-                    CREATE (v)-[e:{edge.edge_name} {{{property_names}}}] ->(w)
-                $$) AS (e agtype);', {edge.start_vertex_data_type}, {edge.end_vertex_data_type}, {property_values});
-                """
-                )
-                for edge in edges
-            ]
-        )
-    return textwrap.dedent(sql_string)
-
-
-# INSERT Vertex Function and Trigger
-def insert_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
-    """Creates a new vertex record when a new relational table record is inserted"""
-    table_name = table.name
-    edges: list[GraphEdge] = []
-    property_names, property_values = get_properties(table, update=False)
-    edges = get_table_edges(table)
-    vertex_label = convert_snake_to_capital_word(table_name)
-    edge_creation_statements = create_edge_statements(edges, table_name)
-    if property_names:
-        execution_string = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                CREATE (v:{vertex_label} {{{property_names}}})
-            $$) AS (a agtype);', {property_values});
-            {edge_creation_statements}
-            RETURN NEW;
-            """
-    else:
-        execution_string = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                CREATE (v:{vertex_label})
-            $$) AS (a agtype);');
-            {edge_creation_statements}
-            RETURN NEW;
-            """
-    sql_string = create_sql_function(
-        table,
-        "insert_vertex",
-        execution_string,
-        operation="INSERT",
-        include_trigger=True,
-        db_name=db_name,
-    )
-    return textwrap.dedent(sql_string)
-
-
-# UPDATE Vertex Function and Trigger
-def update_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
-    """Updates an existing vertex record when its relational table record is updated"""
-    table_name = table.name
-    vertex_label = convert_snake_to_capital_word(table_name)
-    property_names, property_values = get_properties(table, update=True)
-    execution_string = f"""
-        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-            MATCH (v:{vertex_label})
-            WHERE (v.id = %s)
-            SET {property_names}
-        $$) AS (a agtype);', quote_nullable(NEW.id), {property_values});
-        RETURN NEW;
-        """
-    sql_string = create_sql_function(
-        table,
-        "update_vertex",
-        execution_string,
-        include_trigger=True,
-        db_name=db_name,
-    )
-    return textwrap.dedent(sql_string)
-
-
-# DELETE Vertex Function and Trigger
-def delete_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
-    """Deleted an existing vertex record when its relational table record is deleted"""
-    table_name = table.name
-    vertex_label = convert_snake_to_capital_word(table_name)
-    execution_string = f"""
-        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-            MATCH (v:{vertex_label})
-            WHERE (v.id = %s)
-            DETACH DELETE v
-        $$) AS (a agtype);', quote_nullable(OLD.id));
-        RETURN NEW;
-        """
-    sql_string = create_sql_function(
-        table,
-        "delete_vertex",
-        execution_string,
-        operation="DELETE",
-        include_trigger=True,
-        db_name=db_name,
-    )
-    return textwrap.dedent(sql_string)
-
-
-# TRUNCATE Vertex Function and Trigger
-def truncate_vertex_functions_and_triggers(table: Table, db_name=sttngs.DB_NAME) -> str:
-    """Deletes all corresponding vertices for a relation table when the table is truncated"""
-    table_name = table.name
-    vertex_label = convert_snake_to_capital_word(table_name)
-    execution_string = f"""
-        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-            MATCH (v:{vertex_label})
-            DELETE v
-        $$) AS (a agtype);');
-        RETURN NEW;
-        """
-    sql_string = create_sql_function(
-        table,
-        "truncate_vertex",
-        execution_string,
-        operation="TRUNCATE",
-        for_each="STATEMENT",
-        include_trigger=True,
-        db_name=db_name,
-    )
-    return textwrap.dedent(sql_string)
-
-
-# EDGE WITH PROPERTIES FUNCTIONS AND TRIGGERS
-
-
-def edge_properties(table: Table, update: bool = True) -> tuple[str, str]:
-    """Get the graph properties for an association table"""
-    property_names = []
-    property_values = []
-
-    for column in table.columns:
-        property_names.append(f"{column.name}: %s")
-        property_values.append(get_column_type(column, update=update))
-
-    if update:
-        return ", ".join([f"v.{name}" for name in property_names]), ", ".join(
-            [f"NEW.{value}" for value in property_values]
-        )
-    return ", ".join(property_names), ", ".join(property_values)
-
-
-def edge_w_props_vertices_old(table: Table, update: bool = True) -> list:
-    """Returns the vertices for an association table"""
-    start_vertices = []
-    end_vertices = []
-    edges = []
-    for column in table.columns:
-        for fk in column.foreign_keys:
-            start_vertices.append(
-                (
-                    convert_snake_to_capital_word(fk.column.table.name),
-                    get_column_type(column, update=update),
-                )
-            )
-            end_vertices.append(
-                (
-                    convert_snake_to_capital_word(fk.column.table.name),
-                    get_column_type(column, update=update),
-                )
-            )
-    for start_vertex in start_vertices:
-        for end_vertex in end_vertices:
-            if start_vertex[0] != end_vertex[0]:
-                edges.append(
-                    GraphEdge(
-                        start_vertex_label=start_vertex[0],
-                        start_vertex_data_type=start_vertex[1],
-                        end_vertex_label=end_vertex[0],
-                        end_vertex_data_type=end_vertex[1],
-                        edge_name=table.info.get("edge", ""),
-                    )
-                )
-    return edges
-
-
-def edge_w_props_vertices(table: Table, update: bool = True) -> GraphEdge:
-    """Returns the vertices for an association table"""
-    return GraphEdge(
-        start_vertex_label=convert_snake_to_capital_word(
-            list(table.foreign_keys)[0].column.table.name
-        ),
-        start_vertex_data_type=get_column_type(table.columns[0], update=update),
-        end_vertex_label=convert_snake_to_capital_word(
-            list(table.foreign_keys)[1].column.table.name
-        ),
-        end_vertex_data_type=get_column_type(table.columns[1], update=update),
-        edge_name=table.info.get("edge", ""),
-    )
-
-
-def edge_with_properties(table: Table, update: bool = True) -> str:
-    """Creates the edge table definition for association tables"""
-    edge = edge_w_props_vertices(table, update=update)
-    property_names, property_values = edge_properties(table, update=update)
-    edge_creation_statements = create_edge_statements(
-        [edge],
-        table.name,
-        property_names=property_names,
-        property_values=property_values,
-    )
-    return edge_creation_statements
-
-
-def insert_edge_w_props_functions_and_triggers(table: Table) -> str:
-    """Create a new edge record when a new association table record is inserted"""
-    _execution_string = " ".join(
-        [
-            f"""
-                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                    MATCH (a:{edge.start_vertex_label}), (b:{edge.end_vertex_label})
-                    WHERE (a.id = %s AND b.id = %s)
-                    CREATE (a)-[e:{edge.edge_name}]->(b)
-                $$) AS (e agtype);', {edge.start_vertex_data_type}, {edge.end_vertex_data_type});
+                    CREATE (v:{self.vertex.label} {{{prop_key_str}}})
+                $$) AS (a agtype);'{prop_val_str});
+                {edge_sql}
                 RETURN NEW;
                 """
-            for edge in edge_w_props_vertices_old(table, update=False)
-        ]
-    )
-    execution_string = textwrap.dedent(_execution_string)
-
-    sql_string = create_sql_function(
-        table,
-        "insert_edge",
-        execution_string,
-        operation="INSERT",
-        include_trigger=True,
-    )
-    return textwrap.dedent(sql_string)
-
-
-def get_edge_match_statements(table: Table):
-    """Get the match statements for an association table's edge record from the fks
-    Works with any number of foreign keys in the association table.
-    """
-    edge_label = table.info.get("edge", "")
-    foreign_keys = []
-    vertex_keys = []
-    vertex = "a"
-    for column in table.columns:
-        for fk in column.foreign_keys:
-            if column.name not in foreign_keys:
-                foreign_keys.append(column.name)
-                vertex_keys.append(
-                    f"{vertex}:{fk.column.table.name} {{{vertex}.{column.name}: %s}}"
-                )
-                vertex = chr(ord(vertex) + 1)
-
-    match_stmt = "MATCH "
-    for num, name in enumerate(vertex_keys):
-        if num == 0:
-            match_stmt += f"({name})-[\\:{edge_label}]"
-        elif num < len(vertex_keys) - 1:
-            match_stmt += f"-({name})-[\\:{edge_label}]"
+            )
         else:
-            match_stmt += f"-({name})"
-    return match_stmt
+            sql = textwrap.dedent(
+                f"""
+                {edge_sql}
+                RETURN NEW;
+                """
+            )
+        sql_string = self.create_sql_stmt(
+            "insert_vertex",
+            sql,
+            operation="INSERT",
+            include_trigger=True,
+        )
+        return textwrap.dedent(sql_string)
 
+    def create_update_sql(self) -> str:
+        """Updates an existing vertex record when its relational table record is updated"""
+        property_keys_str = ""
+        property_values_str = ""
+        edge_sql = ""
+        if self.edges:
+            edge_sql = "\n".join([e.edge_sql() for e in self.edges])
+        if self.vertex:
+            if self.vertex.properties:
+                property_keys_str = "SET" + ", ".join(
+                    [prop.name for prop in self.vertex.properties]
+                )
+                property_values_str = ", " + ", ".join(
+                    [prop.data_type for prop in self.vertex.properties]
+                )
+            sql = textwrap.dedent(
+                f"""
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+                    MATCH (v:{self.vertex.label})
+                    WHERE (v.id = %s)
+                    {property_keys_str}
+                $$) AS (a agtype);', quote_nullable(NEW.id){property_values_str});
+                RETURN NEW;
+                """
+            )
+        else:
+            sql = textwrap.dedent(
+                f"""
+                {edge_sql}
+                RETURN NEW;
+                """
+            )
+        sql_string = self.create_sql_stmt(
+            "update_vertex",
+            sql,
+            include_trigger=True,
+        )
+        return textwrap.dedent(sql_string)
 
-def delete_edge_w_props_functions_and_triggers(table: Table) -> str:
-    """Deleted an existing edge record when its association table record is deleted"""
-    match_stmt = get_edge_match_statements(table)
-    _execution_string = f"""
-        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-            {match_stmt}
-            delete
-        $$) AS (a agtype);', quote_nullable(OLD.id));
-        RETURN NEW;
-        """
-    execution_string = textwrap.dedent(_execution_string)
-    sql_string = create_sql_function(
-        table,
-        "delete_edge",
-        execution_string,
-        operation="DELETE",
-        include_trigger=True,
-    )
-    return textwrap.dedent(sql_string)
+    def create_delete_sql(self) -> str:
+        """Deleted an existing vertex record when its relational table record is deleted"""
+        edge_sql = ""
+        if self.edges:
+            edge_sql = "\n".join([e.edge_sql() for e in self.edges])
+        if self.vertex:
+            sql = textwrap.dedent(
+                f"""
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+                    MATCH (v:{self.vertex.label})
+                    WHERE (v.id = %s)
+                    DETACH DELETE v
+                $$) AS (a agtype);', quote_nullable(OLD.id));
+                RETURN OLD;
+                """
+            )
+        else:
+            sql = textwrap.dedent(
+                f"""
+                {edge_sql}
+                RETURN OLD;
+                """
+            )
+        sql_string = self.create_sql_stmt(
+            "delete_vertex",
+            sql,
+            operation="DELETE",
+            include_trigger=True,
+        )
+        return textwrap.dedent(sql_string)
 
-
-def truncate_edge_w_props_functions_and_triggers(table: Table) -> str:
-    """Truncate all edges for an association table"""
-    edge_label = table.info.get("edge", "")
-    _execution_string = f"""
-        EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-            MATCH (()-[e:{edge_label}]-())
-            DELETE e
-        $$) AS (a agtype);');
-        RETURN NEW;
-        """
-    execution_string = textwrap.dedent(_execution_string)
-    sql_string = create_sql_function(
-        table,
-        "truncate_edge",
-        execution_string,
-        operation="TRUNCATE",
-        for_each="STATEMENT",
-        include_trigger=True,
-    )
-    return textwrap.dedent(sql_string)
-'''
+    def create_truncate_sql(self) -> str:
+        """Deletes all corresponding vertices for a relation table when the table is truncated"""
+        edge_sql = ""
+        if self.edges:
+            edge_sql = "\n".join([e.edge_sql() for e in self.edges])
+        if self.vertex:
+            sql = textwrap.dedent(
+                f"""
+                EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+                    MATCH (v:{self.vertex.label})
+                    DETACH DELETE v
+                $$) AS (a agtype);');
+                RETURN OLD;
+                """
+            )
+        else:
+            sql = textwrap.dedent(
+                f"""
+                {edge_sql}
+                RETURN OLD;
+                """
+            )
+        sql_string = self.create_sql_stmt(
+            "truncate_vertex",
+            sql,
+            operation="truncate",
+            for_each="STATEMENT",
+            include_trigger=True,
+        )
+        return textwrap.dedent(sql_string)
