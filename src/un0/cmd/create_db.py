@@ -43,18 +43,7 @@ from un0.auth.sql import (
     CREATE_INSERT_TABLE_PERMISSION_FUNCTION_AND_TRIGGER,
 )
 
-from un0.grph.sql import (
-    create_vlabel,
-    create_elabel,
-    insert_vertex_functions_and_triggers,
-    update_vertex_functions_and_triggers,
-    delete_vertex_functions_and_triggers,
-    truncate_vertex_functions_and_triggers,
-    insert_edge_w_props_functions_and_triggers,
-    delete_edge_w_props_functions_and_triggers,
-    truncate_edge_w_props_functions_and_triggers,
-)
-
+from un0.grph.base_models import TableGraph
 
 from un0.db import Base
 import un0.auth.models as auth_models  # noqa
@@ -178,78 +167,20 @@ def create_graph_functions_and_triggers(
     superuser_id: str, conn: Connection, db_name: str = settings.DB_NAME
 ) -> None:
     vertices = []  # List of tables that are vertices, to ensure we only create them once
-    edges = []  # List of tables or table columns that are edges, to ensure we only create them once
     for schema_table_name in Base.metadata.tables.keys():
         table = Base.metadata.tables[schema_table_name]
         table_name: str = schema_table_name.split(".")[1]
         table_info = getattr(table, "info", {})
-
-        # The following code is used to create the graph functions and triggers for the tables.
-        # A Vertex is a node in a graph, and it is created from a table in the database.
-        # Each vertex is created with a label that is the same as the TitleCase table name with underscores removed.
-        # Each vertext is created with properties that are the non-FK columns in the table.
-        # All properties of a vertex are used to create fltr.models.Field objects.
-        # An Edge is a relationship between two vertices, and it is created from a
-        # column in a table that is a foreign key to another table.
-        # Each edge is created with the label provided in the fields info "edge" entry or the ALL_CAPS column_name.
-        # Each edge is also used to create a fltr.models.Field object.
-
-        table_is_edge = table_info.get("edge", False)
-        table_is_vertex = table_info.get("vertex", True)
-        if not isinstance(table_is_edge, str) and table_is_vertex is True:
-            fltr_models.create_fields(table, conn, db_name, superuser_id)
-            # Create the vertex label for the table
-            if table_name in vertices:
-                continue
-            print(f"\nCreating Vertices for {schema_table_name}\n")
-            vertices.append(table_name)
-            conn.execute(text(create_vlabel(table_name)))
-            print(
-                f"Creating Insert Vertex Function and Trigger for Table: {schema_table_name}\n"
-            )
-            conn.execute(
-                text(insert_vertex_functions_and_triggers(table, db_name=db_name))
-            )
-            conn.execute(
-                text(update_vertex_functions_and_triggers(table, db_name=db_name))
-            )
-            conn.execute(
-                text(delete_vertex_functions_and_triggers(table, db_name=db_name))
-            )
-            conn.execute(
-                text(truncate_vertex_functions_and_triggers(table, db_name=db_name))
-            )
-
-            # Create the edge labels for the columns that are FKs.
-            for column in table.columns:
-                column_edge = column.info.get("edge", False)
-                if column_edge is not False and column_edge not in edges:
-                    edges.append(column_edge)
-                    print(f"Creating Graph Edge Label for Column: {column.name}")
-                    conn.execute(text(create_elabel(column_edge)))
+        if table_name in vertices or table_info.get("graph", True) is False:
             continue
-        # Association tables will not be created as vertices, but as edges.
-        # The tables info dictionary will reflect this with a key of "edge", and the value will be the edge name.
-        # The vertices identified by the FKs within the association table will be used as the start
-        # and end points for the edge and the edge name will be used to create the edge label.
-        table_edge = table.info.get("edge", False)
-        if table_edge is False or table_edge in edges:
-            continue
-        edges.append(table_edge)
-        print(
-            f"Creating Graph Edge with Properties Label for Association Table: {schema_table_name}"
-        )
-        conn.execute(text(create_elabel(table_edge)))
-        print(
-            f"Creating Insert Edge with Properties Function for Association Table: {schema_table_name}"
-        )
-        conn.execute(text(insert_edge_w_props_functions_and_triggers(table)))
-        conn.execute(text(delete_edge_w_props_functions_and_triggers(table)))
-        conn.execute(text(truncate_edge_w_props_functions_and_triggers(table)))
+        print(f"\nCreating Vertices for {schema_table_name}\n")
+        vertices.append(table_name)
+        table_graph = TableGraph(table=table, db_name=db_name)
+        conn.execute(text(table_graph.create_table_sql()))
     conn.commit()
 
 
-def create_table_type_for_table(
+def create_table_type_records(
     table: Table, conn: Connection, db_name: str = settings.DB_NAME
 ) -> None:
     table_info = getattr(table, "info", {})
@@ -328,7 +259,7 @@ def create(db_name: str = settings.DB_NAME) -> str:
                 )
                 conn.execute(text(create_validate_delete_trigger(schema_table_name)))
             enable_auditing_for_table(table, schema_table_name, conn, db_name)
-            create_table_type_for_table(table, conn, db_name)
+            create_table_type_records(table, conn, db_name)
         conn.execute(text(f"SET ROLE {db_name}_admin"))
         superuser = conn.execute(text(create_superuser()))
         superuser_id = superuser.scalar()

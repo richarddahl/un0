@@ -16,7 +16,7 @@ from un0.db import Base, BaseMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 
-class TestFoo(Base):
+class TestFoo(Base, BaseMixin):
     __tablename__ = "test_foo"
     __table_args__ = (
         {
@@ -47,7 +47,7 @@ class TestFoo(Base):
     )
 
 
-class TestBar(Base):
+class TestBar(Base, BaseMixin):
     __tablename__ = "test_bar"
     __table_args__ = (
         {
@@ -78,7 +78,7 @@ class TestBar(Base):
     )
 
 
-class TestBaz(Base):
+class TestBaz(Base, BaseMixin):
     __tablename__ = "test_baz"
     __table_args__ = (
         {

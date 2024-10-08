@@ -7,10 +7,6 @@ import textwrap
 from un0.config import settings as sttngs
 
 
-def init_settings():
-    sttngs.__init__()
-
-
 #########################################################
 # SQL FUNCTIONS THAT REQUIRE A SCHEMA AND/OR TABLE NAME #
 #########################################################

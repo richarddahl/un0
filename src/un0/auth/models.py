@@ -48,7 +48,7 @@ class Tenant(Base, BaseMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     name: Mapped[str_255] = mapped_column(unique=True, doc="Tenant name")
     tenant_type: Mapped[TenantType] = mapped_column(
@@ -100,7 +100,7 @@ class User(Base):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     email: Mapped[str_255] = mapped_column(
         unique=True, index=True, doc="Email address, used as login ID"
@@ -243,7 +243,9 @@ class TablePermission(Base):
     )
     id: Mapped[int] = mapped_column(Identity(start=1, cycle=False), primary_key=True)
     table_type_id: Mapped[TableType] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"), index=True
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        index=True,
+        info={"edge": "HAS_TABLE_TYPE"},
     )
     actions: Mapped[list[PermissionAction]] = mapped_column(
         ARRAY(
@@ -286,11 +288,14 @@ class Role(Base, BaseMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
+        info={"edge": "HAS_ID"},
     )
     tenant_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.tenant.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+        doc="Tenant the role belongs to",
+        info={"edge": "BELONGS_TO_TENANT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Role name")
     description: Mapped[str] = mapped_column(doc="Role description")
@@ -319,11 +324,15 @@ class RoleTablePermission(Base):
         ForeignKey("un0.role.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
+        doc="Role ID",
+        info={"edge": "HAS_ROLE"},
     )
     table_permission_id: Mapped[int] = mapped_column(
         ForeignKey("un0.table_permission.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
+        doc="Table Permission ID",
+        info={"edge": "HAS_TABLE_PERMISSION"},
     )
 
     def __str__(self) -> str:
@@ -353,7 +362,7 @@ class Group(Base, BaseMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     tenant_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.tenant.id", ondelete="CASCADE"),
@@ -377,7 +386,7 @@ class Group(Base, BaseMixin):
         return f"<Group {self.name}>"
 
 
-class UserGroupRole(Base, BaseMixin):
+class UserGroupRole(Base):
     __tablename__ = "user_group_role"
     __table_args__ = (
         {
@@ -395,16 +404,19 @@ class UserGroupRole(Base, BaseMixin):
         index=True,
         nullable=False,
         primary_key=True,
+        info={"edge": "HAS_USER"},
     )
     group_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.group.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         primary_key=True,
+        info={"edge": "HAS_GROUP"},
     )
     role_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.role.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         primary_key=True,
+        info={"edge": "HAS_ROLE"},
     )

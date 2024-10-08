@@ -11,6 +11,7 @@ from enum import Enum
 from decimal import Decimal
 from typing import Annotated, AsyncIterator
 
+from sqlalchemy import create_engine, MetaData, text, func, ForeignKey
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncConnection,
@@ -19,7 +20,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
     TIMESTAMP,
@@ -45,7 +45,7 @@ from un0.config import settings
 
 # Creates the async engine and sets the echo to true if DEBUG is true
 async_engine = create_async_engine(settings.DB_URL)
-engine = sa.create_engine(settings.DB_URL)
+engine = create_engine(settings.DB_URL)
 
 
 class DatabaseSessionManager:
@@ -109,7 +109,7 @@ POSTGRES_INDEXES_NAMING_CONVENTION = {
 }
 
 # Creates the metadata object, used to define the database tables
-meta_data = sa.MetaData(
+meta_data = MetaData(
     naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
     schema=settings.DB_NAME,
 )
@@ -142,27 +142,25 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 class BaseMixin:
     # Columns
-    is_active: Mapped[bool] = mapped_column(
-        server_default=sa.text("true"), doc="Active"
-    )
+    is_active: Mapped[bool] = mapped_column(server_default=text("true"), doc="Active")
     is_deleted: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), doc="Deleted"
+        server_default=text("false"), doc="Deleted"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
-        server_default=sa.func.current_timestamp(),
+        server_default=func.current_timestamp(),
         doc="Time the record was created",
     )
     owner_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_OWNED_BY"},
     )
     modified_at: Mapped[datetime.datetime] = mapped_column(
         doc="Time the record was last modified",
-        server_default=sa.func.current_timestamp(),
+        server_default=func.current_timestamp(),
     )
     modified_by_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "WAS_LAST_MODIFIED_BY"},
     )
@@ -170,7 +168,7 @@ class BaseMixin:
         doc="Time the record was deleted"
     )
     deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "WAS_DELETED_BY"},
     )
@@ -216,9 +214,8 @@ class RBACMixin:
     @classmethod
     def tenant_id(cls) -> Mapped[str_26]:
         return mapped_column(
-            sa.ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+            ForeignKey("un0.tenant.id", ondelete="CASCADE"),
             index=True,
-            nullable=False,
             info={"edge": "HAS_TENANT"},
         )
 
@@ -226,9 +223,8 @@ class RBACMixin:
     @classmethod
     def group_id(cls) -> Mapped[str_26]:
         return mapped_column(
-            sa.ForeignKey("un0.group.id", ondelete="CASCADE"),
+            ForeignKey("un0.group.id", ondelete="CASCADE"),
             index=True,
-            nullable=True,
             info={"edge": "IS_ACCESSIBLE_BY"},
         )
 

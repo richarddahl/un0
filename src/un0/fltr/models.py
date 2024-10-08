@@ -39,28 +39,25 @@ def create_fields(table, conn, db_name, superuser_id):
     print(f"Creating fields for {table.schema}.{table.name}")
     print(f"Superuser ID: {superuser_id}")
     for name, column in table.columns.items():
-        is_property = True
         if column.info.get("column_security") == "Secret":
             continue
-        field_type = column.type.python_type.__name__
+        property_type = column.type.python_type.__name__
         if column.foreign_keys:
             lookups = selectlookups
-            is_property = False
-        if field_type in ["int", "float", "Decimal", "datetime", "date", "time"]:
+        if property_type in ["int", "float", "Decimal", "datetime", "date", "time"]:
             lookups = numeric_lookups
         else:
             lookups = string_lookups
-        field_label = column.info.get("edge", name.replace("_", " ").title())
+        property_label = column.info.get("edge", name.replace("_", " ").title())
         vertex_label = convert_snake_to_capital_word(table.name)
         conn.execute(
             text(
                 f"""
                 SET ROLE {db_name}_admin;
                 INSERT INTO un0.field (
-                    field_name,
-                    field_label,
-                    field_type,
-                    is_property,
+                    property_name,
+                    property_label,
+                    property_type,
                     includes,
                     matches,
                     lookups,
@@ -68,15 +65,14 @@ def create_fields(table, conn, db_name, superuser_id):
                 )
                 VALUES (
                     '{column.name}',
-                    '{field_label}',
-                    '{field_type}',
-                    {is_property},
+                    '{property_label}',
+                    '{property_type}',
                     ARRAY['INCLUDE', 'EXCLUDE']::un0.include[],
                     ARRAY['AND', 'OR', 'NOT']::un0.match[],
                     ARRAY{lookups}::un0.lookup[],
                     'PUBLIC'
                 )
-                ON CONFLICT (field_name, field_type) DO NOTHING;
+                ON CONFLICT (property_name, property_type) DO NOTHING;
 
                 INSERT INTO un0.vertex (
                     table_type_id,
@@ -90,8 +86,8 @@ def create_fields(table, conn, db_name, superuser_id):
                 AND t.name = '{table.name}'
                 ON CONFLICT (table_type_id, vertex_label) DO NOTHING;
 
-                INSERT INTO un0.field_vertex (
-                    field_id,
+                INSERT INTO un0.property_vertex (
+                    property_id,
                     vertex_id
                 )
                 SELECT
@@ -99,23 +95,22 @@ def create_fields(table, conn, db_name, superuser_id):
                     v.id
                 FROM un0.field f
                 JOIN un0.vertex v
-                ON f.field_name = '{column.name}'
+                ON f.property_name = '{column.name}'
                 AND v.vertex_label = '{vertex_label}'
-                ON CONFLICT (field_id, vertex_id) DO NOTHING
+                ON CONFLICT (property_id, vertex_id) DO NOTHING
                 """
             )
         )
         conn.commit()
 
 
-class Vertex(Base):
-    __tablename__ = "vertex"
+class GraphVertex(Base):
+    __tablename__ = "graph_vertex"
     __table_args__ = (
         UniqueConstraint("table_type_id", "vertex_label"),
         {
             "schema": "un0",
-            "comment": "Describes a column in a db table.",
-            "info": {"rls_policy": False, "vertex": False},
+            "info": {"rls_policy": False, "graph": False},
         },
     )
 
@@ -129,19 +124,17 @@ class Vertex(Base):
     table_type_id: Mapped[int] = mapped_column(
         ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
+        doc="The table type associated with the vertex.",
     )
     vertex_label: Mapped[str_255] = mapped_column()
 
 
-class Field(Base):
-    __tablename__ = "field"
+class GraphEdge(Base):
+    __tablename__ = "graph_edge"
     __table_args__ = (
-        UniqueConstraint("field_name", "field_type", name="uq_field_name_field_type"),
-        Index("ix_field_name_field_type", "field_name", "field_type"),
         {
             "schema": "un0",
-            "comment": "Describes a column in a db table.",
-            "info": {"rls_policy": False, "vertex": False},
+            "info": {"rls_policy": False, "graph": False},
         },
     )
 
@@ -152,10 +145,33 @@ class Field(Base):
         index=True,
         doc="Primary Key",
     )
-    field_name: Mapped[str_255] = mapped_column()
-    field_label: Mapped[str_255] = mapped_column()
-    field_type: Mapped[str_26] = mapped_column()
-    is_property: Mapped[bool] = mapped_column(server_default=text("true"))
+    edge_label: Mapped[str_255] = mapped_column()
+
+
+class GraphProperty(Base):
+    __tablename__ = "graph_property"
+    __table_args__ = (
+        UniqueConstraint(
+            "property_name", "property_type", name="uq_property_name_property_type"
+        ),
+        Index("ix_property_name_property_type", "property_name", "property_type"),
+        {
+            "schema": "un0",
+            "comment": "Describes a property of a graph.",
+            "info": {"rls_policy": False, "graph": False},
+        },
+    )
+
+    # Columns
+    id: Mapped[int] = mapped_column(
+        Identity(start=1, cycle=False),
+        primary_key=True,
+        index=True,
+        doc="Primary Key",
+    )
+    property_name: Mapped[str_255] = mapped_column()
+    property_label: Mapped[str_255] = mapped_column()
+    property_type: Mapped[str_26] = mapped_column()
     includes: Mapped[list[Include]] = mapped_column(
         ARRAY(
             ENUM(
@@ -197,26 +213,26 @@ class Field(Base):
     )
 
 
-class FieldVertex(Base):
-    __tablename__ = "field_vertex"
+class PropertyVertex(Base):
+    __tablename__ = "property_vertex"
     __table_args__ = (
-        Index("ix_field_id_vertex_id", "field_id", "vertex_id"),
+        Index("ix_property_id_vertex_id", "property_id", "vertex_id"),
         {
             "schema": "un0",
-            "comment": "A field associated with a vertex.",
-            "info": {"rls_policy": False, "vertex": False},
+            "comment": "A field (GraphProperty) associated with a vertex.",
+            "info": {"rls_policy": False, "graph": False},
         },
     )
 
     # Columns
-    field_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.field.id", ondelete="CASCADE"),
+    property_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.graph_property.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="A field associated with a vertex.",
     )
     vertex_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.vertex.id", ondelete="CASCADE"),
+        ForeignKey("un0.graph_vertex.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="A vertex associated with a field.",
@@ -228,7 +244,7 @@ class FilterKey(Base, BaseMixin):
     __table_args__ = {
         "schema": "un0",
         "comment": "Filter keys for filtering data",
-        "info": {"rls_policy": False, "vertex": False},
+        "info": {"rls_policy": False},
     }
 
     # Columns
@@ -238,20 +254,17 @@ class FilterKey(Base, BaseMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
     )
     name: Mapped[str_255] = mapped_column(doc="Name")
     source_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
-        info={"edge": "IS_OF_SOURCE"},
     )
     destination_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
-        info={"edge": "IS_OF_DESTINATION"},
     )
     filter_string: Mapped[str] = mapped_column(doc="Filter String")
     value_filter_string: Mapped[str] = mapped_column(doc="Value Filter String")
@@ -283,7 +296,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     __tablename__ = "filter_value"
     __table_args__ = (
         UniqueConstraint(
-            "field_id",
+            "property_id",
             "lookup",
             "include",
             "match",
@@ -300,7 +313,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
         ),
         Index(
             "ix_filtervalue__unique_together",
-            "field_id",
+            "property_id",
             "lookup",
             "include",
             "match",
@@ -322,6 +335,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
         {
             "comment": "User definable values for use in queries.",
             "schema": "un0",
+            "info": {"rls_policy": "default", "audit_type": "history"},
         },
     )
 
@@ -332,10 +346,10 @@ class FilterValue(Base, BaseMixin, RBACMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
-    field_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.field.id", ondelete="CASCADE"),
+    property_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.graph_property.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
         info={"edge": "FILTERS_FIELD"},
@@ -415,7 +429,7 @@ class Query(Base, BaseMixin, RBACMixin):
         index=True,
         server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     name: Mapped[str_255] = mapped_column(doc="The name of the query.")
     queries_table_type_id: Mapped[str_26] = mapped_column(
@@ -476,18 +490,22 @@ class QueryFilterValue(Base, BaseMixin):
         {
             "schema": "un0",
             "comment": "The filter values associated with a query.",
-            "info": {"edge": "QUERIES_FILTER", "rls_policy": "none"},
+            "info": {"rls_policy": False, "vertex": False},
         },
     )
 
     # Columns
     query_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.query.id", ondelete="CASCADE"), index=True, primary_key=True
+        ForeignKey("un0.query.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        info={"edge": "IS_QUERIED_THROUGH"},
     )
     filtervalue_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.filter_value.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
+        info={"edge": "QUERIES_FILTER_VALUE"},
     )
 
     # Relationships
@@ -500,13 +518,13 @@ class QueryFilterValue(Base, BaseMixin):
 
 
 class QuerySubquery(Base, BaseMixin):
-    __tablename__ = "query_sub_query"
+    __tablename__ = "query_subquery"
     __table_args__ = (
         Index("ix_query_id__subquery_id", "query_id", "subquery_id"),
         {
             "schema": "un0",
             "comment": "The subqueries associated with a query",
-            "info": {"edge": "QUERIES_SUBQUERY", "rls_policy": "none"},
+            "info": {"rls_policy": False, "vertex": False},
         },
     )
 
@@ -516,12 +534,14 @@ class QuerySubquery(Base, BaseMixin):
         index=True,
         primary_key=True,
         doc="The query the subquery is associated with.",
+        info={"edge": "HAS_PARENT_QUERY"},
     )
     subquery_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.query.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="The subquery associated with the query.",
+        info={"edge": "HAS_CHILD_QUERY"},
     )
 
     # Relationships

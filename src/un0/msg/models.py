@@ -6,15 +6,17 @@ import datetime
 
 from typing import Optional
 
-import sqlalchemy as sa
+from sqlalchemy import (
+    ForeignKey,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import (
     ENUM,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from un0.msg.enums import (  # type: ignore
-    MessageImportance,
-)
+from un0.msg.enums import MessageImportance
 from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
@@ -28,20 +30,20 @@ class Message(Base, BaseMixin, RBACMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     sender_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "WAS_SENT_BY"},
     )
     previous_message_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
+        ForeignKey("un0.message.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "HAS_PREVIOUS_MESSAGE"},
     )
@@ -52,7 +54,7 @@ class Message(Base, BaseMixin, RBACMixin):
     subject: Mapped[str_255] = mapped_column(doc="Subject of the message")
     body: Mapped[str_255] = mapped_column(doc="Body of the message")
     sent_at: Mapped[datetime.datetime] = mapped_column(
-        server_default=sa.func.current_timestamp(),
+        server_default=func.current_timestamp(),
         doc="Time the message was sent",
     )
 
@@ -64,26 +66,26 @@ class MessageAddressedTo(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "Messages addressed to users",
-        "info": {"edge": "WAS_SENT", "rls_policy": "none"},
+        "info": {"rls_policy": False, "vertex": False},
     }
 
     # Columns
     message_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
+        ForeignKey("un0.message.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         nullable=False,
-        info={"edge": "WAS_ADDRESSED"},
+        info={"edge": "WAS_SENT"},
     )
     addressed_to_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         nullable=False,
-        info={"edge": "WAS_ADDRESSED_TO"},
+        info={"edge": "WAS_SENT_TO"},
     )
     read: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"),
+        server_default=text("false"),
         nullable=False,
     )
     read_at: Mapped[datetime.datetime] = mapped_column()
@@ -96,56 +98,29 @@ class MessageCopiedTo(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "Messages copied to users",
-        "info": {"edge": "WAS_CCD", "rls_policy": "none"},
+        "info": {"rls_policy": False, "vertex": False},
     }
 
     # Columns
     message_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        nullable=False,
-        info={"edge": "WAS_SENT_CC"},
-    )
-    copied_to_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.user.id", ondelete="CASCADE"),
+        ForeignKey("un0.message.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         nullable=False,
         info={"edge": "WAS_CCD_ON"},
     )
+    copied_to_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.user.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        nullable=False,
+        info={"edge": "WAS_CCD_TO"},
+    )
     read: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"),
+        server_default=text("false"),
         nullable=False,
     )
     read_at: Mapped[datetime.datetime] = mapped_column()
-
-    # Relationships
-
-
-class MessageAttachment(Base):
-    __tablename__ = "message_attachment"
-    __table_args__ = {
-        "schema": "un0",
-        "comment": "Attachments to messages",
-        "info": {"edge": "HAS_ATTACHMENTS", "rls_policy": "none"},
-    }
-
-    # Columns
-    message_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.message.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        nullable=False,
-        info={"edge": "IS_ATTACHED_TO"},
-    )
-    attachment_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.attachment.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        nullable=False,
-        info={"edge": "HAS_ATTACHMENT"},
-    )
 
     # Relationships
 
@@ -159,14 +134,41 @@ class Attachment(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     name: Mapped[str_255] = mapped_column(unique=True, doc="Name of the file")
     file: Mapped[str_255] = mapped_column(doc="Path to the file")
+
+    # Relationships
+
+
+class MessageAttachment(Base):
+    __tablename__ = "message_attachment"
+    __table_args__ = {
+        "schema": "un0",
+        "comment": "Attachments to messages",
+        "info": {"rls_policy": False, "vertex": False},
+    }
+
+    # Columns
+    message_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.message.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        nullable=False,
+        info={"edge": "WAS_ATTACHED_TO"},
+    )
+    attachment_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.attachment.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        nullable=False,
+        info={"edge": "HAS_ATTACHMENT"},
+    )
 
     # Relationships

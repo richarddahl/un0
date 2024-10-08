@@ -6,7 +6,14 @@ import datetime
 
 from typing import Optional
 
-import sqlalchemy as sa
+from sqlalchemy import (
+    ForeignKey,
+    ForeignKeyConstraint,
+    Identity,
+    Index,
+    text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import (
     ENUM,
 )
@@ -29,11 +36,11 @@ class Workflow(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "User-defined workflows",
-        "info": {"rls_policy": "superuser", "vertex": False},
+        "info": {"rls_policy": "superuser", "graph": False},
     }
 
     id: Mapped[int] = mapped_column(
-        sa.Identity(start=1, cycle=False),
+        Identity(start=1, cycle=False),
         primary_key=True,
         index=True,
         doc="Primary Key",
@@ -53,7 +60,7 @@ class Workflow(Base):
         doc="The type of event that triggers execution of the workflow",
     )
     repeat_every: Mapped[int] = mapped_column(
-        server_default=sa.text("0"), doc="Repeat every x days"
+        server_default=text("0"), doc="Repeat every x days"
     )
     flag: Mapped[WorkflowFlag] = mapped_column(
         ENUM(
@@ -66,7 +73,7 @@ class Workflow(Base):
         doc="Flag indicating the importance of the workflow",
     )
     due_within: Mapped[int] = mapped_column(
-        server_default=sa.text("7"), doc="Due within x days"
+        server_default=text("7"), doc="Due within x days"
     )
     db_event: Mapped[WorkflowDBEvent] = mapped_column(
         ENUM(
@@ -79,49 +86,49 @@ class Workflow(Base):
         doc="The database event that triggers the workflow, if applicable",
     )
     auto_run: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"),
+        server_default=text("false"),
         doc="Indicates if the workflow should be run automatically",
     )
     record_required: Mapped[bool] = mapped_column(
-        server_default=sa.text("false"), doc="Indicats if a Workflow Record is required"
+        server_default=text("false"), doc="Indicats if a Workflow Record is required"
     )
     limiting_query_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey(
+        ForeignKey(
             "un0.query.id",
             ondelete="SET NULL",
             name="fk_workflow_query_id",
         ),
         index=True,
-        info={"edge": "LIMITS_WORKFLOWS_TO_QUERY"},
+        # info={"edge": "LIMITS_WORKFLOWS_TO_QUERY"},
     )
     parent_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.workflow.id", ondelete="CASCADE"),
+        ForeignKey("un0.workflow.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "IS_CHILD_OF_WORKFLOW"},
+        # info={"edge": "IS_CHILD_OF_WORKFLOW"},
     )
     applicable_table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        info={"edge": "IS_WORKFLOW_FOR_TABLE_TYPE"},
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        # info={"edge": "IS_WORKFLOW_FOR_TABLE_TYPE"},
     )
     record_table_type_id: Mapped[Optional[int]] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        info={"edge": "HAS_WORKFLOW_RECORD_OF_TABLE_TYPE"},
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        # info={"edge": "HAS_WORKFLOW_RECORD_OF_TABLE_TYPE"},
     )
     objectfunction_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.object_function.id", ondelete="SET NULL"),
+        ForeignKey("un0.object_function.id", ondelete="SET NULL"),
         index=True,
-        info={"edge": "IS_COMPLETED_BY_OBJECT_FUNCTION"},
+        # info={"edge": "IS_COMPLETED_BY_OBJECT_FUNCTION"},
     )
     process_child_value: Mapped[bool] = mapped_column(
-        server_default=sa.text("true"),
+        server_default=text("true"),
         doc="The value returned by the Object Function that indicates that any child Workflows must be processed",
     )
-    sa.Index(
+    Index(
         "ix_workflow_applicable_table_type_id",
         "applicable_table_type_id",
         unique=True,
     )
-    sa.Index(
+    Index(
         "ix_workflow_record_table_type_id",
         "record_table_type_id",
         unique=True,
@@ -138,21 +145,21 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     }
 
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     workflow_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.workflow.id", ondelete="CASCADE"),
+        ForeignKey("un0.workflow.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_TYPE_OF"},
     )
     date_due: Mapped[datetime.date] = mapped_column(doc="Date the workflow is due")
     workflow_object_id: Mapped[Optional[str_26]] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_EVENT_FOR"},
     )
@@ -171,15 +178,15 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
     }
 
     id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=sa.func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
-        info={"edge": "HAS_RELATED_OBJECT"},
+        info={"edge": "HAS_ID"},
     )
     workflow_event_id: Mapped[str_26] = mapped_column(
-        sa.ForeignKey("un0.workflow_event.id", ondelete="CASCADE"),
+        ForeignKey("un0.workflow_event.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_RECORD_OF"},
     )
@@ -207,11 +214,11 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
         doc="User defined or auto-generated comment on the workflow execution",
     )
     workflow_record_id: Mapped[Optional[str_26]] = mapped_column(
-        # sa.ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "RECORDS_EXECUTION"},
     )
-    # sa.ForeignKeyConstraint(
+    # ForeignKeyConstraint(
     #    ["workflow_record_id"],
     #    ["un0.related_object.id"],
     #    name="fk_workflow_record_record_related_object_id",
@@ -226,12 +233,12 @@ class ObjectFunction(Base):
     __table_args__ = {
         "schema": "un0",
         "comment": "Functions that can be called by user-defined workflows and reports",
-        "info": {"rls_policy": "superuser", "vertex": False},
+        "info": {"rls_policy": "superuser", "graph": False},
     }
     # Columns
 
     id: Mapped[int] = mapped_column(
-        sa.Identity(start=1, cycle=False),
+        Identity(start=1, cycle=False),
         primary_key=True,
         index=True,
         doc="Primary Key",
@@ -242,8 +249,8 @@ class ObjectFunction(Base):
     )
     name: Mapped[str] = mapped_column(doc="Name of the function")
     function_table_type_id: Mapped[int] = mapped_column(
-        sa.ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "IS_OF_TABLE_TYPE"},
+        # info={"edge": "IS_OF_TABLE_TYPE"},
     )
     # Relationships

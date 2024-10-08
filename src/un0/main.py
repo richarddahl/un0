@@ -29,7 +29,7 @@ async def index(
     request: Request,
 ):  # settings: Annotated[settings, Depends(get_settings)]):
     return templates.TemplateResponse(
-        "sa.Index.html",
+        "Index.html",
         {
             "request": request,
             "site_name": settings.SITE_NAME,

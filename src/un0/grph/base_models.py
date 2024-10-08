@@ -45,7 +45,7 @@ class GraphBase(BaseModel):
 
             Parameters:
                 function_name (str): The name of the function to create.
-                execution_string (str): The SQL execution string to be included in the function body.
+                function_string (str): The SQL execution string to be included in the function body.
                 operation (str, optional): The operation type for the trigger (default is "UPDATE").
                 for_each (str, optional): Specifies whether the trigger is for each row or statement (default is "ROW").
                 include_trigger (bool, optional): Whether to include a trigger creation statement (default is False).
@@ -72,24 +72,22 @@ class GraphBase(BaseModel):
     def create_sql_stmt(
         self,
         function_name: str,
-        execution_string: str,
+        function_string: str,
         operation: str = "UPDATE",
         for_each: str = "ROW",
         include_trigger: bool = False,
     ) -> str:
         func_string = textwrap.dedent(
-            f"""
-            CREATE OR REPLACE FUNCTION {self.table_schema}.{self.table_name}_{function_name}()
-                RETURNS TRIGGER
-                LANGUAGE plpgsql
-                VOLATILE
-            AS $BODY$
-            BEGIN
-                SET ROLE {self.db_name}_admin;
-                {execution_string}
-            END;
-            $BODY$;
-            """
+            f"CREATE OR REPLACE FUNCTION {self.table_schema}.{self.table_name}_{function_name}()\n"
+            "RETURNS TRIGGER\n"
+            "LANGUAGE plpgsql\n"
+            "VOLATILE\n"
+            "AS $BODY$\n"
+            "BEGIN\n"
+            f"    SET ROLE {self.db_name}_admin;\n"
+            f"{textwrap.dedent(function_string)}\n"
+            "END;\n"
+            "$BODY$;\n"
         )
         trigger_string = textwrap.dedent(
             f"""
@@ -100,7 +98,11 @@ class GraphBase(BaseModel):
                 EXECUTE FUNCTION {self.table_schema}.{self.table_name}_{function_name}();
             """
         )
-        sql_str = f"{func_string}\n{trigger_string}" if include_trigger else func_string
+        sql_str = (
+            f"{textwrap.dedent(func_string)}\n{textwrap.dedent(trigger_string)}"
+            if include_trigger
+            else func_string
+        )
         return textwrap.dedent(sql_str)
 
 
@@ -132,7 +134,7 @@ class GraphProperty(BaseModel):
     @computed_field
     def data_type(self) -> str:
         """Get the column type for a given column"""
-        return f"quote_nullable(NEW.{self.column.name}::{self.column.type})"
+        return f"quote_nullable(NEW.{self.column.name}::TEXT)"
 
 
 class GraphVertex(GraphBase):
@@ -142,6 +144,8 @@ class GraphVertex(GraphBase):
     Association tables will not have a vertex, but will have edges.
     """
 
+    column: Column
+
     @computed_field
     def label(self) -> str:
         return convert_snake_to_capital_word(self.table_name)
@@ -149,8 +153,7 @@ class GraphVertex(GraphBase):
     @computed_field
     def data_type(self) -> str:
         """Get the column type for a given column"""
-        column = self.table.columns["id"]
-        return f"quote_nullable(NEW.{column.name}::{column.type})"
+        return f"quote_nullable(NEW.{self.column.name}::{self.column.type})"
 
     @computed_field
     def properties(self) -> list["GraphProperty"]:
@@ -200,7 +203,9 @@ class GraphEdge(GraphBase):
     """
 
     label: str
+    start_column: Column
     start_vertex: GraphVertex
+    end_column: Column
     end_vertex: GraphVertex
 
     @computed_field
@@ -265,7 +270,7 @@ class GraphEdge(GraphBase):
             BEGIN
                 IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label WHERE name = '{self.label}') THEN
                     PERFORM ag_catalog.create_elabel('graph', '{self.label}');
-                    CREATE INDEX ON graph."{self.label}"(start_id, end_id);
+                    CREATE INDEX ON graph."{self.label}" (start_id, end_id);
                 END IF;
             END $$;
             """
@@ -298,7 +303,7 @@ class TableGraph(GraphBase):
             information, otherwise None.
         """
         if self.table.info.get("vertex", True):
-            return GraphVertex(table=self.table)
+            return GraphVertex(table=self.table, column=self.table.columns["id"])
         return None
 
     @computed_field
@@ -324,21 +329,22 @@ class TableGraph(GraphBase):
             Edges are created from the vertex, representing the table itself, 
             to each of the foreign keys in the table.
             """
-            start_vertex = GraphVertex(table=self.table)
             start_column = self.table.columns["id"]
+            start_vertex = GraphVertex(table=self.table, column=start_column)
             for column in self.table.columns:
                 if not column.foreign_keys:
                     continue
                 for fk in column.foreign_keys:
                     if start_column.name == column.name:
                         continue
-                    end_vertex = GraphVertex(table=fk.column.table)
+                    end_vertex = GraphVertex(table=fk.column.table, column=column)
                     label = column.info.get("edge", "")
                     edges.append(
                         GraphEdge(
-                            column=start_column,
                             table=self.table,
+                            start_column=start_column,
                             start_vertex=start_vertex,
+                            end_column=column,
                             end_vertex=end_vertex,
                             label=label,
                         )
@@ -349,18 +355,21 @@ class TableGraph(GraphBase):
             Edges are created between each of the foreign keys in the table.
             """
             for fk in self.table.foreign_keys:
-                start_vertex = GraphVertex(table=fk.column.table)
+                start_vertex = GraphVertex(table=fk.column.table, column=fk.parent)
                 for column in self.table.columns:
                     if fk.parent.name == column.name:
                         continue
                     for _fk in column.foreign_keys:
-                        end_vertex = GraphVertex(table=_fk.column.table)
+                        end_vertex = GraphVertex(
+                            table=_fk.column.table, column=_fk.parent
+                        )
                         label = column.info.get("edge", "")
                         edges.append(
                             GraphEdge(
-                                column=_fk.column,
                                 table=self.table,
+                                start_column=fk.parent,
                                 start_vertex=start_vertex,
+                                end_column=column,
                                 end_vertex=end_vertex,
                                 label=label,
                             )
