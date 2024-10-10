@@ -22,7 +22,7 @@ def load_data(superuser_id, db_name):
     copy_baz = f"""
         SET 'user_var.id' = "{superuser_id}";
         SET ROLE {db_name}_admin;
-        COPY un0.test_baz (id, name, description) FROM STDIN WITH CSV HEADER;
+        COPY un0.testbaz (id, name, description) FROM STDIN WITH CSV HEADER;
         """
     os.system(
         f"psql -U {db_name}_login -d {db_name} -c '{copy_baz}' < tests/foo/data/baz.csv"
@@ -30,7 +30,7 @@ def load_data(superuser_id, db_name):
     copy_bar = f"""
         SET 'user_var.id' = "{superuser_id}";
         SET ROLE {db_name}_admin;
-        COPY un0.test_bar(id, name, description, primary_baz_id) FROM STDIN WITH CSV HEADER;
+        COPY un0.testbar(id, name, description, primary_baz_id) FROM STDIN WITH CSV HEADER;
         """
     os.system(
         f"psql -U {db_name}_login -d {db_name} -c '{copy_bar}' < tests/foo/data/bar.csv"
@@ -38,7 +38,7 @@ def load_data(superuser_id, db_name):
     copy_foo = f"""
         SET 'user_var.id' = "{superuser_id}";
         SET ROLE {db_name}_admin;
-        COPY un0.test_foo (id, name, description, bar_id) FROM STDIN WITH CSV HEADER;
+        COPY un0.testfoo (id, name, description, bar_id) FROM STDIN WITH CSV HEADER;
         """
     os.system(
         f"psql -U {db_name}_login -d {db_name} -c '{copy_foo}' < tests/foo/data/foo.csv"
@@ -46,7 +46,7 @@ def load_data(superuser_id, db_name):
     copy_foobaz = f"""
         SET 'user_var.id' = "{superuser_id}";
         SET ROLE {db_name}_admin;
-        COPY un0.test_foo_baz FROM STDIN WITH CSV HEADER;
+        COPY un0.testfoo_baz FROM STDIN WITH CSV HEADER;
         """
     os.system(
         f"psql -U {db_name}_login -d {db_name} -c '{copy_foobaz}' < tests/foo/data/foobaz.csv"
@@ -54,7 +54,7 @@ def load_data(superuser_id, db_name):
     copy_barbaz = f"""
         SET 'user_var.id' = "{superuser_id}";
         SET ROLE {db_name}_admin;
-        COPY un0.test_bar_baz FROM STDIN WITH CSV HEADER;
+        COPY un0.testbar_baz FROM STDIN WITH CSV HEADER;
         """
     os.system(
         f"psql -U {db_name}_login -d {db_name} -c '{copy_barbaz}' < tests/foo/data/barbaz.csv"

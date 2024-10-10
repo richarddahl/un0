@@ -25,7 +25,7 @@ from un0.config import settings as sttngs
 
 
 CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_raise_role()
+CREATE OR REPLACE FUNCTION un0.testraise_role()
 RETURNS VOID
 LANGUAGE plpgsql
 AS $$
@@ -45,7 +45,7 @@ $$;
 
 
 CREATE_TEST_LIST_USER_VARS_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.test_list_rls_vars()
+CREATE OR REPLACE FUNCTION un0.testlist_rls_vars()
     RETURNS JSONB
     LANGUAGE plpgsql
 AS $$

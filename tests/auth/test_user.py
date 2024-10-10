@@ -6,7 +6,7 @@ import pytest
 import json
 import pytz
 
-from sqlalchemy import func, select, update, delete
+from sqlalchemy import func, text, select, update, delete
 from sqlalchemy.exc import ProgrammingError
 
 from un0.cmd import create_superuser
@@ -49,7 +49,6 @@ class TestUser:
             )
             session.execute((delete(User).where(User.id == superuser_id)))
 
-    '''
     ############################
     # Admin user related tests #
     ############################
@@ -506,9 +505,7 @@ class TestUser:
             stmt = select(User).where(User.email == "admin@nacme.com")
             user_not_deleted = session.scalar(stmt)
             assert user_not_deleted is not None
-    '''
 
-    '''
     def test_rls_regular_user_cannot_create_a_user(
         self, session, superuser_id, data_dict
     ):
@@ -517,12 +514,9 @@ class TestUser:
             acme_user = data_dict.get("users").get("user1@acme.com")
             acme = data_dict.get("tenants").get("Acme Inc.")
             session.execute(
-                text(
-                    mock_rls_vars(
+                func.un0.mock_authorize_user(
+                    *mock_rls_vars(
                         acme_user.get("email"),
-                        False,
-                        False,
-                        acme.get("id"),
                     )
                 )
             )
@@ -535,9 +529,7 @@ class TestUser:
             session.add(unauthorized_acme_user)
             with pytest.raises(ProgrammingError):
                 session.commit()
-    '''
 
-    '''
     #######################
     # Graph related tests #
     #######################
@@ -547,21 +539,19 @@ class TestUser:
         stmt = text(
             f"""
                 SELECT * FROM cypher('graph', $$
-                MATCH (u:User)
-                WHERE (u.id = '{superuser_id}')
+                MATCH (u:User {{id: '{superuser_id}'}})
                 RETURN properties(u)
                 $$) as (type agtype);
                 """
         )
         with session.begin():
-            session.execute(
-                func.un0.mock_authorize_user(*mock_rls_vars(superuser_id))
-            )
+            session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             admin_user = session.scalar(
                 select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
             )
             session.execute(func.un0.mock_role("admin"))
             admin_user_vertex = session.scalars(stmt)
+            assert admin_user_vertex is not None
             properties = json.loads(admin_user_vertex.first())
             assert properties["email"] == str(admin_user.email)
             assert properties["handle"] == str(admin_user.handle)
@@ -583,4 +573,3 @@ class TestUser:
             assert _graph_modified_at == admin_user.modified_at.replace(tzinfo=pytz.UTC)
             with pytest.raises(KeyError):
                 properties["deleted_at"]
-    '''

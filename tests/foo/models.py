@@ -17,7 +17,7 @@ from un0.rltd.models import RelatedObject, TableType
 
 
 class TestFoo(Base, BaseMixin):
-    __tablename__ = "test_foo"
+    __tablename__ = "testfoo"
     __table_args__ = (
         {
             "schema": "un0",
@@ -34,21 +34,21 @@ class TestFoo(Base, BaseMixin):
         doc="Primary Key",
     )
     name: Mapped[str_255] = mapped_column(
-        doc="Name of the test_foo.",
+        doc="Name of the testfoo.",
     )
     description: Mapped[Optional[str_255]] = mapped_column(
-        doc="Description of the test_foo.",
+        doc="Description of the testfoo.",
     )
     bar_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_bar.id", ondelete="CASCADE"),
+        ForeignKey("un0.testbar.id", ondelete="CASCADE"),
         index=True,
-        doc="Bar of the test_foo.",
+        doc="Bar of the testfoo.",
         info={"edge": "HAS_BAR"},
     )
 
 
 class TestBar(Base, BaseMixin):
-    __tablename__ = "test_bar"
+    __tablename__ = "testbar"
     __table_args__ = (
         {
             "schema": "un0",
@@ -65,21 +65,21 @@ class TestBar(Base, BaseMixin):
         doc="Primary Key",
     )
     name: Mapped[str_255] = mapped_column(
-        doc="Name of the test_foo.",
+        doc="Name of the testfoo.",
     )
     description: Mapped[Optional[str_255]] = mapped_column(
-        doc="Description of the test_foo.",
+        doc="Description of the testfoo.",
     )
     primary_baz_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_baz.id", ondelete="CASCADE"),
+        ForeignKey("un0.testbaz.id", ondelete="CASCADE"),
         index=True,
-        doc="Primary Baz of the test_bar.",
+        doc="Primary Baz of the testbar.",
         info={"edge": "HAS_PRIMARY_BAZ"},
     )
 
 
 class TestBaz(Base, BaseMixin):
-    __tablename__ = "test_baz"
+    __tablename__ = "testbaz"
     __table_args__ = (
         {
             "schema": "un0",
@@ -96,15 +96,15 @@ class TestBaz(Base, BaseMixin):
         doc="Primary Key",
     )
     name: Mapped[str_255] = mapped_column(
-        doc="Name of the test_foo.",
+        doc="Name of the testfoo.",
     )
     description: Mapped[Optional[str_255]] = mapped_column(
-        doc="Description of the test_foo.",
+        doc="Description of the testfoo.",
     )
 
 
 class TestFooBaz(Base):
-    __tablename__ = "test_foo_baz"
+    __tablename__ = "testfoo_baz"
     __table_args__ = (
         {
             "schema": "un0",
@@ -114,15 +114,15 @@ class TestFooBaz(Base):
     )
 
     # Columns
-    test_foo_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_foo.id", ondelete="CASCADE"),
+    testfoo_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.testfoo.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="Foo of the foo_bar.",
         info={"edge": "HAS_FOO"},
     )
-    test_baz_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_baz.id", ondelete="CASCADE"),
+    testbaz_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.testbaz.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="Bar of the foo_baz.",
@@ -131,7 +131,7 @@ class TestFooBaz(Base):
 
 
 class TestBarBaz(Base):
-    __tablename__ = "test_bar_baz"
+    __tablename__ = "testbar_baz"
     __table_args__ = (
         {
             "schema": "un0",
@@ -141,15 +141,15 @@ class TestBarBaz(Base):
     )
 
     # Columns
-    test_bar_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_bar.id", ondelete="CASCADE"),
+    testbar_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.testbar.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="Bar of the bar_baz.",
         info={"edge": "HAS_BAR"},
     )
-    test_baz_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.test_baz.id", ondelete="CASCADE"),
+    testbaz_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.testbaz.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="Bar of the bar_baz.",

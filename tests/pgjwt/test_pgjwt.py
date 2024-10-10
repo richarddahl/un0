@@ -45,7 +45,6 @@ class TestJWT:
             return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
         return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
 
-    '''
     def test_valid_jwt(self, session, create_test_functions):
         """Tests that a valid JWT token can be verified and the session variables set."""
         token = self.encode_test_token()
@@ -53,7 +52,7 @@ class TestJWT:
             result = session.execute(func.un0.authorize_user(token))
             assert result.scalars().first() is True
 
-            result = session.execute(func.un0.test_list_rls_vars())
+            result = session.execute(func.un0.testlist_rls_vars())
             session_variables = result.scalars().first()
             assert session_variables.get("email") == sttngs.SUPERUSER_EMAIL
             assert session_variables.get("id") != ""
@@ -128,4 +127,3 @@ class TestJWT:
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
             assert "user was deleted" in str(excinfo.value)
-    '''

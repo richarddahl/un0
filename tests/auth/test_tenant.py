@@ -24,21 +24,21 @@ class TestTenant:
     ):
         """Tests that a tenant can be read by a superuser with each of the db ROLEs."""
         with session as session:
-            session.execute(sa.text(mock_rls_vars))
+            session.execute(text(mock_rls_vars))
 
             # Test with admin role
             session.execute(func(un0.mock_role("admin")))
-            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            stmt = select(func.count()).select_from(Tenant)
             tenant_count = session.execute(stmt)
             assert tenant_count.scalar() == 4
 
             # Test with writer role
-            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            stmt = select(func.count()).select_from(Tenant)
             tenant_count = session.execute(stmt)
             assert tenant_count.scalar() == 4
 
             # Test with reader role
-            stmt = sa.select(sa.func.count()).select_from(Tenant)
+            stmt = select(func.count()).select_from(Tenant)
             tenant_count = session.execute(stmt)
             assert tenant_count.scalar() == 4
 
@@ -47,10 +47,10 @@ class TestTenant:
     def test_reader_role_cannot_create_tenant(self, session, db_name, mock_rls_vars):
         """Tests that a tenant cannot be created by the reader role."""
         with session as session:
-            session.execute(sa.text(mock_rls_vars))
+            session.execute(text(mock_rls_vars))
             un0tech = Tenant(name="un0.tech", tenant_type=TenantType.INDIVIDUAL)
             session.add(un0tech)
-            with pytest.raises(sa.exc.ProgrammingError):
+            with pytest.raises(exc.ProgrammingError):
                 session.commit()
 
     @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
@@ -58,7 +58,7 @@ class TestTenant:
     def test_writer_role_can_create_tenant(self, session, db_name, mock_rls_vars):
         """Tests that a tenant can be created by the writer role."""
         with session as session:
-            session.execute(sa.text(mock_rls_vars))
+            session.execute(text(mock_rls_vars))
             un0tech = Tenant(name="un0.tech", tenant_type=TenantType.INDIVIDUAL)
             session.add(un0tech)
             assert session.commit() is None
@@ -68,7 +68,7 @@ class TestTenant:
     def test_super_user_create_tenant(self, session, db_name, mock_rls_vars):
         """Tests that a tenant can be created by a superuser ."""
         with session as session:
-            session.execute(sa.text(mock_rls_vars))
+            session.execute(text(mock_rls_vars))
             new_tenant = Tenant(name="New Tenant", tenant_type=TenantType.ENTERPRISE)
             session.add(new_tenant)
             assert session.commit() is None
@@ -80,7 +80,7 @@ class TestTenant:
 async def test_group_dict_on_tenant_creation(async_session, admin_user):
     admin_user = await admin_user
     async with async_session() as session:
-        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_writer"))
+        await session.execute(text(f"SET ROLE {settings.DB_NAME}_writer"))
 
         acme = Tenant(name="Acme Inc.", tenant_type=TenantType.ENTERPRISE)
         nacme = Tenant(name="NAcme Inc.", tenant_type=TenantType.CORPORATE)
@@ -93,10 +93,10 @@ async def test_group_dict_on_tenant_creation(async_session, admin_user):
         await session.commit()
 
         tenant_count = await session.execute(
-            select(sa.func.count()).select_from(Tenant)
+            select(func.count()).select_from(Tenant)
         )
         assert tenant_count.scalar() == 4
-        group_count = await session.execute(select(sa.func.count()).select_from(Group))
+        group_count = await session.execute(select(func.count()).select_from(Group))
         assert group_count.scalar() == 4
 
 
@@ -104,8 +104,8 @@ async def test_group_dict_on_tenant_creation(async_session, admin_user):
 async def test_tenant_graphs(async_session, admin_user):
     admin_user = await admin_user
     async with async_session() as session:
-        await session.execute(sa.text(f"SET ROLE {settings.DB_NAME}_admin"))
-        stmt = sa.text(
+        await session.execute(text(f"SET ROLE {settings.DB_NAME}_admin"))
+        stmt = text(
             """
             SELECT * FROM cypher('graph', $$
             MATCH (c:Tenant)

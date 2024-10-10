@@ -22,21 +22,21 @@ class TestGroup:
     ):
         """Tests that a user can be read by a superuserwith each of the db ROLEs."""
         with session as session:
-            session.execute(sa.text(mock_rls_vars))
+            session.execute(text(mock_rls_vars))
 
             # Test with admin role
             session.execute(func(un0.mock_role("admin")))
-            stmt = sa.select(sa.func.count()).select_from(Group)
+            stmt = select(func.count()).select_from(Group)
             group_count = session.execute(stmt)
             assert group_count.scalar() == 4
 
             # Test with writer role
-            stmt = sa.select(sa.func.count()).select_from(Group)
+            stmt = select(func.count()).select_from(Group)
             group_count = session.execute(stmt)
             assert group_count.scalar() == 4
 
             # Test with reader role
-            stmt = sa.select(sa.func.count()).select_from(Group)
+            stmt = select(func.count()).select_from(Group)
             group_count = session.execute(stmt)
             assert group_count.scalar() == 4
         session.close()
