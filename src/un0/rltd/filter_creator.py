@@ -58,7 +58,7 @@ class FilterFieldCreator:
             if not table.name in ["groupauth__user"]:
                 continue
             for column in table.columns:
-                field_model = self.define_autofilter_field_model(column)
+                field_model = self.define_autofilterfield_model(column)
                 if self.db.exists_(field_model.exists_fields):
                     if settings.DEBUG:
                         print(f"{field_model} already exists")
@@ -66,7 +66,7 @@ class FilterFieldCreator:
                 print(f"Inserting {field_model}")
                 self.db.insert_(field_model.insert_fields)
 
-    def define_autofilter_field_model(self, column) -> AutoFilterField:
+    def define_autofilterfield_model(self, column) -> AutoFilterField:
         column_dict = {}
         try:
             column_dict["source_table"] = column.table.name
@@ -88,12 +88,12 @@ class FilterFieldCreator:
             ) from e
         try:
             print(column_dict)
-            autofilter_field = AutoFilterField(**column_dict)
+            autofilterfield = AutoFilterField(**column_dict)
         except TypeError as e:
             raise Exception(
                 f"{e} (Could not create AutoFilterField object for the column: {column.name} in the table: {column.table.name}.)"
             ) from e
-        return autofilter_field
+        return autofilterfield
 
     def set_destination(self, column):
         if not column.foreign_keys:

@@ -350,44 +350,44 @@ CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
 """
 
 
-CREATE_INSERT_TABLE_PERMISSION_FUNCTION_AND_TRIGGER = """
-CREATE OR REPLACE FUNCTION un0.insert_table_permissions()
+CREATE_INSERT_tablepermission_FUNCTION_AND_TRIGGER = """
+CREATE OR REPLACE FUNCTION un0.insert_tablepermissions()
     RETURNS TRIGGER
     LANGUAGE plpgsql
 AS $$
 BEGIN
     /*
     Function to create a new TablePermission record when a new TableType is inserted.
-    Records are created for each table_type with the following combinations of permissions:
+    Records are created for each tabletype with the following combinations of permissions:
         [SELECT]
         [SELECT, INSERT]
         [SELECT, UPDATE]
         [SELECT, INSERT, UPDATE]
         [SELECT, INSERT, UPDATE, DELETE]
-    Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
+    Deleted automatically by the DB via the FK Constraints ondelete when a tabletype is deleted.
     */
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.tablepermission(tabletype_id, actions)
         VALUES (NEW.id, ARRAY['SELECT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.tablepermission(tabletype_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.tablepermission(tabletype_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.tablepermission(tabletype_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE']::un0.permission_name[]);
-    INSERT INTO un0.table_permission(table_type_id, actions)
+    INSERT INTO un0.tablepermission(tabletype_id, actions)
         VALUES (NEW.id, ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']::un0.permission_name[]);
     RETURN NEW;
 END;
 $$;
 
 -- The trigger to call the function: AFTER INSERT
-CREATE OR REPLACE TRIGGER create_table_permissions_trigger
-    AFTER INSERT ON un0.table_type
+CREATE OR REPLACE TRIGGER create_tablepermissions_trigger
+    AFTER INSERT ON un0.tabletype
     FOR EACH ROW
-    EXECUTE FUNCTION un0.insert_table_permissions();
+    EXECUTE FUNCTION un0.insert_tablepermissions();
 """
 
-CREATE_GET_PERMISSIBLE_TABLE_PERMISSIONS_FUNCTION = """
+CREATE_GET_PERMISSIBLE_tablepermissionS_FUNCTION = """
 /* 
 Generate a SQL statement to retrieve all permissible groups for a given user.
 :param user_email: The email address of the user.
@@ -405,7 +405,7 @@ BEGIN
     from group g
     JOIN un0.user_group_role ugr ON ugr.group_id = g.id
     JOIN un0.user u ON u.id = ugr.user_email
-    JOIN un0.table_permission tp ON ugr.role_id = tp.id
+    JOIN un0.tablepermission tp ON ugr.role_id = tp.id
     WHERE u.id = session_user_id AND tp.is_active = TRUE
     AND tp.table_name = query_table_name;
 END;

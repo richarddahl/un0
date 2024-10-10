@@ -137,7 +137,7 @@ class Lookup(str, enum.Enum):
     CONTAINS = "contains"
 
 
-selectlookups = [
+select_lookups = [
     Lookup.EQUAL,
     Lookup.NOT_EQUAL,
     Lookup.NULL,

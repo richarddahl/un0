@@ -58,10 +58,10 @@ def change_table_owner_and_set_privileges(table: Table, db_name: str):
     """
 
 
-def create_table_type_record(schema, name):
+def create_tabletype_record(schema, name):
     return f"""
-    -- Create the table_type record
-    INSERT INTO un0.table_type (schema, name) VALUES ('{schema}', '{name}');
+    -- Create the tabletype record
+    INSERT INTO un0.tabletype (schema, name) VALUES ('{schema}', '{name}');
     """
 
 
@@ -457,28 +457,28 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 """
 
 
-CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
-CREATE OR REPLACE FUNCTION un0.insert_related_object(schema_name VARCHAR, table_name VARCHAR)
+CREATE_INSERT_relatedobjectfunction = """
+CREATE OR REPLACE FUNCTION un0.insert_relatedobject(schema_name VARCHAR, table_name VARCHAR)
 RETURNS VARCHAR(26)
 LANGUAGE plpgsql
 AS $$
 DECLARE
     rel_obj_id VARCHAR(26);
-    table_type_id INT;
+    tabletype_id INT;
 BEGIN
     /*
-    Function used to insert a record into the related_object table, when a record is inserted
-    into a table that has a PK that is a FK to the related_object table.
+    Function used to insert a record into the relatedobject table, when a record is inserted
+    into a table that has a PK that is a FK to the relatedobject table.
     */
     SELECT id
-        FROM un0.table_type
+        FROM un0.tabletype
         WHERE schema = schema_name AND name = table_name
-        INTO table_type_id;
+        INTO tabletype_id;
 
     rel_obj_id := un0.generate_ulid(); 
 
-    INSERT INTO un0.related_object (id, table_type_id)
-    VALUES (rel_obj_id, table_type_id);
+    INSERT INTO un0.relatedobject (id, tabletype_id)
+    VALUES (rel_obj_id, tabletype_id);
 
     RETURN rel_obj_id;
 END;

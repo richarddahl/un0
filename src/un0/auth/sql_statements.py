@@ -18,7 +18,7 @@ def get_permissible_groups_for_user(user_id: int, session: Session) -> str:
     from group g
     JOIN un0.user_group_role ugr ON ugr.group_id = g.id
     JOIN un0.user u ON u.id = ugr.user_id
-    JOIN un0.table_permission tp ON ugr.role_id = tp.id
+    JOIN un0.tablepermission tp ON ugr.role_id = tp.id
     WHERE u.id = {user_id} AND tp.is_active = TRUE
     """
     return raw_sql

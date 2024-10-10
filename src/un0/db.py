@@ -183,9 +183,9 @@ class BaseMixin:
     # Relationships
     # @declared_attr
     # @classmethod
-    # def related_object(cls) -> Mapped["RelatedObject"]:
+    # def relatedobject(cls) -> Mapped["RelatedObject"]:
     #    return relationship(
-    #        back_populates="related_object",
+    #        back_populates="relatedobject",
     #        doc="Related Object of the record",
     #    )
 
@@ -240,7 +240,7 @@ class RBACMixin:
     # @declared_attr
     # def group(cls) -> Mapped["Group"]:
     #    return relationship(
-    #        back_populates="related_object",
+    #        back_populates="relatedobject",
     #        foreign_keys=[cls.group_id],
     #        doc="Group of the record",
     #    )
