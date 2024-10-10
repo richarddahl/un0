@@ -23,6 +23,36 @@ class ColumnSecurity(str, enum.Enum):
     SYSTEM = "system"
 
 
+class FieldType(str, enum.Enum):
+    """
+    Enumeration class for querying the database.
+
+    This class represents the two type of fields that can be used in a query.
+
+    Attributes:
+        PROPERTY (str): The field is a property of an edge or a vertex.
+        EDGE (str): The field is an edge.
+    """
+
+    PROPERTY = "Property"
+    EDGE = "Edge"
+
+
+class EdgeDirection(str, enum.Enum):
+    """
+    Enumeration class for querying the database.
+
+    This class represents the direction of an edge to a vertex.
+
+    Attributes:
+        FROM (str): The edge is from the vertex.
+        TO (str): The edge is to the vertex.
+    """
+
+    FROM = "From"
+    TO = "To"
+
+
 class Include(str, enum.Enum):
     """
     Enumeration class for querying the database.
@@ -103,7 +133,7 @@ class Lookup(str, enum.Enum):
     CONTAINS = "contains"
 
 
-selectlookups = [
+select_lookups = [
     Lookup.EQUAL.name,
     Lookup.NOT_EQUAL.name,
     Lookup.NULL.name,
