@@ -30,10 +30,10 @@ class Message(Base, BaseMixin, RBACMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -134,10 +134,10 @@ class Attachment(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )

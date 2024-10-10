@@ -13,9 +13,9 @@ from un0.db import Base, str_26, str_255  # type: ignore
 class TableType(Base):
     """Table Types identify the tables in the database, similar to contenttypes in Django"""
 
-    __tablename__ = "table_type"
+    __tablename__ = "tabletype"
     __table_args__ = (
-        UniqueConstraint("schema", "name", name="uq_table_type_schema_name"),
+        UniqueConstraint("schema", "name", name="uq_tabletype_schema_name"),
         {
             "schema": "un0",
             "comment": "Table Types identify the tables in the database, similar to contenttypes in Django",
@@ -40,7 +40,7 @@ class RelatedObject(Base):
     allowing for a single point of reference for queries, workflows, and reports
     """
 
-    __tablename__ = "related_object"
+    __tablename__ = "relatedobject"
     __table_args__ = {
         "schema": "un0",
         "comment": textwrap.dedent(
@@ -57,9 +57,9 @@ class RelatedObject(Base):
         doc="Primary Key",
     )
 
-    table_type_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        info={"edge": "HAS_TABLE_TYPE"},
+    tabletype_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
+        info={"edge": "HAS_tabletype"},
     )
 
     # Relationships

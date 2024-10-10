@@ -106,31 +106,31 @@ class Workflow(Base):
         index=True,
         # info={"edge": "IS_CHILD_OF_WORKFLOW"},
     )
-    applicable_table_type_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        # info={"edge": "IS_WORKFLOW_FOR_TABLE_TYPE"},
+    applicable_tabletype_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
+        # info={"edge": "IS_WORKFLOW_FOR_tabletype"},
     )
-    record_table_type_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
-        # info={"edge": "HAS_WORKFLOW_RECORD_OF_TABLE_TYPE"},
+    record_tabletype_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
+        # info={"edge": "HAS_workflowrecord_OF_tabletype"},
     )
     objectfunction_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.object_function.id", ondelete="SET NULL"),
+        ForeignKey("un0.objectfunction.id", ondelete="SET NULL"),
         index=True,
-        # info={"edge": "IS_COMPLETED_BY_OBJECT_FUNCTION"},
+        # info={"edge": "IS_COMPLETED_BY_objectfunction"},
     )
     process_child_value: Mapped[bool] = mapped_column(
         server_default=text("true"),
         doc="The value returned by the Object Function that indicates that any child Workflows must be processed",
     )
     Index(
-        "ix_workflow_applicable_table_type_id",
-        "applicable_table_type_id",
+        "ix_workflow_applicable_tabletype_id",
+        "applicable_tabletype_id",
         unique=True,
     )
     Index(
-        "ix_workflow_record_table_type_id",
-        "record_table_type_id",
+        "ix_workflowrecord_tabletype_id",
+        "record_tabletype_id",
         unique=True,
     )
 
@@ -138,17 +138,17 @@ class Workflow(Base):
 
 
 class WorkflowEvent(Base, BaseMixin, RBACMixin):
-    __tablename__ = "workflow_event"
+    __tablename__ = "workflowevent"
     __table_args__ = {
         "schema": "un0",
         "comment": "Manually created or trigger created workflow activities",
     }
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -159,11 +159,11 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     )
     date_due: Mapped[datetime.date] = mapped_column(doc="Date the workflow is due")
     workflow_object_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_EVENT_FOR"},
     )
-    object_function_return_value: Mapped[Optional[bool]] = mapped_column(
+    objectfunction_return_value: Mapped[Optional[bool]] = mapped_column(
         doc="Value returned by the Object Function to indicate the workflow is complete"
     )
 
@@ -171,22 +171,22 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
 
 
 class WorkflowRecord(Base, BaseMixin, RBACMixin):
-    __tablename__ = "workflow_record"
+    __tablename__ = "workflowrecord"
     __table_args__ = {
         "schema": "un0",
         "comment": "Records of workflow events",
     }
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
-    workflow_event_id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.workflow_event.id", ondelete="CASCADE"),
+    workflowevent_id: Mapped[str_26] = mapped_column(
+        ForeignKey("un0.workflowevent.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_RECORD_OF"},
     )
@@ -213,15 +213,15 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
     comment: Mapped[str] = mapped_column(
         doc="User defined or auto-generated comment on the workflow execution",
     )
-    workflow_record_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+    workflowrecord_id: Mapped[Optional[str_26]] = mapped_column(
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "RECORDS_EXECUTION"},
     )
     # ForeignKeyConstraint(
-    #    ["workflow_record_id"],
-    #    ["un0.related_object.id"],
-    #    name="fk_workflow_record_record_related_object_id",
+    #    ["workflowrecord_id"],
+    #    ["un0.relatedobject.id"],
+    #    name="fk_workflowrecord_record_relatedobject_id",
     #    ondelete="CASCADE",
     # )
 
@@ -229,7 +229,7 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
 
 
 class ObjectFunction(Base):
-    __tablename__ = "object_function"
+    __tablename__ = "objectfunction"
     __table_args__ = {
         "schema": "un0",
         "comment": "Functions that can be called by user-defined workflows and reports",
@@ -248,9 +248,9 @@ class ObjectFunction(Base):
         doc="Documentation of the function"
     )
     name: Mapped[str] = mapped_column(doc="Name of the function")
-    function_table_type_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+    function_tabletype_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
         index=True,
-        # info={"edge": "IS_OF_TABLE_TYPE"},
+        # info={"edge": "IS_OF_tabletype"},
     )
     # Relationships

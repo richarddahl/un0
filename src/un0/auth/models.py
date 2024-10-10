@@ -43,10 +43,10 @@ class Tenant(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -95,10 +95,10 @@ class User(Base):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -218,12 +218,12 @@ class User(Base):
 
 
 class TablePermission(Base):
-    __tablename__ = "table_permission"
+    __tablename__ = "tablepermission"
     __table_args__ = (
         UniqueConstraint(
-            "table_type_id",
+            "tabletype_id",
             "actions",
-            name="uq_table_type_actions",
+            name="uq_tabletype_actions",
         ),
         {
             "schema": "un0",
@@ -236,16 +236,16 @@ class TablePermission(Base):
                     [SELECT, UPDATE]
                     [SELECT, INSERT, UPDATE]
                     [SELECT, INSERT, UPDATE, DELETE]
-                Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
+                Deleted automatically by the DB via the FK Constraints ondelete when a tabletype is deleted.
             """,
             "info": {"rls_policy": "superuser", "vertex": False},
         },
     )
     id: Mapped[int] = mapped_column(Identity(start=1, cycle=False), primary_key=True)
-    table_type_id: Mapped[TableType] = mapped_column(
-        ForeignKey("un0.table_type.id", ondelete="CASCADE"),
+    tabletype_id: Mapped[TableType] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "HAS_TABLE_TYPE"},
+        info={"edge": "HAS_tabletype"},
     )
     actions: Mapped[list[PermissionAction]] = mapped_column(
         ARRAY(
@@ -260,10 +260,10 @@ class TablePermission(Base):
     )
 
     def __str__(self) -> str:
-        return f"{self.table_type} - {self.actions}"
+        return f"{self.tabletype} - {self.actions}"
 
     def __repr__(self) -> str:
-        return f"<TablePermission {self.table_type} - {self.actions}>"
+        return f"<TablePermission {self.tabletype} - {self.actions}>"
 
 
 class Role(Base, BaseMixin):
@@ -283,10 +283,10 @@ class Role(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -308,7 +308,7 @@ class Role(Base, BaseMixin):
 
 
 class RoleTablePermission(Base):
-    __tablename__ = "role_table_permission"
+    __tablename__ = "role_tablepermission"
     __table_args__ = (
         {
             "comment": """
@@ -327,19 +327,19 @@ class RoleTablePermission(Base):
         doc="Role ID",
         info={"edge": "HAS_ROLE"},
     )
-    table_permission_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.table_permission.id", ondelete="CASCADE"),
+    tablepermission_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.tablepermission.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
         doc="Table Permission ID",
-        info={"edge": "HAS_TABLE_PERMISSION"},
+        info={"edge": "HAS_tablepermission"},
     )
 
     def __str__(self) -> str:
-        return f"{self.role_id} - {self.table_permission_id}"
+        return f"{self.role_id} - {self.tablepermission_id}"
 
     def __repr__(self) -> str:
-        return f"<RoleTablePermission {self.role_id} - {self.table_permission_id}>"
+        return f"<RoleTablePermission {self.role_id} - {self.tablepermission_id}>"
 
 
 class Group(Base, BaseMixin):
@@ -357,10 +357,10 @@ class Group(Base, BaseMixin):
     # Columns
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
+        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_related_object("un0", "user"),
+        server_default=func.un0.insert_relatedobject("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
