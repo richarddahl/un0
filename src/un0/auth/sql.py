@@ -350,7 +350,7 @@ CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
 """
 
 
-CREATE_INSERT_tablepermission_FUNCTION_AND_TRIGGER = """
+CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER = """
 CREATE OR REPLACE FUNCTION un0.insert_tablepermissions()
     RETURNS TRIGGER
     LANGUAGE plpgsql

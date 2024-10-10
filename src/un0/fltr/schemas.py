@@ -12,16 +12,16 @@ from sqlalchemy import Table, Column
 from un0.schemas import UnoBaseSchema
 from un0.utilities import convert_snake_to_capital_word
 from un0.fltr.enums import (  # type: ignore
-    FieldType,
+    GraphType,
     Include,
     Match,
     Lookup,
     ColumnSecurity,
-    select_lookups,
+    related_lookups,
     numeric_lookups,
     string_lookups,
 )
-from un0.fltr.models import FilterVertex, FilterEdge, FilterField
+from un0.fltr.models import FilterField
 from un0.config import settings as sttngs
 
 
@@ -56,7 +56,7 @@ class PropertySchema(UnoBaseSchema):
 
     # name: str <- computed_field
     # data_type: str <- computed_field
-    # lookup: Lookup <- computed_field
+    # lookups: Lookup <- computed_field
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -71,7 +71,7 @@ class PropertySchema(UnoBaseSchema):
         # return f"quote_nullable(NEW.{self.column.name}::TEXT)"
 
     @computed_field
-    def lookup(self) -> Lookup:
+    def lookups(self) -> Lookup:
         if self.column.type.python_type in [
             int,
             float,
@@ -93,6 +93,7 @@ class VertexSchema(UnoBaseSchema):
 
     table: Table
     column: Column
+    lookups: list[Lookup] = related_lookups
 
     # label: str <- computed_field
     # data_type: str <- computed_field
@@ -280,6 +281,7 @@ class EdgeSchema(UnoBaseSchema):
     table: Table
     start_column: Column
     end_column: Column
+    lookups: list[Lookup] = related_lookups
 
     # label: str <- computed_field
     # start_vertex: VertexSchema <- computed_field
@@ -290,7 +292,7 @@ class EdgeSchema(UnoBaseSchema):
 
     @computed_field
     def label(self) -> str:
-        return self.start_column.info.get("edge")
+        return self.end_column.info.get("edge")
 
     @computed_field
     def start_vertex(self) -> VertexSchema:
@@ -473,6 +475,7 @@ class GraphedTableSchema(UnoBaseSchema):
 
     # vertex: VertexSchema | None <- computed_field
     # edges: list[EdgeSchema] | None <- computed_field
+    # field_set: list[FilterFieldSchema] | None <- computed_field
 
     @computed_field
     def vertex(self) -> VertexSchema | None:
@@ -488,7 +491,7 @@ class GraphedTableSchema(UnoBaseSchema):
         )
 
     @computed_field
-    def edges(self) -> list["EdgeSchema"] | None:
+    def edges(self) -> list[EdgeSchema] | None:
         edges = []
         if self.table.info.get("vertex", True) is False:
             """
@@ -503,6 +506,7 @@ class GraphedTableSchema(UnoBaseSchema):
                         edges.append(
                             EdgeSchema(
                                 table=self.table,
+                                db_name=self.db_name,
                                 start_column=fk.parent,
                                 end_column=column,
                             )
@@ -526,6 +530,47 @@ class GraphedTableSchema(UnoBaseSchema):
                         )
 
         return edges
+
+    @computed_field
+    def field_set(self) -> list["FilterFieldSchema"] | None:
+        field_set = []
+        if self.vertex:
+            field_set.append(
+                FilterFieldSchema(
+                    table=self.table,
+                    db_name=self.db_name,
+                    column=self.table.columns["id"],
+                    graph_type=GraphType.VERTEX,
+                    vertex=self.vertex,
+                    edge=None,
+                    prop=None,
+                )
+            )
+            for prop in self.vertex.properties:
+                field_set.append(
+                    FilterFieldSchema(
+                        table=self.table,
+                        db_name=self.db_name,
+                        column=prop.column,
+                        graph_type=GraphType.PROPERTY,
+                        prop=prop,
+                        vertex=None,
+                        edge=None,
+                    )
+                )
+        for edge in self.edges:
+            field_set.append(
+                FilterFieldSchema(
+                    table=self.table,
+                    db_name=self.db_name,
+                    column=edge.end_column,
+                    graph_type=GraphType.EDGE,
+                    edge=edge,
+                    vertex=None,
+                    prop=None,
+                )
+            )
+        return field_set
 
     def generate_sql(self) -> str:
         sql = ""
@@ -577,74 +622,49 @@ class GraphedTableSchema(UnoBaseSchema):
                     for edge in self.edges
                 ]
             )
+
             sql += f"{edge_label_sql}\n{edge_insert_sql}\n{edge_update_sql}\n{edge_delete_sql}\n{edge_truncate_sql}"
+        sql += "\n".join([field.insert_sql() for field in self.field_set])
         return sql
 
 
 class FilterFieldSchema(UnoBaseSchema):
-    """
-    FilterFieldSchema is a class representing a relational table column manifested as an Apache AGE graph object.
-    """
+    """ """
 
     # table: Table <- UnoBaseSchema
     # db_name: str <- UnoBaseSchema
 
-    # edge: EdgeSchema | None <- computed_field
-    # prop: PropertySchema | None <- computed_field
+    # data_type: str <- computed_field
     # lookups: list[Lookup] <- computed_field
+    # label: str <- computed_field
 
+    vertex: VertexSchema | None
+    edge: EdgeSchema | None
+    prop: PropertySchema | None
     column: Column
-    field_type: FieldType = FieldType.PROPERTY
+    graph_type: GraphType = GraphType.PROPERTY
 
     @computed_field
-    def prop(self) -> PropertySchema | None:
-        if self.field_type == FieldType.PROPERTY:
-            return PropertySchema(
-                table=self.table, db_name=self.db_name, column=self.column
-            )
-        return None
-
-    @computed_field
-    def edge(self) -> EdgeSchema | None:
-        if self.field_type == FieldType.EDGE:
-            if self.table.info.get("vertex", True):
-                """
-                Normal table
-                Edges are created between the vertex and each of the foreign keys in the table.
-                """
-                for column in self.table.columns:
-                    for fk in column.foreign_keys:
-                        if self.column == column:
-                            continue
-                        return EdgeSchema(start_column=self.column, end_column=column)
-            else:
-                """
-                Association table
-                Edges are created between each of the foreign keys in the table.
-                """
-                for fk in self.table.foreign_keys:
-                    for column in self.table.columns:
-                        if fk.parent.name == column.name:
-                            continue
-                        for _fk in column.foreign_keys:
-                            return EdgeSchema(start_column=fk.parent, end_column=column)
-        return None
-
-    @computed_field
-    def lookups(self) -> list["Lookup"]:
+    def data_type(self) -> str:
         if self.vertex:
-            return select_lookups
-        if self.data_type in [
-            "int",
-            "float",
-            "Decimal",
-            "datetime",
-            "date",
-            "time",
-        ]:
-            return numeric_lookups
-        else:
-            return string_lookups
+            return GraphType.VERTEX
+        if self.edge:
+            return GraphType.EDGE
+        return GraphType.PROPERTY
+
+    @computed_field
+    def lookups(self) -> list[Lookup]:
+        if self.prop:
+            return self.prop.lookups
+        return related_lookups
+
+    @computed_field
+    def label(self) -> str:
+        if self.vertex:
+            return self.vertex.label
+        if self.edge:
+            return self.edge.label
+        return self.prop.name
 
     def insert_sql(self) -> str:
         return textwrap.dedent(
@@ -652,27 +672,40 @@ class FilterFieldSchema(UnoBaseSchema):
             SET ROLE {self.db_name}_admin;
             -- Create the FilterField
             INSERT INTO un0.filterfield(
-                field_name,
-                field_label,
-                field_type,
-                includes,
-                matches,
-                lookups,
-                column_security
+                name,
+                accessor,
+                data_type,
+                graph_type,
+                lookups
             )
             VALUES (
                 '{self.column.name}',
                 '{self.label}',
                 '{self.data_type}',
-                ARRAY['INCLUDE', 'EXCLUDE']::un0.include[],
-                ARRAY['AND', 'OR', 'NOT']::un0.match[],
-                ARRAY{self.lookups}::un0.lookup[],
-                'PUBLIC'
+                '{self.graph_type.name}',
+                ARRAY{self.lookups}::un0.lookup[]
             )
-            ON CONFLICT (field_name, field_data_type) DO NOTHING;
+            ON CONFLICT (accessor, graph_type) DO NOTHING;
+
+            -- Associate the FilterField with the TableType
+            INSERT INTO un0.filterfield_tabletype (
+                filterfield_id,
+                tabletype_id
+            )
+            SELECT
+                f.id,
+                t.id
+            FROM un0.tabletype t
+            JOIN un0.filterfield f
+            ON t.schema = '{self.table.schema}'
+            AND t.name = '{self.table.name}'
+            AND f.name = '{self.column.name}'
+            AND f.graph_type = '{self.graph_type.name}'
+            ON CONFLICT (filterfield_id, tabletype_id) DO NOTHING;
             """
         )
 
+    '''
     def insert_filtervertex_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -712,7 +745,7 @@ class FilterFieldSchema(UnoBaseSchema):
             INSERT INTO un0.filteredge(
                 label
             )
-            VALUES('{edge.label}')
+            VALUES('{self.edge.label}')
             ON CONFLICT (label) DO NOTHING;
 
             -- Associate the FilterField with the FilterVertex
@@ -726,7 +759,8 @@ class FilterFieldSchema(UnoBaseSchema):
             FROM un0.filterfield f
             JOIN un0.filteredge e
             ON f.field_name = '{self.name}'
-            AND e.label = '{edge.label}'
+            AND e.label = '{self.edge.label}'
             ON CONFLICT (field_id, edge_id) DO NOTHING
             """
         )
+    '''

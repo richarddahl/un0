@@ -59,7 +59,7 @@ class RelatedObject(Base):
 
     tabletype_id: Mapped[int] = mapped_column(
         ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
-        info={"edge": "HAS_tabletype"},
+        info={"edge": "HAS_TABLETYPE"},
     )
 
     # Relationships

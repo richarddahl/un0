@@ -55,7 +55,7 @@ class Match(str, enum.Enum):
     NOT = "NOT"
 
 
-class FieldType(str, enum.Enum):
+class GraphType(str, enum.Enum):
     """
     Enumeration class representing the possible field types in the Uno application.
 
@@ -137,7 +137,7 @@ class Lookup(str, enum.Enum):
     CONTAINS = "contains"
 
 
-select_lookups = [
+related_lookups = [
     Lookup.EQUAL,
     Lookup.NOT_EQUAL,
     Lookup.NULL,

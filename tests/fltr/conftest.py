@@ -5,7 +5,7 @@
 import pytest  # type: ignore
 from sqlalchemy import create_engine
 
-from un0.fltr.models import FilterVertex, FilterEdge, FilterField
+from un0.fltr.models import FilterField
 from un0.config import settings as sttngs
 
 

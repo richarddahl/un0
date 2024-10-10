@@ -27,7 +27,7 @@ from un0.cmd.sql import (
     create_history_table_trigger,
     CREATE_EXTENSIONS,
     SET_PGMETA_CONFIG,
-    CREATE_INSERT_relatedobjectfunction,
+    CREATE_INSERT_RELATEDOBJECTFUNCTION,
     CREATE_SET_OWNER_AND_MODIFIED_FUNCTION,
     CREATE_VALIDATE_DELETE_FUNCTION,
     CREATE_PGULID,
@@ -35,12 +35,12 @@ from un0.cmd.sql import (
 
 from un0.auth.sql import (
     create_superuser,
+    create_authorize_user_function,
     CREATE_TOKEN_SECRET,
     CREATE_TOKEN_SECRET_TABLE,
-    create_authorize_user_function,
     CREATE_USER_TABLE_RLS_SELECT_POLICY,
     CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER,
-    CREATE_INSERT_tablepermission_FUNCTION_AND_TRIGGER,
+    CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER,
 )
 
 from un0.fltr.schemas import GraphedTableSchema
@@ -119,7 +119,7 @@ def create_schemas_extensions_and_tables(db_name: str = settings.DB_NAME) -> Non
         conn.execute(text(CREATE_TOKEN_SECRET))
 
         print("Creating the insert related object function\n")
-        conn.execute(text(CREATE_INSERT_relatedobjectfunction))
+        conn.execute(text(CREATE_INSERT_RELATEDOBJECTFUNCTION))
 
         print("Creating the set users before insert or update function\n")
         conn.execute(text(CREATE_SET_OWNER_AND_MODIFIED_FUNCTION))
@@ -155,7 +155,7 @@ def create_auth_functions_and_triggers(db_name: str = settings.DB_NAME) -> None:
 
         print("Creating auth functions and triggers\n")
         conn.execute(text(CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER))
-        conn.execute(text(CREATE_INSERT_tablepermission_FUNCTION_AND_TRIGGER))
+        conn.execute(text(CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER))
         conn.execute(text(create_authorize_user_function(db_name=db_name)))
         # conn.execute(text(CREATE_GET_PERMISSIBLE_tablepermissionS_FUNCTION))
 

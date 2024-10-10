@@ -245,7 +245,7 @@ class TablePermission(Base):
     tabletype_id: Mapped[TableType] = mapped_column(
         ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "HAS_tabletype"},
+        info={"edge": "HAS_TABLETYPE"},
     )
     actions: Mapped[list[PermissionAction]] = mapped_column(
         ARRAY(
@@ -332,7 +332,7 @@ class RoleTablePermission(Base):
         index=True,
         primary_key=True,
         doc="Table Permission ID",
-        info={"edge": "HAS_tablepermission"},
+        info={"edge": "HAS_TABLEPERMISSION"},
     )
 
     def __str__(self) -> str:

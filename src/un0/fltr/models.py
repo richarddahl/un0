@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import (
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 
 from un0.fltr.enums import (  # type: ignore
-    FieldType,
+    GraphType,
     EdgeDirection,
     Include,
     Match,
@@ -32,7 +32,7 @@ from un0.fltr.enums import (  # type: ignore
 from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
-
+"""
 class FilterVertex(Base):
     __tablename__ = "filtervertex"
     __table_args__ = (
@@ -163,13 +163,14 @@ class FilterFieldFilterEdge(Base):
     )
 
 
+"""
+
+
 class FilterField(Base):
     __tablename__ = "filterfield"
     __table_args__ = (
-        UniqueConstraint(
-            "field_name", "field_data_type", name="uq_field_name_field_data_type"
-        ),
-        Index("ix_field_name_field_data_type", "field_name", "field_data_type"),
+        UniqueConstraint("accessor", "graph_type", name="uq_accessor_graph_type"),
+        Index("ix_accessor_data_type", "accessor", "data_type"),
         {
             "schema": "un0",
             "comment": "Used to enable user-defined filtering using the graph vertices and edges.",
@@ -184,37 +185,17 @@ class FilterField(Base):
         index=True,
         doc="Primary Key",
     )
-    field_name: Mapped[str_255] = mapped_column()
-    field_label: Mapped[str_255] = mapped_column()
-    field_data_type: Mapped[str_26] = mapped_column()
-    field_type: Mapped[ColumnSecurity] = mapped_column(
+    name: Mapped[str_255] = mapped_column()
+    accessor: Mapped[str_255] = mapped_column()
+    data_type: Mapped[str_26] = mapped_column()
+    graph_type: Mapped[ColumnSecurity] = mapped_column(
         ENUM(
-            FieldType,
-            name="fieldtype",
+            GraphType,
+            name="graphtype",
             create_type=True,
             schema="un0",
         ),
-        default=FieldType.PROPERTY,
-    )
-    includes: Mapped[list[Include]] = mapped_column(
-        ARRAY(
-            ENUM(
-                Include,
-                name="include",
-                create_type=True,
-                schema="un0",
-            )
-        )
-    )
-    matches: Mapped[list[Match]] = mapped_column(
-        ARRAY(
-            ENUM(
-                Match,
-                name="match",
-                create_type=True,
-                schema="un0",
-            )
-        )
+        default=GraphType.PROPERTY,
     )
     lookups: Mapped[list[Lookup]] = mapped_column(
         ARRAY(
@@ -226,14 +207,31 @@ class FilterField(Base):
             )
         )
     )
-    column_security: Mapped[ColumnSecurity] = mapped_column(
-        ENUM(
-            ColumnSecurity,
-            name="columsecurity",
-            create_type=True,
-            schema="un0",
-        ),
-        default=ColumnSecurity.PUBLIC,
+
+
+class FilterFieldTableType(Base):
+    __tablename__ = "filterfield_tabletype"
+    __table_args__ = (
+        Index("ix_filterfield_id_tabletype_id", "filterfield_id", "tabletype_id"),
+        {
+            "schema": "un0",
+            "comment": "A FilterField associated with a TableType.",
+            "info": {"rls_policy": False, "graph": False},
+        },
+    )
+
+    # Columns
+    filterfield_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.filterfield.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="The filterfield associated with a tabletype.",
+    )
+    tabletype_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="The tabletype associated with a filterfield.",
     )
 
 
@@ -450,7 +448,7 @@ class QueryFilterValue(Base, BaseMixin):
         ForeignKey("un0.filtervalue.id", ondelete="CASCADE"),
         index=True,
         primary_key=True,
-        info={"edge": "QUERIES_filtervalue"},
+        info={"edge": "QUERIES_FILTERVALUE"},
     )
 
     # Relationships
@@ -486,7 +484,7 @@ class QuerySubquery(Base, BaseMixin):
         index=True,
         primary_key=True,
         doc="The subquery associated with the query.",
-        info={"edge": "HAS_CHILD_QUERY"},
+        info={"edge": "HAS_SUBQUERY"},
     )
 
     # Relationships

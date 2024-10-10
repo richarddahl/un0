@@ -12,7 +12,7 @@ from un0.db.enumerations import (  # type: ignore
     Match,
     Lookup,
     FilterValue,
-    select_lookups,
+    related_lookups,
     numeric_lookups,
     string_lookups,
 )
@@ -117,5 +117,5 @@ class FilterFieldCreator:
             FilterValue.TIMESTAMP,
         ]:
             return numeric_lookups
-        return select_lookups
+        return related_lookups
 """

@@ -457,7 +457,7 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 """
 
 
-CREATE_INSERT_relatedobjectfunction = """
+CREATE_INSERT_RELATEDOBJECTFUNCTION = """
 CREATE OR REPLACE FUNCTION un0.insert_relatedobject(schema_name VARCHAR, table_name VARCHAR)
 RETURNS VARCHAR(26)
 LANGUAGE plpgsql

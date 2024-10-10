@@ -23,19 +23,21 @@ class ColumnSecurity(str, enum.Enum):
     SYSTEM = "system"
 
 
-class FieldType(str, enum.Enum):
+class GraphType(str, enum.Enum):
     """
     Enumeration class for querying the database.
 
     This class represents the two type of fields that can be used in a query.
 
     Attributes:
-        PROPERTY (str): The field is a property of an edge or a vertex.
+        VERTEX (str): The field is a vertex.
         EDGE (str): The field is an edge.
+        PROPERTY (str): The field is a property of a vertex or edge.
     """
 
-    PROPERTY = "Property"
     EDGE = "Edge"
+    VERTEX = "Vertex"
+    PROPERTY = "Property"
 
 
 class EdgeDirection(str, enum.Enum):
@@ -133,7 +135,7 @@ class Lookup(str, enum.Enum):
     CONTAINS = "contains"
 
 
-select_lookups = [
+related_lookups = [
     Lookup.EQUAL.name,
     Lookup.NOT_EQUAL.name,
     Lookup.NULL.name,
