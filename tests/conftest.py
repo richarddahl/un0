@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import func, select, delete, text, create_engine
 from sqlalchemy.orm import sessionmaker
 
-from un0.cmd import create_db, drop_db, create_superuser
+from un0.cmd import create_db, drop_db
 from un0.auth.models import Tenant, Group, User
 from un0.auth.enums import TenantType
 from un0.config import settings as sttngs
@@ -98,7 +98,7 @@ $$;
 """
 
 
-def create_mock_role_function(db_name: str = sttngs.DB_NAME):
+def create_mock_role_function():
     return textwrap.dedent(
         f"""
         CREATE OR REPLACE FUNCTION un0.mock_role(role_name VARCHAR)
@@ -106,7 +106,7 @@ def create_mock_role_function(db_name: str = sttngs.DB_NAME):
         LANGUAGE plpgsql
         AS $$
         DECLARE
-            full_role_name VARCHAR:= '{db_name}_' || role_name;
+            full_role_name VARCHAR:= '{sttngs.DB_NAME}_' || role_name;
         BEGIN
             /*
             Function used to set the role of the current session to
@@ -149,8 +149,8 @@ def mock_rls_vars(
 
 
 @pytest.fixture(scope="class")
-def db_url(db_name):
-    return f"{sttngs.DB_DRIVER}://{db_name}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{db_name}"
+def db_url():
+    return f"{sttngs.DB_DRIVER}://{sttngs.DB_NAME}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{sttngs.DB_NAME}"
 
 
 @pytest.fixture(scope="class")
@@ -159,10 +159,10 @@ def engine(db_url):
 
 
 @pytest.fixture(scope="class")
-def superuser_id(db_name):
+def superuser_id():
     """Creates the database and returns the superuser id."""
-    drop_db.drop(db_name)
-    superuser_id = create_db.create(db_name)
+    drop_db.drop()
+    superuser_id = create_db.create()
     yield superuser_id
 
 
@@ -174,11 +174,13 @@ def session(engine, superuser_id, create_test_functions):
 
 
 @pytest.fixture(scope="class")
-def create_test_functions(db_name) -> None:
-    eng = create_engine(f"{sttngs.DB_DRIVER}://{db_name}_login@/{db_name}")
+def create_test_functions() -> None:
+    eng = create_engine(
+        f"{sttngs.DB_DRIVER}://{sttngs.DB_NAME}_login@/{sttngs.DB_NAME}"
+    )
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(f"SET ROLE {db_name}_admin"))
-        conn.execute(text(create_mock_role_function(db_name)))
+        conn.execute(text(f"SET ROLE {sttngs.DB_NAME}_admin"))
+        conn.execute(text(create_mock_role_function()))
         conn.execute(text(CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION))
         conn.execute(text(CREATE_TEST_LIST_USER_VARS_FUNCTION))
         conn.execute(text(CREATE_TEST_MOCK_AUTHORIZE_USER_FUNCTION))
