@@ -6,11 +6,7 @@ import pytest  # type: ignore
 
 from un0.auth.models import User
 from tests.conftest import mock_rls_vars
-
-
-@pytest.fixture(scope="session")
-def db_name():
-    return "un0_test_auth"
+from un0.config import settings as sttngs
 
 
 @pytest.fixture(scope="function")

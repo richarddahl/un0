@@ -13,420 +13,286 @@
     That said, Don't inject SQL into your own database!
 """
 
-import textwrap
-
-from sqlalchemy import Table
-
 from un0.config import settings as sttngs
 
 
-#########################################################
-# SQL FUNCTIONS THAT REQUIRE A SCHEMA AND/OR TABLE NAME #
-#########################################################
+DROP_DATABASE = f"""
+-- Drop the database if it exists
+DROP DATABASE IF EXISTS {sttngs.DB_NAME} WITH (FORCE);
+"""
 
 
-def create_set_owner_and_modified_trigger(schema_table_name):
-    return textwrap.dedent(
-        f"""
-        CREATE TRIGGER set_owner_and_modified_trigger
-        BEFORE INSERT OR UPDATE ON {schema_table_name}
-        FOR EACH ROW
-        EXECUTE FUNCTION un0.set_owner_and_modified();
-    """
-    )
+DROP_ROLES = f"""
+-- Drop the roles if they exist
+DROP ROLE IF EXISTS {sttngs.DB_NAME}_admin;
+DROP ROLE IF EXISTS {sttngs.DB_NAME}_writer;
+DROP ROLE IF EXISTS {sttngs.DB_NAME}_reader;
+DROP ROLE IF EXISTS {sttngs.DB_NAME}_login;
+DROP ROLE IF EXISTS {sttngs.DB_NAME}_base_role;
+"""
 
 
-def create_validate_delete_trigger(schema_table_name):
-    return textwrap.dedent(
-        f"""
-        CREATE TRIGGER validate_delete_trigger 
-        BEFORE DELETE ON {schema_table_name}
-        FOR EACH ROW
-        EXECUTE FUNCTION un0.validate_delete();
-    """
-    )
+CREATE_ROLES = f"""
+-- Create the base role with permissions that all other users will inherit
+DO $$
+BEGIN
+    -- Create the base role with permissions that all other users will inherit
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_base_role') THEN
+        CREATE ROLE {sttngs.DB_NAME}_base_role NOINHERIT;
+    END IF;
+
+    -- Create the reader role
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_reader') THEN
+        CREATE ROLE {sttngs.DB_NAME}_reader INHERIT IN ROLE {sttngs.DB_NAME}_base_role;
+    END IF;
+
+    -- Create the writer role
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_writer') THEN
+
+        CREATE ROLE {sttngs.DB_NAME}_writer INHERIT IN ROLE {sttngs.DB_NAME}_base_role;
+    END IF;
+
+    -- Create the admin role
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_security') THEN
+        CREATE ROLE {sttngs.DB_NAME}_security INHERIT IN ROLE {sttngs.DB_NAME}_base_role;
+    END IF;
+
+    -- Create the admin role
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_admin') THEN
+        CREATE ROLE {sttngs.DB_NAME}_admin INHERIT IN ROLE {sttngs.DB_NAME}_base_role;
+    END IF;
+
+    -- Create the authentication role
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{sttngs.DB_NAME}_login') THEN
+        CREATE ROLE {sttngs.DB_NAME}_login NOINHERIT LOGIN PASSWORD '{sttngs.DB_USER_PW}' IN ROLE
+            {sttngs.DB_NAME}_base_role;
+    END IF;
+
+    -- Grant the reader, writer, and admin roles to the authentication role
+    -- Allows the login role to SET ROLE to any of the other roles
+    GRANT {sttngs.DB_NAME}_reader, {sttngs.DB_NAME}_writer, {sttngs.DB_NAME}_admin TO
+        {sttngs.DB_NAME}_login;
+END $$;
+"""
 
 
-def change_table_owner_and_set_privileges(table: Table, db_name: str):
-    return f"""
-    ALTER TABLE {table.schema}.{table.name} OWNER TO {db_name}_admin;
-    GRANT SELECT ON {table.schema}.{table.name} TO
-        {db_name}_reader,
-        {db_name}_writer;
-    GRANT INSERT, UPDATE, DELETE ON {table.schema}.{table.name} TO
-        {db_name}_writer;
-    """
+CREATE_DATABASE = f"""
+-- Create the database
+CREATE DATABASE {sttngs.DB_NAME} WITH OWNER = {sttngs.DB_NAME}_admin;
+"""
 
 
-def create_tabletype_record(schema, name):
-    return f"""
-    -- Create the tabletype record
-    INSERT INTO un0.tabletype (schema, name) VALUES ('{schema}', '{name}');
-    """
+CREATE_SCHEMAS = f"""
+-- Create the un0 schemas
+CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {sttngs.DB_NAME}_admin;
+CREATE SCHEMA IF NOT EXISTS {sttngs.DB_SCHEMA} AUTHORIZATION {sttngs.DB_NAME}_admin;
+"""
 
 
-def enable_auditing(schema_table_name):
-    return f"""
-    -- Enable auditing for the table
-    SELECT audit.enable_tracking('{schema_table_name}'::regclass);
-    """
+CONFIGURE_AGE_EXTENSION = f"""
+-- Configuring the age extension
+GRANT USAGE ON SCHEMA ag_catalog TO
+    {sttngs.DB_NAME}_admin,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer;
+ALTER SCHEMA ag_catalog OWNER TO {sttngs.DB_NAME}_admin;
+SELECT * FROM ag_catalog.create_graph('graph');
+ALTER TABLE ag_catalog.ag_graph OWNER TO {sttngs.DB_NAME}_admin;
+ALTER TABLE ag_catalog.ag_label OWNER TO {sttngs.DB_NAME}_admin;
+ALTER TABLE graph._ag_label_edge OWNER TO {sttngs.DB_NAME}_admin;
+ALTER TABLE graph._ag_label_vertex OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SEQUENCE graph._ag_label_vertex_id_seq OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SEQUENCE graph._label_id_seq OWNER TO {sttngs.DB_NAME}_admin;
+"""
 
 
-def drop_database(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Drop the database if it exists
-        DROP DATABASE IF EXISTS {db_name} WITH (FORCE);
-        """
-    )
+REVOKE_ACCESS = f"""
+-- Explicitly revoke all privileges on all schemas and tables
+REVOKE ALL ON SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {sttngs.DB_SCHEMA} 
+FROM
+    public,
+    {sttngs.DB_NAME}_base_role,
+    {sttngs.DB_NAME}_login,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer,
+    {sttngs.DB_NAME}_admin;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {sttngs.DB_SCHEMA} 
+FROM
+    public,
+    {sttngs.DB_NAME}_base_role,
+    {sttngs.DB_NAME}_login,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer,
+    {sttngs.DB_NAME}_admin;
+
+REVOKE CONNECT ON DATABASE {sttngs.DB_NAME} FROM
+    public,
+    {sttngs.DB_NAME}_base_role,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer,
+    {sttngs.DB_NAME}_admin;
+"""
 
 
-def drop_roles(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Drop the roles if they exist
-        DROP ROLE IF EXISTS {db_name}_admin;
-        DROP ROLE IF EXISTS {db_name}_writer;
-        DROP ROLE IF EXISTS {db_name}_reader;
-        DROP ROLE IF EXISTS {db_name}_login;
-        DROP ROLE IF EXISTS {db_name}_base_role;
-        """
-    )
+SET_SEARCH_PATHS = f"""
+-- Set the search paths for the roles
+ALTER ROLE
+    {sttngs.DB_NAME}_base_role
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA};
+
+ALTER ROLE
+    {sttngs.DB_NAME}_login
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA};
 
 
-def create_roles(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Create the base role with permissions that all other users will inherit
-        DO $$
-        BEGIN
-            -- Create the base role with permissions that all other users will inherit
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_base_role') THEN
-                CREATE ROLE {db_name}_base_role NOINHERIT;
-            END IF;
+ALTER ROLE
+    {sttngs.DB_NAME}_reader
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA};
 
-            -- Create the reader role
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_reader') THEN
-                CREATE ROLE {db_name}_reader INHERIT IN ROLE {db_name}_base_role;
-            END IF;
+ALTER ROLE
+    {sttngs.DB_NAME}_writer 
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA};
 
-            -- Create the writer role
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_writer') THEN
+ALTER ROLE
+    {sttngs.DB_NAME}_admin
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA}; 
 
-                CREATE ROLE {db_name}_writer INHERIT IN ROLE {db_name}_base_role;
-            END IF;
-
-            -- Create the admin role
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_security') THEN
-                CREATE ROLE {db_name}_security INHERIT IN ROLE {db_name}_base_role;
-            END IF;
-
-            -- Create the admin role
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_admin') THEN
-                CREATE ROLE {db_name}_admin INHERIT IN ROLE {db_name}_base_role;
-            END IF;
-
-            -- Create the authentication role
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{db_name}_login') THEN
-                CREATE ROLE {db_name}_login NOINHERIT LOGIN PASSWORD '{sttngs.DB_USER_PW}' IN ROLE
-                    {db_name}_base_role;
-            END IF;
-
-            -- Grant the reader, writer, and admin roles to the authentication role
-            -- Allows the login role to SET ROLE to any of the other roles
-            GRANT {db_name}_reader, {db_name}_writer, {db_name}_admin TO
-                {db_name}_login;
-        END $$;
-        """
-    )
+ALTER ROLE
+    {sttngs.DB_NAME}_security
+SET search_path TO
+    ag_catalog,
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA};
+"""
 
 
-def create_database(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Create the database
-        CREATE DATABASE {db_name} WITH OWNER = {db_name}_admin;
-        """
-    )
+CONFIGURE_ROLE_SCHEMA_PRIVILEGES = f"""
+-- Grant ownership of the un0 schemas to the DB admin role
+ALTER SCHEMA audit OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SCHEMA un0 OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SCHEMA graph OWNER TO {sttngs.DB_NAME}_admin;
+ALTER SCHEMA ag_catalog OWNER TO {sttngs.DB_NAME}_admin;
+
+ALTER SCHEMA {sttngs.DB_SCHEMA} OWNER TO {sttngs.DB_NAME}_admin;
+ALTER TABLE audit.record_version OWNER TO {sttngs.DB_NAME}_admin;
+
+-- Grant connect privileges to the DB login role
+GRANT CONNECT ON DATABASE {sttngs.DB_NAME} TO {sttngs.DB_NAME}_login;
+
+-- Grant usage privileges for users to created schemas
+GRANT USAGE ON SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {sttngs.DB_SCHEMA}
+TO
+    {sttngs.DB_NAME}_security,
+    {sttngs.DB_NAME}_login,
+    {sttngs.DB_NAME}_admin,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer;
+
+GRANT CREATE ON SCHEMA
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA}
+TO
+    {sttngs.DB_NAME}_security,
+    {sttngs.DB_NAME}_admin;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {sttngs.DB_SCHEMA}
+TO
+    {sttngs.DB_NAME}_security,
+    {sttngs.DB_NAME}_login,
+    {sttngs.DB_NAME}_admin,
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer;
+
+GRANT {sttngs.DB_NAME}_admin TO {sttngs.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
+GRANT {sttngs.DB_NAME}_writer TO {sttngs.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
+GRANT {sttngs.DB_NAME}_reader TO {sttngs.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
+GRANT {sttngs.DB_NAME}_security TO {sttngs.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
+"""
 
 
-def create_schemas(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Create the un0 schemas
-        CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {db_name}_admin;
-        CREATE SCHEMA IF NOT EXISTS {sttngs.DB_SCHEMA} AUTHORIZATION {db_name}_admin;
-        """
-    )
+CONFIGURE_ROLE_TABLE_PRIVILEGES = f"""
+-- Grant table privileges to the roles
+GRANT SELECT ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    ag_catalog,
+    {sttngs.DB_SCHEMA}
+TO
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer;
 
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
+    un0,
+    audit,
+    graph,
+    {sttngs.DB_SCHEMA} 
+TO
+    {sttngs.DB_NAME}_writer,
+    {sttngs.DB_NAME}_admin;
 
-def configure_age_extension(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Configuring the age extension
-        GRANT USAGE ON SCHEMA ag_catalog TO
-            {db_name}_admin,
-            {db_name}_reader,
-            {db_name}_writer;
-        ALTER SCHEMA ag_catalog OWNER TO {db_name}_admin;
-        SELECT * FROM ag_catalog.create_graph('graph');
-        ALTER TABLE ag_catalog.ag_graph OWNER TO {db_name}_admin;
-        ALTER TABLE ag_catalog.ag_label OWNER TO {db_name}_admin;
-        ALTER TABLE graph._ag_label_edge OWNER TO {db_name}_admin;
-        ALTER TABLE graph._ag_label_vertex OWNER TO {db_name}_admin;
-        ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {db_name}_admin;
-        ALTER SEQUENCE graph._ag_label_vertex_id_seq OWNER TO {db_name}_admin;
-        ALTER SEQUENCE graph._label_id_seq OWNER TO {db_name}_admin;
-        """
-    )
+REVOKE SELECT, INSERT, UPDATE (id) ON un0.user FROM 
+    {sttngs.DB_NAME}_reader,
+    {sttngs.DB_NAME}_writer;
 
-
-def revoke_access(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Explicitly revoke all privileges on all schemas and tables
-        REVOKE ALL ON SCHEMA
-            un0,
-            audit,
-            graph,
-            ag_catalog,
-            {sttngs.DB_SCHEMA} 
-        FROM
-            public,
-            {db_name}_base_role,
-            {db_name}_login,
-            {db_name}_reader,
-            {db_name}_writer,
-            {db_name}_admin;
-
-        REVOKE ALL ON ALL TABLES IN SCHEMA
-            un0,
-            audit,
-            graph,
-            ag_catalog,
-            {sttngs.DB_SCHEMA} 
-        FROM
-            public,
-            {db_name}_base_role,
-            {db_name}_login,
-            {db_name}_reader,
-            {db_name}_writer,
-            {db_name}_admin;
-
-        REVOKE CONNECT ON DATABASE {db_name} FROM
-            public,
-            {db_name}_base_role,
-            {db_name}_reader,
-            {db_name}_writer,
-            {db_name}_admin;
-        """
-    )
-
-
-def set_search_paths(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Set the search paths for the roles
-        ALTER ROLE
-            {db_name}_base_role
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
-
-        ALTER ROLE
-            {db_name}_login
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
-
-
-        ALTER ROLE
-            {db_name}_reader
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
-
-        ALTER ROLE
-            {db_name}_writer 
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
-       
-        ALTER ROLE
-            {db_name}_admin
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA}; 
-
-        ALTER ROLE
-            {db_name}_security
-        SET search_path TO
-            ag_catalog,
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA};
-        """
-    )
-
-
-def configure_role_schema_privileges(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Grant ownership of the un0 schemas to the DB admin role
-        ALTER SCHEMA audit OWNER TO {db_name}_admin;
-        ALTER SCHEMA un0 OWNER TO {db_name}_admin;
-        ALTER SCHEMA graph OWNER TO {db_name}_admin;
-        ALTER SCHEMA ag_catalog OWNER TO {db_name}_admin;
-
-        ALTER SCHEMA {sttngs.DB_SCHEMA} OWNER TO {db_name}_admin;
-        ALTER TABLE audit.record_version OWNER TO {db_name}_admin;
-
-        -- Grant connect privileges to the DB login role
-        GRANT CONNECT ON DATABASE {db_name} TO {db_name}_login;
-
-        -- Grant usage privileges for users to created schemas
-        GRANT USAGE ON SCHEMA
-            un0,
-            audit,
-            graph,
-            ag_catalog,
-            {sttngs.DB_SCHEMA}
-        TO
-            {db_name}_security,
-            {db_name}_login,
-            {db_name}_admin,
-            {db_name}_reader,
-            {db_name}_writer;
-
-        GRANT CREATE ON SCHEMA
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA}
-        TO
-            {db_name}_security,
-            {db_name}_admin;
-
-        GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
-            un0,
-            audit,
-            graph,
-            ag_catalog,
-            {sttngs.DB_SCHEMA}
-        TO
-            {db_name}_security,
-            {db_name}_login,
-            {db_name}_admin,
-            {db_name}_reader,
-            {db_name}_writer;
-
-        GRANT {db_name}_admin TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
-        GRANT {db_name}_writer TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
-        GRANT {db_name}_reader TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
-        GRANT {db_name}_security TO {db_name}_login WITH INHERIT FALSE, SET TRUE;
-        """
-    )
-
-
-def configure_role_table_privileges(db_name):
-    return textwrap.dedent(
-        f"""
-        -- Grant table privileges to the roles
-        GRANT SELECT ON ALL TABLES IN SCHEMA
-            un0,
-            audit,
-            graph,
-            ag_catalog,
-            {sttngs.DB_SCHEMA}
-        TO
-            {db_name}_reader,
-            {db_name}_writer;
-
-        GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
-            un0,
-            audit,
-            graph,
-            {sttngs.DB_SCHEMA} 
-        TO
-            {db_name}_writer,
-            {db_name}_admin;
-
-        REVOKE SELECT, INSERT, UPDATE (id) ON un0.user FROM 
-            {db_name}_reader,
-            {db_name}_writer;
-
-        GRANT ALL ON ALL TABLES IN SCHEMA
-            audit,
-            graph,
-            ag_catalog
-        TO
-            {db_name}_admin;
-        """
-    )
-
-
-def create_history_table(table_schema, table_name):
-    return textwrap.dedent(
-        f"""
-        CREATE TABLE audit.{table_schema}_{table_name}
-        AS (SELECT * FROM {table_schema}.{table_name})
-        WITH NO DATA;
-
-        ALTER TABLE audit.{table_schema}_{table_name}
-        ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
-
-        CREATE INDEX {table_schema}_{table_name}_pk_idx
-        ON audit.{table_schema}_{table_name} (pk);
-
-        CREATE INDEX {table_schema}_{table_name}_id_modified_at_idx
-        ON audit.{table_schema}_{table_name} (id, modified_at);
-        """
-    )
-
-
-def create_history_table_trigger(table_schema, table_name) -> str:
-    return textwrap.dedent(
-        f"""
-        CREATE OR REPLACE FUNCTION {table_schema}.{table_name}_audit()
-        RETURNS TRIGGER
-        LANGUAGE plpgsql
-        SECURITY DEFINER
-        AS $$
-        BEGIN
-            INSERT INTO audit.{table_schema}_{table_name}
-            SELECT *
-            FROM {table_schema}.{table_name}
-            WHERE id = NEW.id;
-            RETURN NEW;
-        END;
-        $$;
-
-        CREATE OR REPLACE TRIGGER {table_name}_audit_trigger
-        AFTER INSERT OR UPDATE ON {table_schema}.{table_name}
-        FOR EACH ROW EXECUTE FUNCTION {table_schema}.{table_name}_audit();
-        """
-    )
-
-
-#################
-# SQL CONSTANTS #
-#################
+GRANT ALL ON ALL TABLES IN SCHEMA
+    audit,
+    graph,
+    ag_catalog
+TO
+    {sttngs.DB_NAME}_admin;
+"""
 
 
 CREATE_EXTENSIONS = """
@@ -457,7 +323,7 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 """
 
 
-CREATE_INSERT_RELATEDOBJECTFUNCTION = """
+CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
 CREATE OR REPLACE FUNCTION un0.insert_relatedobject(schema_name VARCHAR, table_name VARCHAR)
 RETURNS VARCHAR(26)
 LANGUAGE plpgsql

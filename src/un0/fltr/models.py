@@ -32,149 +32,39 @@ from un0.fltr.enums import (  # type: ignore
 from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
-"""
-class FilterVertex(Base):
-    __tablename__ = "filtervertex"
-    __table_args__ = (
-        {
-            "schema": "un0",
-            "info": {"rls_policy": False, "graph": False},
-        },
-    )
-
-    # Columns
-    id: Mapped[int] = mapped_column(
-        Identity(start=1, cycle=False),
-        primary_key=True,
-        index=True,
-        doc="Primary Key",
-    )
-    tabletype_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
-        index=True,
-        doc="The table type associated with the vertex.",
-    )
-    label: Mapped[str_255] = mapped_column(unique=True)
-
-
-class FilterEdge(Base):
-    __tablename__ = "filteredge"
-    __table_args__ = (
-        {
-            "schema": "un0",
-            "info": {"rls_policy": False, "graph": False},
-        },
-    )
-
-    # Columns
-    id: Mapped[int] = mapped_column(
-        Identity(start=1, cycle=False),
-        primary_key=True,
-        index=True,
-        doc="Primary Key",
-    )
-    label: Mapped[str_255] = mapped_column(unique=True)
-
-
-class FilterVertexFilterEdge(Base):
-    __tablename__ = "filtervertex_filteredge"
-    __table_args__ = (
-        Index("ix_vertex_id_edge_id", "vertex_id", "edge_id"),
-        {
-            "schema": "un0",
-            "comment": "A vertex (FilterVertex) associated with an Edge.",
-            "info": {"rls_policy": False, "graph": False},
-        },
-    )
-
-    # Columns
-    vertex_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filtervertex.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="A vertex associated with an edge.",
-    )
-    edge_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filteredge.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="An edge associated with a vertex.",
-    )
-    direction: Mapped[EdgeDirection] = mapped_column(
-        ENUM(
-            EdgeDirection,
-            name="edgedirection",
-            create_type=True,
-            schema="un0",
-        ),
-        default=EdgeDirection.FROM,
-    )
-
-
-class FilterFieldFilterVertex(Base):
-    __tablename__ = "filterfield_filtervertex"
-    __table_args__ = (
-        Index("ix_field_id_vertex_id", "field_id", "vertex_id"),
-        {
-            "schema": "un0",
-            "comment": "A field (FilterField) associated with a Vertex.",
-            "info": {"rls_policy": False, "graph": False},
-        },
-    )
-
-    # Columns
-    field_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filterfield.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="A field associated with a vertex.",
-    )
-    vertex_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filtervertex.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="A vertex associated with a field.",
-    )
-
-
-class FilterFieldFilterEdge(Base):
-    __tablename__ = "filterfield_filteredge"
-    __table_args__ = (
-        Index("ix_field_id_edge_id", "field_id", "edge_id"),
-        {
-            "schema": "un0",
-            "comment": "A field (FilterField) associated with an Edge.",
-            "info": {"rls_policy": False, "graph": False},
-        },
-    )
-
-    # Columns
-    field_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filterfield.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="A field associated with a vertex.",
-    )
-    edge_id: Mapped[int] = mapped_column(
-        ForeignKey("un0.filteredge.id", ondelete="CASCADE"),
-        index=True,
-        primary_key=True,
-        doc="An edge associated with a field.",
-    )
-
-
-"""
-
 
 class FilterField(Base):
+    """FilterFields represent the fields that can be used to filter queries.
+
+    FilterFields are associated with TableTypes and can be used to filter queries
+    on the TableType. FilterFields can be associated with other FilterFields to
+    create a filterable path from one TableType to another or the same table.
+
+    FilterFields represent either a vertex or an edge in a graph. The
+    graph_type attribute indicates if the FilterField represents a vertex
+    or an edge.
+
+    The lookups attribute indicates the types of lookups that can be
+    performed on the FilterField.
+
+    The accessor attribute is used to access the FilterField in queries.
+
+    The name attribute is a human readable name for the FilterField.
+
+    The lookups attribute is a list of lookups that can be performed on the
+    FilterField.
+
+    The graph_type attribute indicates if the FilterField represents a vertex,
+    a property, or an edge.
+    """
+
     __tablename__ = "filterfield"
     __table_args__ = (
         UniqueConstraint("accessor", "graph_type", name="uq_accessor_graph_type"),
-        Index("ix_accessor_data_type", "accessor", "data_type"),
         {
             "schema": "un0",
             "comment": "Used to enable user-defined filtering using the graph vertices and edges.",
-            "info": {"rls_policy": False, "graph": False},
+            "info": {"rls_policy": False, "in_graph": False},
         },
     )
 
@@ -186,8 +76,8 @@ class FilterField(Base):
         doc="Primary Key",
     )
     name: Mapped[str_255] = mapped_column()
-    accessor: Mapped[str_255] = mapped_column()
-    data_type: Mapped[str_26] = mapped_column()
+    accessor: Mapped[str] = mapped_column(unique=True, index=True)
+    # data_type: Mapped[str_26] = mapped_column()
     graph_type: Mapped[ColumnSecurity] = mapped_column(
         ENUM(
             GraphType,
@@ -212,11 +102,22 @@ class FilterField(Base):
 class FilterFieldTableType(Base):
     __tablename__ = "filterfield_tabletype"
     __table_args__ = (
-        Index("ix_filterfield_id_tabletype_id", "filterfield_id", "tabletype_id"),
+        UniqueConstraint(
+            "filterfield_id",
+            "tabletype_id",
+            "direction",
+            name="uq_filterfield_tabletype_direction",
+        ),
+        Index(
+            "ix_filterfield_id_tabletype_id_direction",
+            "filterfield_id",
+            "tabletype_id",
+            "direction",
+        ),
         {
             "schema": "un0",
             "comment": "A FilterField associated with a TableType.",
-            "info": {"rls_policy": False, "graph": False},
+            "info": {"rls_policy": False, "in_graph": False},
         },
     )
 
@@ -232,6 +133,78 @@ class FilterFieldTableType(Base):
         index=True,
         primary_key=True,
         doc="The tabletype associated with a filterfield.",
+    )
+    direction: Mapped[str_26] = mapped_column(
+        ENUM(
+            EdgeDirection,
+            name="edgedirection",
+            create_type=True,
+            schema="un0",
+        ),
+        primary_key=True,
+        default=EdgeDirection.FROM,
+        doc="The direction of the edge.",
+    )
+
+
+class FilterKey(Base):
+    __tablename__ = "filterkey"
+    __table_args__ = (
+        UniqueConstraint(
+            "from_filterfield_id",
+            "to_filterfield_id",
+            "accessor",
+            name="uq_from_to_accessor",
+        ),
+        Index(
+            "ix_from_filterfield_id_to_filterfield_id_accessor",
+            "from_filterfield_id",
+            "to_filterfield_id",
+            "accessor",
+        ),
+        {
+            "schema": "un0",
+            "comment": "A filterable path from one table to itself or another.",
+            "info": {"rls_policy": False, "in_graph": False},
+        },
+    )
+
+    # Columns
+    from_filterfield_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.filterfield.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="The filterkey from which the filter key starts.",
+    )
+    to_filterfield_id: Mapped[int] = mapped_column(
+        ForeignKey("un0.filterfield.id", ondelete="CASCADE"),
+        index=True,
+        primary_key=True,
+        doc="The filterfield at which the filter key ends.",
+    )
+    accessor: Mapped[str] = mapped_column(
+        index=True,
+        primary_key=True,
+        doc="The accessor for the filter key.",
+    )
+    graph_type: Mapped[ColumnSecurity] = mapped_column(
+        ENUM(
+            GraphType,
+            name="graphtype",
+            create_type=True,
+            schema="un0",
+        ),
+        default=GraphType.PROPERTY,
+    )
+    lookups: Mapped[list[Lookup]] = mapped_column(
+        ARRAY(
+            ENUM(
+                Lookup,
+                name="lookup",
+                create_type=True,
+                schema="un0",
+            )
+        )
     )
 
 

@@ -19,10 +19,10 @@ from tests.conftest import mock_rls_vars
 class TestUser:
     """Tests for the User model."""
 
-    def test_create_superuser(self, session, db_name):
+    def test_create_superuser(self, session):
         """Creates the superuser and returns it's id."""
         superuser_id = create_superuser.create(
-            db_name, "new_admin@notorm.com", "new_admin", "New Admin"
+            "new_admin@notorm.com", "new_admin", "New Admin"
         )
         assert superuser_id is not None
         with session.begin():

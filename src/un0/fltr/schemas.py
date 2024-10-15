@@ -9,7 +9,7 @@ from decimal import Decimal
 from pydantic import BaseModel, computed_field
 from sqlalchemy import Table, Column
 
-from un0.schemas import UnoBaseSchema
+from un0.schemas import TableSchema
 from un0.utilities import convert_snake_to_capital_word
 from un0.fltr.enums import (  # type: ignore
     GraphType,
@@ -37,7 +37,7 @@ $$) AS (source agtype, Relationship agtype, Destination agtype);
 """
 
 
-class PropertySchema(UnoBaseSchema):
+class PropertySchema(TableSchema):
     """
     PropertySchema is a model representing an Apache AGE graph property.
 
@@ -84,7 +84,7 @@ class PropertySchema(UnoBaseSchema):
         return string_lookups
 
 
-class VertexSchema(UnoBaseSchema):
+class VertexSchema(TableSchema):
     """An Apache AGE vertex
 
     Vertices represent the 'Normal' tables in the database.
@@ -98,6 +98,7 @@ class VertexSchema(UnoBaseSchema):
     # label: str <- computed_field
     # data_type: str <- computed_field
     # properties: list[PropertySchema] | None <- computed_field
+    # edges: list[EdgeSchema] | None <- computed_field
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -114,19 +115,34 @@ class VertexSchema(UnoBaseSchema):
     def properties(self) -> list["PropertySchema"] | None:
         props = []
         for column in self.table.columns:
-            props.append(
-                PropertySchema(table=self.table, db_name=self.db_name, column=column)
-            )
+            props.append(PropertySchema(table=self.table, column=column))
         return props
 
+    @computed_field
+    def edges(self) -> list["EdgeSchema"] | None:
+        edges = []
+        for fk in self.table.foreign_keys:
+            for column in self.table.columns:
+                if fk.parent.name == column.name:
+                    continue
+                for _fk in column.foreign_keys:
+                    edges.append(
+                        EdgeSchema(
+                            table=self.table,
+                            start_column=fk.parent,
+                            end_column=column,
+                        )
+                    )
+        return edges
+
     # Functions to generate sql statements
-    def create_sql(self, edges: list["EdgeSchema"] | None) -> str:
+    def create_sql(self) -> str:
         return textwrap.dedent(
             "\n".join(
                 [
                     self.create_label_sql(),
-                    self.create_insert_function_and_trigger_sql(edges),
-                    self.create_update_function_and_trigger_sql(edges),
+                    self.create_insert_function_and_trigger_sql(),
+                    self.create_update_function_and_trigger_sql(),
                     self.create_delete_function_and_trigger_sql(),
                     self.create_truncate_function_and_trigger_sql(),
                 ]
@@ -138,7 +154,8 @@ class VertexSchema(UnoBaseSchema):
             f"""
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label WHERE name = '{self.label}') THEN
+                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label
+                WHERE name = '{self.label}') THEN
                     PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
                     CREATE INDEX ON graph."{self.label}" (id);
                 END IF;
@@ -146,15 +163,15 @@ class VertexSchema(UnoBaseSchema):
             """
         )
 
-    def create_insert_function_and_trigger_sql(
-        self, edges: list["EdgeSchema"] | None
-    ) -> str:
+    def create_insert_function_and_trigger_sql(self) -> str:
         """Creates a new vertex record when a new relational table record is inserted"""
         prop_key_str = ""
         prop_val_str = ""
         edge_str = ""
-        if edges:
-            edge_str = "\n".join([edge.create_sql() for edge in edges])
+        if self.edges:
+            edge_str = "\n".join(
+                [edge.create_insert_function_and_trigger_sql() for edge in self.edges]
+            )
 
         if self.properties:
             prop_key_str = ", ".join(f"{prop.name}: %s" for prop in self.properties)
@@ -171,7 +188,7 @@ class VertexSchema(UnoBaseSchema):
             """
         )
         return textwrap.dedent(
-            self.create_sql_stmt(
+            self.create_sql_function(
                 "insert_vertex",
                 sql,
                 operation="INSERT",
@@ -179,15 +196,15 @@ class VertexSchema(UnoBaseSchema):
             )
         )
 
-    def create_update_function_and_trigger_sql(
-        self, edges: list["EdgeSchema"] | None
-    ) -> str:
+    def create_update_function_and_trigger_sql(self) -> str:
         """Updates an existing vertex record when its relational table record is updated"""
         prop_key_str = ""
         prop_val_str = ""
         edge_str = ""
-        if edges:
-            edge_str = "\n".join([edge.create_sql() for edge in edges])
+        if self.edges:
+            edge_str = "\n".join(
+                [edge.create_update_function_and_trigger_sql() for edge in self.edges]
+            )
         if self.properties:
             prop_key_str = "SET " + ", ".join(
                 f"v.{prop.name} = %s" for prop in self.properties
@@ -206,7 +223,7 @@ class VertexSchema(UnoBaseSchema):
             """
         )
         return textwrap.dedent(
-            self.create_sql_stmt(
+            self.create_sql_function(
                 "update_vertex",
                 sql,
                 include_trigger=True,
@@ -225,7 +242,7 @@ class VertexSchema(UnoBaseSchema):
             """
         )
         return textwrap.dedent(
-            self.create_sql_stmt(
+            self.create_sql_function(
                 "delete_vertex",
                 sql,
                 operation="DELETE",
@@ -245,7 +262,7 @@ class VertexSchema(UnoBaseSchema):
             """
         )
         return textwrap.dedent(
-            self.create_sql_stmt(
+            self.create_sql_function(
                 "truncate_vertex",
                 sql,
                 operation="truncate",
@@ -255,7 +272,7 @@ class VertexSchema(UnoBaseSchema):
         )
 
 
-class EdgeSchema(UnoBaseSchema):
+class EdgeSchema(TableSchema):
     """
     EdgeSchema is a class representing an edge in an Apache AGE graph.
     It inherits from GraphBase and includes attributes for the edge label, start vertex, and end vertex.
@@ -460,7 +477,7 @@ class EdgeSchema(UnoBaseSchema):
         )
 
 
-class GraphedTableSchema(UnoBaseSchema):
+class FilteredTableSchema(TableSchema):
     """
     Edges represent the foreign keys in the table.
     Association tables will not have a vertex, but will have edges.
@@ -470,187 +487,86 @@ class GraphedTableSchema(UnoBaseSchema):
     Their edges will be from the vertex (representing the table itself) to each of the foreign keys.
     """
 
-    # table: Table <- UnoBaseSchema
-    # db_name: str <- UnoBaseSchema
+    # table: Table <- TableSchema
 
-    # vertex: VertexSchema | None <- computed_field
-    # edges: list[EdgeSchema] | None <- computed_field
     # field_set: list[FilterFieldSchema] | None <- computed_field
-
-    @computed_field
-    def vertex(self) -> VertexSchema | None:
-        """
-        Returns a VertexSchema instance if the column is the primary key of the table, unless
-        the table.info dictionary contains a "vertex" key with a value of False.
-        Otherwise, it returns None.
-        """
-        if self.table.info.get("vertex", True) is False:
-            return None
-        return VertexSchema(
-            table=self.table, db_name=self.db_name, column=self.table.columns["id"]
-        )
-
-    @computed_field
-    def edges(self) -> list[EdgeSchema] | None:
-        edges = []
-        if self.table.info.get("vertex", True) is False:
-            """
-            Association table
-            Edges are created between each of the foreign keys in the table.
-            """
-            for fk in self.table.foreign_keys:
-                for column in self.table.columns:
-                    if fk.parent.name == column.name:
-                        continue
-                    for _fk in column.foreign_keys:
-                        edges.append(
-                            EdgeSchema(
-                                table=self.table,
-                                db_name=self.db_name,
-                                start_column=fk.parent,
-                                end_column=column,
-                            )
-                        )
-        else:
-            """
-            Normal table
-            Edges are created between the vertex and each of the foreign keys in the table.
-           """
-            start_column = self.table.columns["id"]
-            for column in self.table.columns:
-                for fk in column.foreign_keys:
-                    if start_column != column:
-                        edges.append(
-                            EdgeSchema(
-                                table=self.table,
-                                db_name=self.db_name,
-                                start_column=start_column,
-                                end_column=column,
-                            )
-                        )
-
-        return edges
 
     @computed_field
     def field_set(self) -> list["FilterFieldSchema"] | None:
         field_set = []
-        if self.vertex:
+        if self.table.info.get("vertex", True):
             field_set.append(
                 FilterFieldSchema(
                     table=self.table,
-                    db_name=self.db_name,
-                    column=self.table.columns["id"],
+                    from_column=self.table.columns["id"],
                     graph_type=GraphType.VERTEX,
-                    vertex=self.vertex,
-                    edge=None,
-                    prop=None,
                 )
             )
-            for prop in self.vertex.properties:
-                field_set.append(
-                    FilterFieldSchema(
-                        table=self.table,
-                        db_name=self.db_name,
-                        column=prop.column,
-                        graph_type=GraphType.PROPERTY,
-                        prop=prop,
-                        vertex=None,
-                        edge=None,
-                    )
-                )
-        for edge in self.edges:
+        for column in self.table.columns:
             field_set.append(
                 FilterFieldSchema(
                     table=self.table,
-                    db_name=self.db_name,
-                    column=edge.end_column,
-                    graph_type=GraphType.EDGE,
-                    edge=edge,
-                    vertex=None,
-                    prop=None,
+                    from_column=column,
+                    graph_type=GraphType.PROPERTY,
                 )
             )
+        for fk in self.table.foreign_keys:
+            for column in self.table.columns:
+                if fk.parent.name == column.name:
+                    continue
+                for _fk in column.foreign_keys:
+                    field_set.append(
+                        FilterFieldSchema(
+                            table=self.table,
+                            from_column=fk.parent,
+                            to_column=column,
+                            graph_type=GraphType.EDGE,
+                        )
+                    )
         return field_set
 
     def generate_sql(self) -> str:
-        sql = ""
-        if self.vertex:
-            sql += self.vertex.create_sql(self.edges)
-        else:
-            edge_label_sql = "\n".join([edge.create_label_sql() for edge in self.edges])
-            edge_insert_sql = "\n".join(
-                [
-                    self.create_sql_stmt(
-                        "insert_edges",
-                        edge.create_insert_function_and_trigger_sql(),
-                        operation="INSERT",
-                        include_trigger=True,
-                    )
-                    for edge in self.edges
-                ]
-            )
-            edge_update_sql = "\n".join(
-                [
-                    self.create_sql_stmt(
-                        "update_edges",
-                        edge.create_update_function_and_trigger_sql(),
-                        include_trigger=True,
-                    )
-                    for edge in self.edges
-                ]
-            )
-            edge_delete_sql = "\n".join(
-                [
-                    self.create_sql_stmt(
-                        "delete_edges",
-                        edge.create_delete_function_and_trigger_sql(),
-                        operation="DELETE",
-                        include_trigger=True,
-                    )
-                    for edge in self.edges
-                ]
-            )
-            edge_truncate_sql = "\n".join(
-                [
-                    self.create_sql_stmt(
-                        "truncate_edges",
-                        edge.create_truncate_function_and_trigger_sql(),
-                        operation="TRUNCATE",
-                        for_each="STATEMENT",
-                        include_trigger=True,
-                    )
-                    for edge in self.edges
-                ]
-            )
-
-            sql += f"{edge_label_sql}\n{edge_insert_sql}\n{edge_update_sql}\n{edge_delete_sql}\n{edge_truncate_sql}"
-        sql += "\n".join([field.insert_sql() for field in self.field_set])
-        return sql
+        return "\n".join(
+            [textwrap.dedent(field.insert_sql()) for field in self.field_set]
+        )
 
 
-class FilterFieldSchema(UnoBaseSchema):
+class FilterFieldSchema(TableSchema):
     """ """
 
-    # table: Table <- UnoBaseSchema
-    # db_name: str <- UnoBaseSchema
+    # table: Table <- TableSchema
 
-    # data_type: str <- computed_field
+    # vertex: VertexSchema | None <- computed_field
+    # edge: EdgeSchema | None <- computed_field
+    # prop: PropertySchema | None <- computed_field
     # lookups: list[Lookup] <- computed_field
     # label: str <- computed_field
 
-    vertex: VertexSchema | None
-    edge: EdgeSchema | None
-    prop: PropertySchema | None
-    column: Column
-    graph_type: GraphType = GraphType.PROPERTY
+    from_column: Column
+    to_column: Column | None = None
+    graph_type: GraphType
 
     @computed_field
-    def data_type(self) -> str:
-        if self.vertex:
-            return GraphType.VERTEX
-        if self.edge:
-            return GraphType.EDGE
-        return GraphType.PROPERTY
+    def vertex(self) -> VertexSchema | None:
+        if self.graph_type == GraphType.VERTEX:
+            return VertexSchema(table=self.table, column=self.from_column)
+        return None
+
+    @computed_field
+    def edge(self) -> EdgeSchema | None:
+        if self.graph_type == GraphType.EDGE:
+            return EdgeSchema(
+                table=self.table,
+                start_column=self.from_column,
+                end_column=self.to_column,
+            )
+        return None
+
+    @computed_field
+    def prop(self) -> PropertySchema | None:
+        if self.graph_type == GraphType.PROPERTY:
+            return PropertySchema(table=self.table, column=self.from_column)
+        return None
 
     @computed_field
     def lookups(self) -> list[Lookup]:
@@ -667,100 +583,185 @@ class FilterFieldSchema(UnoBaseSchema):
         return self.prop.name
 
     def insert_sql(self) -> str:
-        return textwrap.dedent(
+        sql = ""
+        if self.vertex:
+            sql += self.vertex.create_sql()
+        elif self.edge:
+            sql += self.edge.create_label_sql()
+        #    sql += self.create_sql_function(
+        #        "insert_edges",
+        #        self.edge.create_insert_function_and_trigger_sql(),
+        #        operation="INSERT",
+        #        include_trigger=True,
+        #    )
+        #    sql += self.create_sql_function(
+        #        "update_edges",
+        #        self.edge.create_update_function_and_trigger_sql(),
+        #        include_trigger=True,
+        #    )
+        #    sql += self.create_sql_function(
+        #        "delete_edges",
+        #        self.edge.create_delete_function_and_trigger_sql(),
+        #        operation="DELETE",
+        #        include_trigger=True,
+        #    )
+        #    sql += self.create_sql_function(
+        #        "truncate_edges",
+        #        self.edge.create_truncate_function_and_trigger_sql(),
+        #        operation="TRUNCATE",
+        #        for_each="STATEMENT",
+        #        include_trigger=True,
+        #    )
+        sql += textwrap.dedent(
             f"""
-            SET ROLE {self.db_name}_admin;
+            SET ROLE {sttngs.DB_NAME}_admin;
             -- Create the FilterField
             INSERT INTO un0.filterfield(
                 name,
                 accessor,
-                data_type,
                 graph_type,
                 lookups
             )
             VALUES (
-                '{self.column.name}',
+                '{self.from_column.name}',
                 '{self.label}',
-                '{self.data_type}',
                 '{self.graph_type.name}',
                 ARRAY{self.lookups}::un0.lookup[]
             )
-            ON CONFLICT (accessor, graph_type) DO NOTHING;
+            ON CONFLICT (accessor) DO NOTHING;
 
             -- Associate the FilterField with the TableType
             INSERT INTO un0.filterfield_tabletype (
                 filterfield_id,
-                tabletype_id
+                tabletype_id,
+                direction
             )
             SELECT
                 f.id,
-                t.id
+                t.id,
+                'FROM'
             FROM un0.tabletype t
             JOIN un0.filterfield f
             ON t.schema = '{self.table.schema}'
             AND t.name = '{self.table.name}'
-            AND f.name = '{self.column.name}'
+            AND f.name = '{self.from_column.name}'
             AND f.graph_type = '{self.graph_type.name}'
-            ON CONFLICT (filterfield_id, tabletype_id) DO NOTHING;
+            ON CONFLICT (filterfield_id, tabletype_id, direction) DO NOTHING;
             """
         )
+        if self.to_column is not None:
+            sql += textwrap.dedent(
+                f"""
+                -- Associate the FilterField with the TableType
+                INSERT INTO un0.filterfield_tabletype (
+                    filterfield_id,
+                    tabletype_id,
+                    direction
+                )
+                SELECT
+                    f.id,
+                    t.id,
+                    'TO'
+                FROM un0.tabletype t
+                JOIN un0.filterfield f
+                ON t.schema = '{self.table.schema}'
+                AND t.name = '{self.table.name}'
+                AND f.name = '{self.to_column.name}'
+                AND f.graph_type = '{self.graph_type.name}'
+                ON CONFLICT (filterfield_id, tabletype_id, direction) DO NOTHING;
+                """
+            )
+        return sql
 
-    '''
-    def insert_filtervertex_sql(self) -> str:
+
+class FilterKeySchema(TableSchema):
+    """ """
+
+    # table: Table <- TableSchema
+
+    from_filterfield: FilterFieldSchema
+    to_filterfield: FilterFieldSchema
+    label: str
+
+    @computed_field
+    def start_filter_field(self) -> FilterFieldSchema:
+        return self.edge_filter_field.from_column
+
+    @computed_field
+    def end_filter_field(self) -> FilterFieldSchema:
+        return self.edge_filter_field.to_column
+
+    def insert_sql(self) -> str:
         return textwrap.dedent(
             f"""
-            -- Create the FilterVertex
-            INSERT INTO un0.filtervertex (
-                tabletype_id,
-                label
+            SET ROLE {sttngs.DB_NAME}_admin;
+            -- Create the FilterKey
+            INSERT INTO un0.filterkey(
+                from_filterfield_id,
+                to_filterfield_id,
+                accessor
             )
-            SELECT
-                t.id,
-                '{self.vertex.label}'
-            FROM un0.tabletype t
-            WHERE t.schema = '{self.table.schema}'
-            AND t.name = '{self.table.name}'
-            ON CONFLICT (tabletype_id, label) DO NOTHING;
-
-            -- Associate the FilterField with the FilterVertex
-            INSERT INTO un0.filterfield_filtervertex (
-                field_id,
-                vertex_id
+            VALUES (
+                (SELECT id FROM un0.filterfield
+                WHERE accessor = '{self.from_filterfield.label}'),
+                (SELECT id FROM un0.filterfield
+                WHERE accessor = '{self.to_filterfield.label}'),
+                '{self.label}'
             )
-            SELECT
-                f.id,
-                v.id
-            FROM un0.filterfield f
-            JOIN un0.filtervertex v
-            ON f.field_name = '{self.name}'
-            AND v.label = '{self.vertex.label}'
-            ON CONFLICT (field_id, vertex_id) DO NOTHING
+            ON CONFLICT (from_filterfield_id, to_filterfield_id, accessor) DO NOTHING;
             """
         )
 
-    def insert_filteredge_sql(self) -> str:
+
+class PathSchema(TableSchema):
+    """ """
+
+    # table: Table <- TableSchema
+
+    # start_filter_field: FilterFieldSchema <- computed_field
+    # end_filter_field: FilterFieldSchema <- computed_field
+    # children: list["PathSchema"] = [] <- computed_field
+
+    edge_filter_field: FilterFieldSchema
+    parent_filter_field: FilterFieldSchema | None = None
+
+    @computed_field
+    def start_filter_field(self) -> FilterFieldSchema:
+        return self.edge_filter_field.edge.start_vertex.filter_field
+
+    @computed_field
+    def end_filter_field(self) -> FilterFieldSchema:
+        return self.edge_filter_field.edge.end_vertex.filter_field
+
+    @computed_field
+    def children(self) -> list["PathSchema"]:
+        children = []
+        for child_edge in self.end_filter_field.vertex.edges:
+            children.append(
+                PathSchema(
+                    table=self.table,
+                    edge_filter_field=child_edge.filter_field,
+                    parent=self,
+                )
+            )
+        return children
+
+    def insert_sql(self) -> str:
         return textwrap.dedent(
             f"""
-            -- Create the FilterEdge
-            INSERT INTO un0.filteredge(
-                label
+            SET ROLE {sttngs.DB_NAME}_admin;
+            -- Create the Path
+            INSERT INTO un0.filterkey(
+                start_filter_field_id,
+                edge_filter_field_id,
+                end_filter_field_id,
+                parent_filter_field_id
             )
-            VALUES('{self.edge.label}')
-            ON CONFLICT (label) DO NOTHING;
-
-            -- Associate the FilterField with the FilterVertex
-            INSERT INTO un0.filterfield_filteredge(
-                field_id,
-                edge_id
+            VALUES (
+                (SELECT id FROM un0.filterfield WHERE accessor = '{self.start_filter_field.label}' AND graph_type = 'VERTEX'),
+                (SELECT id FROM un0.filterfield WHERE accessor = '{self.edge_filter_field.label}' AND graph_type = 'EDGE'),
+                (SELECT id FROM un0.filterfield WHERE accessor = '{self.end_filter_field.label}' AND graph_type = 'VERTEX'),
             )
-            SELECT
-                f.id,
-                e.id
-            FROM un0.filterfield f
-            JOIN un0.filteredge e
-            ON f.field_name = '{self.name}'
-            AND e.label = '{self.edge.label}'
-            ON CONFLICT (field_id, edge_id) DO NOTHING
+            ON CONFLICT (name) DO NOTHING;
             """
         )
-    '''

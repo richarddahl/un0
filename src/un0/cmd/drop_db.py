@@ -10,14 +10,14 @@ import sys
 from sqlalchemy import create_engine, text
 
 from un0.cmd.sql import (  # type: ignore
-    drop_database,
-    drop_roles,
+    DROP_DATABASE,
+    DROP_ROLES,
 )
 
 from un0.config import settings as sttngs
 
 
-def drop(db_name: str = sttngs.DB_NAME) -> None:
+def drop() -> None:
     """
     Delete the database and its asociated roles.
     """
@@ -31,13 +31,15 @@ def drop(db_name: str = sttngs.DB_NAME) -> None:
 
     eng = create_engine("postgresql+psycopg://postgres@/postgres", echo=False)
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        print(f"\nDropping the db: {db_name} and all the roles for the application\n")
+        print(
+            f"\nDropping the db: {sttngs.DB_NAME} and all the roles for the application\n"
+        )
         # Drop the Database
-        conn.execute(text(drop_database(db_name)))
+        conn.execute(text(DROP_DATABASE))
         # Drop the roles
-        conn.execute(text(drop_roles(db_name)))
+        conn.execute(text(DROP_ROLES))
         conn.close()
-        print(f"Database dropped: {db_name} \n")
+        print(f"Database dropped: {sttngs.DB_NAME} \n")
     eng.dispose()
 
     # Reset the stdout stream
@@ -46,4 +48,4 @@ def drop(db_name: str = sttngs.DB_NAME) -> None:
 
 
 if __name__ == "__main__":
-    drop(db_name=sttngs.DB_NAME)
+    drop()

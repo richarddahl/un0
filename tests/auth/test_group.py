@@ -11,12 +11,10 @@ from un0.config import settings as sttngs
 
 '''
 class TestGroup:
-    @pytest.mark.parametrize("db_name", ["un0_test_group"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_group"], indirect=["session"])
     def test_super_user_select_group(
         self,
         session,
-        db_name,
         mock_rls_vars,
         data_dict,
     ):

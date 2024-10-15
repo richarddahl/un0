@@ -7,19 +7,9 @@ import textwrap
 from un0.config import settings as sttngs
 
 
-#########################################################
-# SQL FUNCTIONS THAT REQUIRE A SCHEMA AND/OR TABLE NAME #
-#########################################################
-
-
-def enable_rls(table_name: str):
-    return textwrap.dedent(
-        f"""
-        -- Enable RLS for the table
-        ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;
-        ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;
-    """
-    )
+########################################
+# SQL FUNCTIONS THAT REQUIRE VARIABLES #
+########################################
 
 
 def create_superuser(
@@ -40,135 +30,131 @@ def create_superuser(
     )
 
 
-def create_authorize_user_function(db_name: str = sttngs.DB_NAME):
-    return textwrap.dedent(
-        f"""
-        CREATE OR REPLACE FUNCTION un0.authorize_user(token TEXT, role_name VARCHAR DEFAULT 'reader')
-        /*
-        Function to verify a JWT token and set the session variables necessary for enforcing RLS
-        Ensures that:
-            The token is valid or
-                raises an Exception (Invalid Token)
-            The token contains a sub (which is an email address) or
-                raises an Exception (Token does not contain a sub)
-            The email address provided in the sub is of a user in the user table or
-                raises an Exception (User not found)
-            The user is active or  Raises an Exception (User is not active)
-            The user is not deleted or Raises an Exception (User was deleted)
-        If all checks pass, returns the information necessary to enforce RLS otherwise raises an Exception
-
-        The information for RLS is:
-            user_id: The ID of the user 
-            is_superuser: Whether the user is a superuser
-            is_tenant_admin: Whether the user is a tenant admin
-            tenant_id: The ID of the tenant to which the user is associated
-
-        ::param token: The JWT token to verify
-        ::param role_name: The role to set for the session
-        */
-            RETURNS BOOLEAN
-            LANGUAGE plpgsql
-        AS $$
-
-        DECLARE
-            token_header JSONB;
-            token_payload JSONB;
-            token_valid BOOLEAN;
-            sub VARCHAR;
-            expiration INT;
-            user_email VARCHAR; 
-            user_id VARCHAR(26);
-            user_is_superuser VARCHAR(5);
-            user_is_tenant_admin VARCHAR(5);
-            user_tenant_id VARCHAR(26);
-            user_is_active BOOLEAN;
-            user_is_deleted BOOLEAN;
-            token_secret VARCHAR;
-            full_role_name VARCHAR:= '{db_name}_' || role_name;
-            admin_role_name VARCHAR:= '{db_name}_' || 'admin';
-        BEGIN
-            -- Set the role to the admin role to read from the token_secret table
-            EXECUTE 'SET ROLE ' || admin_role_name;
-
-            -- Get the secret from the token_secret table
-            SELECT secret FROM un0.token_secret INTO token_secret;
-
-            -- Verify the token
-            SELECT header, payload, valid
-            FROM un0.verify(token, token_secret)
-            INTO token_header, token_payload, token_valid;
-
-            IF token_valid THEN
-
-                -- Get the sub from the token payload
-                sub := token_payload ->> 'sub';
-
-                IF sub IS NULL THEN
-                    RAISE EXCEPTION 'no sub in token';
-                END IF;
-
-                -- Get the expiration from the token payload
-                expiration := token_payload ->> 'exp';
-                IF expiration IS NULL THEN
-                    RAISE EXCEPTION 'no exp in token';
-                END IF;
-
-                /*
-                Set the session variable for the user's email so that it can be used
-                in the query to get the user's information
-                */
-                PERFORM set_config('user_var.email', sub, true);
-
-                -- Query the user table for the user to get the values for the session variables
-                SELECT id, email, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
-                FROM un0.user
-                WHERE email = sub
-                INTO
-                    user_id,
-                    user_email,
-                    user_is_superuser,
-                    user_is_tenant_admin,
-                    user_tenant_id,
-                    user_is_active,
-                    user_is_deleted;
-
-                IF user_id IS NULL THEN
-                    RAISE EXCEPTION 'user not found';
-                END IF;
-
-                IF user_is_active = FALSE THEN 
-                    RAISE EXCEPTION 'user is not active';
-                END IF; 
-
-                IF user_is_deleted = TRUE THEN
-                    RAISE EXCEPTION 'user was deleted';
-                END IF; 
-
-                -- Set the session variables used for RLS
-                PERFORM set_config('user_var.email', user_email, true);
-                PERFORM set_config('user_var.id', user_id, true);
-                PERFORM set_config('user_var.is_superuser', user_is_superuser, true);
-                PERFORM set_config('user_var.is_tenant_admin', user_is_tenant_admin, true);
-                PERFORM set_config('user_var.tenant_id', user_tenant_id, true);
-
-                --Set the role to the role passed in
-                EXECUTE 'SET ROLE ' || full_role_name;
-
-            ELSE
-                -- Token failed verification
-                RAISE EXCEPTION 'invalid token';
-            END IF;
-            -- Return the validity of the token
-            RETURN token_valid;
-        END;
-        $$
-        """
-    )
-
-
 #################
 # SQL CONSTANTS #
 #################
+
+CREATE_AUTHORIZE_USER_FUNCTION = f"""
+CREATE OR REPLACE FUNCTION un0.authorize_user(token TEXT, role_name VARCHAR DEFAULT 'reader')
+/*
+Function to verify a JWT token and set the session variables necessary for enforcing RLS
+Ensures that:
+    The token is valid or
+        raises an Exception (Invalid Token)
+    The token contains a sub (which is an email address) or
+        raises an Exception (Token does not contain a sub)
+    The email address provided in the sub is of a user in the user table or
+        raises an Exception (User not found)
+    The user is active or  Raises an Exception (User is not active)
+    The user is not deleted or Raises an Exception (User was deleted)
+If all checks pass, returns the information necessary to enforce RLS otherwise raises an Exception
+
+The information for RLS is:
+    user_id: The ID of the user 
+    is_superuser: Whether the user is a superuser
+    is_tenant_admin: Whether the user is a tenant admin
+    tenant_id: The ID of the tenant to which the user is associated
+
+::param token: The JWT token to verify
+::param role_name: The role to set for the session
+*/
+    RETURNS BOOLEAN
+    LANGUAGE plpgsql
+AS $$
+
+DECLARE
+    token_header JSONB;
+    token_payload JSONB;
+    token_valid BOOLEAN;
+    sub VARCHAR;
+    expiration INT;
+    user_email VARCHAR; 
+    user_id VARCHAR(26);
+    user_is_superuser VARCHAR(5);
+    user_is_tenant_admin VARCHAR(5);
+    user_tenant_id VARCHAR(26);
+    user_is_active BOOLEAN;
+    user_is_deleted BOOLEAN;
+    token_secret VARCHAR;
+    full_role_name VARCHAR:= '{sttngs.DB_NAME}_' || role_name;
+    admin_role_name VARCHAR:= '{sttngs.DB_NAME}_' || 'admin';
+BEGIN
+    -- Set the role to the admin role to read from the token_secret table
+    EXECUTE 'SET ROLE ' || admin_role_name;
+
+    -- Get the secret from the token_secret table
+    SELECT secret FROM un0.token_secret INTO token_secret;
+
+    -- Verify the token
+    SELECT header, payload, valid
+    FROM un0.verify(token, token_secret)
+    INTO token_header, token_payload, token_valid;
+
+    IF token_valid THEN
+
+        -- Get the sub from the token payload
+        sub := token_payload ->> 'sub';
+
+        IF sub IS NULL THEN
+            RAISE EXCEPTION 'no sub in token';
+        END IF;
+
+        -- Get the expiration from the token payload
+        expiration := token_payload ->> 'exp';
+        IF expiration IS NULL THEN
+            RAISE EXCEPTION 'no exp in token';
+        END IF;
+
+        /*
+        Set the session variable for the user's email so that it can be used
+        in the query to get the user's information
+        */
+        PERFORM set_config('user_var.email', sub, true);
+
+        -- Query the user table for the user to get the values for the session variables
+        SELECT id, email, is_superuser, is_tenant_admin, tenant_id, is_active, is_deleted 
+        FROM un0.user
+        WHERE email = sub
+        INTO
+            user_id,
+            user_email,
+            user_is_superuser,
+            user_is_tenant_admin,
+            user_tenant_id,
+            user_is_active,
+            user_is_deleted;
+
+        IF user_id IS NULL THEN
+            RAISE EXCEPTION 'user not found';
+        END IF;
+
+        IF user_is_active = FALSE THEN 
+            RAISE EXCEPTION 'user is not active';
+        END IF; 
+
+        IF user_is_deleted = TRUE THEN
+            RAISE EXCEPTION 'user was deleted';
+        END IF; 
+
+        -- Set the session variables used for RLS
+        PERFORM set_config('user_var.email', user_email, true);
+        PERFORM set_config('user_var.id', user_id, true);
+        PERFORM set_config('user_var.is_superuser', user_is_superuser, true);
+        PERFORM set_config('user_var.is_tenant_admin', user_is_tenant_admin, true);
+        PERFORM set_config('user_var.tenant_id', user_tenant_id, true);
+
+        --Set the role to the role passed in
+        EXECUTE 'SET ROLE ' || full_role_name;
+
+    ELSE
+        -- Token failed verification
+        RAISE EXCEPTION 'invalid token';
+    END IF;
+    -- Return the validity of the token
+    RETURN token_valid;
+END;
+$$
+"""
 
 
 CREATE_CAN_INSERT_GROUP_FUNCTION = f"""

@@ -13,12 +13,10 @@ from un0.cmd import create_db, drop_db
 
 '''
 class TestTenant:
-    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
     def test_super_user_select_tenant(
         self,
         session,
-        db_name,
         mock_rls_vars,
         data_dict,
     ):
@@ -42,9 +40,8 @@ class TestTenant:
             tenant_count = session.execute(stmt)
             assert tenant_count.scalar() == 4
 
-    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
-    def test_reader_role_cannot_create_tenant(self, session, db_name, mock_rls_vars):
+    def test_reader_role_cannot_create_tenant(self, session, mock_rls_vars):
         """Tests that a tenant cannot be created by the reader role."""
         with session as session:
             session.execute(text(mock_rls_vars))
@@ -53,9 +50,8 @@ class TestTenant:
             with pytest.raises(exc.ProgrammingError):
                 session.commit()
 
-    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
-    def test_writer_role_can_create_tenant(self, session, db_name, mock_rls_vars):
+    def test_writer_role_can_create_tenant(self, session, mock_rls_vars):
         """Tests that a tenant can be created by the writer role."""
         with session as session:
             session.execute(text(mock_rls_vars))
@@ -63,9 +59,8 @@ class TestTenant:
             session.add(un0tech)
             assert session.commit() is None
 
-    @pytest.mark.parametrize("db_name", ["un0_test_tenant"], indirect=["db_name"])
     @pytest.mark.parametrize("session", ["un0_test_tenant"], indirect=["session"])
-    def test_super_user_create_tenant(self, session, db_name, mock_rls_vars):
+    def test_super_user_create_tenant(self, session, mock_rls_vars):
         """Tests that a tenant can be created by a superuser ."""
         with session as session:
             session.execute(text(mock_rls_vars))

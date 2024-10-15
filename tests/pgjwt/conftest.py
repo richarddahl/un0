@@ -3,8 +3,3 @@
 # SPDX-License-Identifier: MIT
 
 import pytest  # type: ignore
-
-
-@pytest.fixture(scope="session")
-def db_name():
-    return "un0_test_jwt"
