@@ -61,7 +61,7 @@ class DBController:
         eng = self.engine(db_role="postgres", db_name="postgres")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             print(
-                f"\nCreating the db: {sttngs.DB_NAME}, and all the roles, users, and schema for the application.\n"
+                f"\nCreating the db: {sttngs.DB_NAME}, and roles, users, and app schema.\n"
             )
             # Create the roles
             print("Creating the roles\n")
@@ -161,13 +161,12 @@ class DBController:
         self.initial_creation_steps()
         self.create_schemas_extensions_and_tables()
         self.create_auth_functions_and_triggers()
+
         # Connect to the new database to create the Graph functions and triggers
         eng = self.engine(db_role=f"{sttngs.DB_NAME}_login")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for table in Base.metadata.tables.values():
-                table_schema = TableSchema(
-                    table=table,
-                )
+                table_schema = TableSchema(table=table)
                 conn.execute(text(table_schema.configuration_sql()))
 
             conn.execute(text(f"SET ROLE {sttngs.DB_NAME}_admin"))
@@ -184,9 +183,7 @@ class DBController:
             sys.stdout = sys.__stdout__
 
     def drop_db(self) -> None:
-        """
-        Delete the database and its asociated roles.
-        """
+        """Delete the database and its asociated roles."""
         # Connect to the postgres database as the postgres user
 
         eng = self.engine(db_role="postgres", db_name="postgres")
