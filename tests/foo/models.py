@@ -12,7 +12,7 @@ from sqlalchemy import (
 
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 
-from un0.db import Base, BaseMixin, str_26, str_255  # type: ignore
+from un0.db.base import Base, BaseMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 

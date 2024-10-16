@@ -12,8 +12,7 @@ from sqlalchemy.exc import ProgrammingError
 
 from un0.auth.models import User
 from un0.config import settings as sttngs
-from un0.db import Base
-from un0.fltr.schemas import GraphedTableSchema
+from un0.db.base import Base
 
 from tests.conftest import mock_rls_vars
 
