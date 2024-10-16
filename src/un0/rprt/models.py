@@ -12,6 +12,6 @@ from sqlalchemy.dialects.postgresql import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
+from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 from un0.fltr.models import Query

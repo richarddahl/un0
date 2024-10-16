@@ -9,9 +9,9 @@ import pytz
 from sqlalchemy import func, text, select, update, delete
 from sqlalchemy.exc import ProgrammingError
 
-from un0.cmd import create_superuser
 from un0.auth.models import User
 from un0.config import settings as sttngs
+from un0.db.controller import DBController
 
 from tests.conftest import mock_rls_vars
 
@@ -19,10 +19,16 @@ from tests.conftest import mock_rls_vars
 class TestUser:
     """Tests for the User model."""
 
-    def test_create_superuser(self, session):
+    def test_create_user(self, session):
         """Creates the superuser and returns it's id."""
-        superuser_id = create_superuser.create(
-            "new_admin@notorm.com", "new_admin", "New Admin"
+        db = DBController()
+        assert 1 == 1
+
+        superuser_id = db.create_user(
+            email="new_admin@notorm.com",
+            handle="new_admin",
+            full_name="New Admin",
+            is_superuser=True,
         )
         assert superuser_id is not None
         with session.begin():

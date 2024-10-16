@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 # from database import AutoFilterDB  # type: ignore
-from un0.db.enumerations import (  # type: ignore
+from un0.db.base.enumerations import (  # type: ignore
     Include,
     Match,
     Lookup,

@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: MIT
 import datetime
-import textwrap
 import contextlib
 
 from typing import Optional

@@ -9,7 +9,7 @@ import decimal
 import asyncio
 import pytest
 
-# #from un0.db_definition import un0DB  # type: ignore
+# #from un0.db.base_definition import un0DB  # type: ignore
 
 from un0.config import settings  # type: ignore
 

@@ -4,10 +4,10 @@
 
 import textwrap
 
-from sqlalchemy import UniqueConstraint, Identity, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import UniqueConstraint, ForeignKey, Identity
+from sqlalchemy.orm import Mapped, mapped_column
 
-from un0.db import Base, str_26, str_255  # type: ignore
+from un0.db.base import Base, str_26, str_255
 
 
 class TableType(Base):
@@ -32,12 +32,10 @@ class TableType(Base):
     schema: Mapped[str_255] = mapped_column(doc="Schema of the table")
     name: Mapped[str_255] = mapped_column(doc="Name of the table")
 
-    # Relationships
-
 
 class RelatedObject(Base):
-    """Related Objects are used for the pk of all objects in the database,
-    allowing for a single point of reference for queries, workflows, and reports
+    """Related Objects are used for the pk of many objects in the database,
+    allowing for a single point of reference for attributes, queries, workflows, and reports
     """
 
     __tablename__ = "relatedobject"
@@ -45,8 +43,8 @@ class RelatedObject(Base):
         "schema": "un0",
         "comment": textwrap.dedent(
             """
-            Related Objects are used for the pk of all objects in the database,
-            allowing for a single point of reference for queries, workflows, and reports
+            Related Objects are used for the pk of many objects in the database,
+            allowing for a single point of reference for attributes, queries, workflows, and reports
             """
         ),
     }
@@ -56,10 +54,7 @@ class RelatedObject(Base):
         primary_key=True,
         doc="Primary Key",
     )
-
     tabletype_id: Mapped[int] = mapped_column(
         ForeignKey("un0.tabletype.id", ondelete="CASCADE"),
         info={"edge": "HAS_TABLETYPE"},
     )
-
-    # Relationships

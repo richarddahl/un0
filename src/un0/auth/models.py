@@ -27,7 +27,7 @@ from un0.auth.enums import (
     TenantType,
     PermissionAction,
 )
-from un0.db import Base, BaseMixin, str_26, str_255  # type: ignore
+from un0.db.base import Base, BaseMixin, str_26, str_255  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 

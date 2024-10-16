@@ -29,7 +29,7 @@ from un0.fltr.enums import (  # type: ignore
     Lookup,
     ColumnSecurity,
 )
-from un0.db import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
+from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.models import RelatedObject, TableType
 
 
