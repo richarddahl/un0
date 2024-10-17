@@ -8,7 +8,7 @@ import textwrap
 
 from sqlalchemy import text, create_engine, Engine
 
-from un0.db.db_tool_sql import (
+from un0.db.tools.db_tool_sql import (
     CREATE_ROLES,
     SET_PGMETA_CONFIG,
     CREATE_DATABASE,
@@ -39,8 +39,8 @@ import un0.msg.tables as msg_models  # noqa
 import un0.rltd.tables as rltd_models  # noqa
 import un0.rprt.tables as rprt_models  # noqa
 import un0.wkflw.tables as wkflw_models  # noqa
-from un0.db.table_tools import TableSchema
 from un0.config import settings as sttngs
+from un0.db.tools.table_tools import TableTool
 
 
 class DBTool:
@@ -229,7 +229,7 @@ class DBTool:
         eng = self.engine(db_role=f"{sttngs.DB_NAME}_login")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for table in Base.metadata.tables.values():
-                table_schema = TableSchema(table=table)
+                table_schema = TableTool(table=table)
                 conn.execute(text(table_schema.configuration_sql()))
 
             conn.execute(text(f"SET ROLE {sttngs.DB_NAME}_admin"))

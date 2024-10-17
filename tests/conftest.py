@@ -14,9 +14,9 @@ from sqlalchemy import func, select, delete, text, create_engine
 from sqlalchemy.orm import sessionmaker
 
 from un0.cmd import create_db, drop_db
-from un0.auth.models import Tenant, Group, User
+from un0.auth.tables import Tenant, Group, User
 from un0.auth.enums import TenantType
-from un0.db.controller import DBController
+from un0.db.tools.db_tool import DBTool
 from un0.config import settings as sttngs
 
 
@@ -162,7 +162,7 @@ def engine(db_url):
 @pytest.fixture(scope="class")
 def superuser_id():
     """Creates the database and returns the superuser id."""
-    db = DBController()
+    db = DBTool()
     db.drop_db()
     db.create_db()
     yield db.create_user(is_superuser=True)

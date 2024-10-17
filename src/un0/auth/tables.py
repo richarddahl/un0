@@ -28,10 +28,24 @@ from un0.auth.enums import (
     PermissionAction,
 )
 from un0.db.base import Base, BaseMixin, str_26, str_255  # type: ignore
-from un0.rltd.models import RelatedObject, TableType
+from un0.rltd.tables import RelatedObject, TableType
 
 
 class Tenant(Base, BaseMixin):
+    """
+    Represents organizations using the application
+
+    Attributes:
+        id (Mapped[str_26]): Primary key, foreign key to `un0.relatedobject.id`, with cascade delete.
+        name (Mapped[str_255]): Unique name of the tenant.
+        tenant_type (Mapped[TenantType]): Type of the tenant, defaults to `TenantType.INDIVIDUAL`.
+        users (Mapped[list["User"]]): List of users that belong to the tenant.
+
+    Methods:
+        __str__() -> str: Returns the name of the tenant.
+        __repr__() -> str: Returns a string representation of the tenant.
+    """
+
     __tablename__ = "tenant"
     __table_args__ = (
         {
@@ -72,6 +86,39 @@ class Tenant(Base, BaseMixin):
 
 
 class User(Base):
+    """
+    Application users.
+
+    Attributes:
+        id (str_26): Primary Key, foreign key to `un0.relatedobject.id`.
+        email (str_255): Email address, used as login ID, unique.
+        handle (str_255): User's displayed name and alternate login ID, unique.
+        full_name (str_255): User's full name.
+        tenant_id (Optional[str_26]): Foreign key to `un0.tenant.id`, nullable.
+        default_group_id (Optional[str_26]): Foreign key to `un0.group.id`, nullable.
+        is_superuser (bool): Superuser status, default is False.
+        is_tenant_admin (bool): Tenant admin status, default is False.
+        is_active (bool): Active status, default is True.
+        is_deleted (bool): Deleted status, default is False.
+        created_at (datetime.datetime): Time the record was created.
+        owner_id (Optional[str_26]): Foreign key to `un0.user.id`.
+        modified_at (datetime.datetime): Time the record was last modified.
+        modified_by_id (Optional[str_26]): Foreign key to `un0.user.id`.
+        deleted_at (Optional[datetime.datetime]): Time the record was deleted.
+        deleted_by_id (Optional[str_26]): Foreign key to `un0.user.id`.
+
+        tenant (Tenant): Tenant the user belongs to.
+        default_group (Group): Default group for the user.
+        modified_by (User): User that last modified the record.
+        deleted_by (User): User that deleted the record.
+        modified_users (list[User]): Users modified by the user.
+        deleted_users (list[User]): Users deleted by the user.
+
+    Methods:
+        __str__(): Returns the email of the user.
+        __repr__(): Returns a string representation of the user.
+    """
+
     __tablename__ = "user"
     __table_args__ = (
         CheckConstraint(
@@ -175,40 +222,6 @@ class User(Base):
         foreign_keys=[default_group_id],
         doc="Default group for the user",
     )
-    # owner: Mapped["User"] = relationship(
-    #    foreign_keys=[owner_id],
-    #    doc="User that owns the record",
-    # )
-    # owned_users: Mapped[list["User"]] = relationship(
-    #    primaryjoin="User.id == User.owner_id",
-    #    doc="Users owned by the user",
-    # )
-    """
-    modified_by: Mapped["User"] = relationship(
-        back_populates="modified_users",
-        foreign_keys=[modified_by_id],
-        remote_side=[id],
-        doc="User that last modified the record",
-    )
-    deleted_by: Mapped["User"] = relationship(
-        back_populates="deleted_users",
-        foreign_keys=[deleted_by_id],
-        remote_side=[id],
-        doc="User that deleted the record",
-    )
-    modified_users: Mapped[list["User"]] = relationship(
-        back_populates="modified_by",
-        foreign_keys=[id],
-        remote_side=[modified_by_id],
-        doc="Users modified by the user",
-    )
-    deleted_users: Mapped[list["User"]] = relationship(
-        back_populates="deleted_by",
-        foreign_keys=[id],
-        remote_side=[deleted_by_id],
-        doc="Users deleted by the user",
-    )
-    """
 
     def __str__(self) -> str:
         return self.email
@@ -218,6 +231,19 @@ class User(Base):
 
 
 class TablePermission(Base):
+    """
+    Documents permissions for each table.
+
+    Attributes:
+        id (int): Primary key of the table, auto-incremented.
+        tabletype_id (TableType): Foreign key referencing the table type, with cascade delete.
+        actions (list[PermissionAction]): List of permissible actions for the table.
+
+    Methods:
+        __str__: Returns a string representation of the TablePermission instance.
+        __repr__: Returns a detailed string representation of the TablePermission instance.
+    """
+
     __tablename__ = "tablepermission"
     __table_args__ = (
         UniqueConstraint(
@@ -267,6 +293,22 @@ class TablePermission(Base):
 
 
 class Role(Base, BaseMixin):
+    """
+    Role Model
+
+    Represents a role within the system, created by end user group admins. Roles enable the assignment of group permissions by functionality, department, etc., to users.
+
+    Attributes:
+        id (str_26): Primary key. Foreign key referencing `un0.relatedobject.id`. Indexed and cascades on delete.
+        tenant_id (str_26): Foreign key referencing `un0.tenant.id`. Indicates the tenant the role belongs to. Indexed and cascades on delete.
+        name (str_255): Name of the role.
+        description (str): Description of the role.
+
+    Methods:
+        __str__(): Returns the name of the role.
+        __repr__(): Returns a string representation of the role.
+    """
+
     __tablename__ = "role"
     __table_args__ = (
         Index("ix_role_tenant_id_name", "tenant_id", "name"),
@@ -308,6 +350,18 @@ class Role(Base, BaseMixin):
 
 
 class RoleTablePermission(Base):
+    """
+    RoleTablePermission is a SQLAlchemy model representing the association between roles and table permissions.
+
+    Attributes:
+        role_id (int): The ID of the role, which is a foreign key referencing the 'role' table.
+        tablepermission_id (int): The ID of the table permission, which is a foreign key referencing the 'tablepermission' table.
+
+    Methods:
+        __str__: Returns a string representation of the RoleTablePermission instance.
+        __repr__: Returns a detailed string representation of the RoleTablePermission instance.
+    """
+
     __tablename__ = "role_tablepermission"
     __table_args__ = (
         {
@@ -343,6 +397,20 @@ class RoleTablePermission(Base):
 
 
 class Group(Base, BaseMixin):
+    """
+    Group model representing application end-user groups.
+
+    Attributes:
+        id (Mapped[str_26]): Primary key of the group, linked to the related object with a cascading delete.
+        tenant_id (Mapped[str_26]): Foreign key linking the group to a tenant, with a cascading delete.
+        name (Mapped[str_255]): Name of the group.
+        users_default_group (Mapped[list["User"]]): List of users that have this group as their default group.
+
+    Methods:
+        __str__() -> str: Returns the name of the group.
+        __repr__() -> str: Returns a string representation of the group.
+    """
+
     __tablename__ = "group"
     __table_args__ = (
         Index("ix_group_tenant_id_name", "tenant_id", "name"),
@@ -387,6 +455,34 @@ class Group(Base, BaseMixin):
 
 
 class UserGroupRole(Base):
+    """
+    Represents the association between users, groups, and roles within an organization.
+
+    This table is used to assign roles to users for specific groups based on organizational requirements.
+    The assignments are managed by tenant_admin users.
+
+    Attributes:
+        user_id (Mapped[str_26]): Foreign key referencing the user's ID.
+            - Indexed, not nullable, primary key.
+            - On delete cascade.
+            - Info: {"edge": "HAS_USER"}
+
+        group_id (Mapped[str_26]): Foreign key referencing the group's ID.
+            - Indexed, not nullable, primary key.
+            - On delete cascade.
+            - Info: {"edge": "HAS_GROUP"}
+
+        role_id (Mapped[str_26]): Foreign key referencing the role's ID.
+            - Indexed, not nullable, primary key.
+            - On delete cascade.
+            - Info: {"edge": "HAS_ROLE"}
+
+    Table Info:
+        - Comment: Assigned by tenant_admin users to assign roles for groups to users based on organization requirements.
+        - Schema: "un0"
+        - Info: {"rls_policy": "admin", "vertex": False}
+    """
+
     __tablename__ = "user_group_role"
     __table_args__ = (
         {

@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.models import User
+from un0.auth.tables import User
 from un0.config import settings as sttngs
 from un0.db.base import Base
 
@@ -35,7 +35,7 @@ class TestFoo:
             if graph_table.vertex.properties:
                 print("VERTEX PROPERTIES")
                 for prop in graph_table.vertex.properties:
-                    print(prop.name + ": " + prop.data_type)
+                    print(prop.accessor + ": " + prop.data_type)
         if graph_table.edges:
             print("EDGES")
             for edge in graph_table.edges:
@@ -49,7 +49,7 @@ class TestFoo:
                 if edge.properties:
                     print("EDGE PROPERTIES")
                     for prop in edge.properties:
-                        print(prop.name, prop.data_type)
+                        print(prop.accessor, prop.data_type)
         print("")
 
         table = Base.metadata.tables["un0.testfoo_baz"]
@@ -66,7 +66,7 @@ class TestFoo:
             if edge.properties:
                 print("EDGE PROPERTIES")
                 for prop in edge.properties:
-                    print(prop.name, prop.data_type)
+                    print(prop.accessor, prop.data_type)
         print("")
         """
 

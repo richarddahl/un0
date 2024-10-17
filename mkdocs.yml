@@ -4,3 +4,21 @@
 site_name: un0
 theme:
    name: material
+plugins:
+   - search
+   - mkdocstrings
+nav:
+   - Home: index.md
+   - About: about.md
+   - FAQ: faq.md
+   - Getting Started: getting_started.md
+   - Structure: structure.md
+   - Commands: commands.md
+   - DB: 
+      - DB Tools: db/tool.md
+      - DB Tool SQL: db/tool_sql.md
+      - Table Tools: db/table_tools.md
+   - Authorization:
+      - Enums: auth/enums.md
+      - Models: auth/models.md
+      - Tables: auth/tables.md

@@ -10,17 +10,17 @@ import pytest  # type: ignore
 from sqlalchemy import func, text, select
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.models import User
+from un0.auth.tables import User
 from un0.config import settings as sttngs
 
 from tests.conftest import mock_rls_vars
 
 
 class TestFltr:
-    pass
-    '''
     def test_create_fields(self, session):
         assert True
+
+    '''
 
     #######################
     # Graph related tests #

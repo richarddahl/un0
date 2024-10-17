@@ -16,8 +16,9 @@ from un0.config import settings as sttngs
     The names are defined in the .env file or are derived from the mapped classes.
     They are not user input, and are only used to create or update the db during
     developement, testing, and deployment.
+
+    DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!
     
-    That said, Don't inject SQL into your own database!
 """
 
 
@@ -300,7 +301,7 @@ TO
 """
 
 
-CREATE_EXTENSIONS = """
+CREATE_EXTENSIONS = f"""
 -- Create the extensions
 SET search_path TO un0;
 
@@ -320,7 +321,7 @@ CREATE EXTENSION IF NOT EXISTS pgjwt;
 CREATE EXTENSION IF NOT EXISTS age;
 """
 
-SET_PGMETA_CONFIG = """
+SET_PGMETA_CONFIG = f"""
 -- Set the pgmeta configuration for supa_audit
 SET pgmeta.log = 'all';
 SET pgmeta.log_relation = on;
@@ -328,7 +329,7 @@ SET pgmeta.log_line_prefix = '%m %u %d [%p]: ';
 """
 
 
-CREATE_INSERT_RELATED_OBJECT_FUNCTION = """
+CREATE_INSERT_RELATED_OBJECT_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION un0.insert_relatedobject(schema_name VARCHAR, table_name VARCHAR)
 RETURNS VARCHAR(26)
 LANGUAGE plpgsql
@@ -356,7 +357,7 @@ END;
 $$;
 """
 
-CREATE_SET_OWNER_AND_MODIFIED_FUNCTION = """
+CREATE_SET_OWNER_AND_MODIFIED_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION un0.set_owner_and_modified()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -403,7 +404,7 @@ END;
 $$;
 """
 
-CREATE_VALIDATE_DELETE_FUNCTION = """
+CREATE_VALIDATE_DELETE_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION un0.validate_delete()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -439,7 +440,7 @@ $$;
 """
 
 
-CREATE_PGULID: str = """
+CREATE_PGULID = f"""
 -- pgulid is based on OK Log's Go implementation of the ULID spec
 --
 -- https://github.com/oklog/ulid
@@ -695,7 +696,7 @@ CREATE_TOKEN_SECRET = (
 )
 
 
-CREATE_TOKEN_SECRET_TABLE = """
+CREATE_TOKEN_SECRET_TABLE = f"""
 CREATE TABLE un0.token_secret (
     secret TEXT PRIMARY KEY
 );
@@ -719,7 +720,7 @@ EXECUTE FUNCTION un0.set_token_secret();
 """
 
 
-CREATE_USER_TABLE_RLS_SELECT_POLICY = """
+CREATE_USER_TABLE_RLS_SELECT_POLICY = f"""
 /*
 Enable RLS on the user table with policy
 */
@@ -729,7 +730,7 @@ ALTER TABLE un0.user FORCE ROW LEVEL SECURITY;
 /* 
 The policy to allow:
     Superusers to select all user records;
-    All other users to select all users records associated with their tenant;
+    All other users to select only user records associated with their tenant;
 */
 CREATE POLICY user_select_policy
 ON un0.user FOR SELECT
@@ -743,7 +744,7 @@ USING (
 The policy to allow:
     Superusers to insert user records;
     Tenant Admins to insert user records associated with the tenant;
-    Regular users cannot insert user records;
+Regular users cannot insert user records.
 */
 CREATE POLICY user_insert_policy
 ON un0.user FOR INSERT
@@ -781,7 +782,7 @@ USING (
 The policy to allow:
     Superusers to delete user records;
     Tenant Admins to delete user records associated with the tenant;
-    Regular users cannot delete user records;
+Regular users cannot delete user records.
 */
 CREATE POLICY user_delete_policy
 ON un0.user FOR DELETE
@@ -799,13 +800,13 @@ USING (
 """
 
 
-CREATE_INSERT_GROUP_CONSTRAINT = """
+CREATE_INSERT_GROUP_CONSTRAINT = f"""
 ALTER TABLE un0.group ADD CONSTRAINT ck_can_insert_group
     CHECK (un0.can_insert_group(tenant_id) = true);
 """
 
 
-CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER = """
+CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER = f"""
 CREATE OR REPLACE FUNCTION un0.insert_group_for_tenant()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -824,7 +825,7 @@ CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
 """
 
 
-CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER = """
+CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER = f"""
 CREATE OR REPLACE FUNCTION un0.insert_tablepermissions()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -861,7 +862,7 @@ CREATE OR REPLACE TRIGGER create_tablepermissions_trigger
     EXECUTE FUNCTION un0.insert_tablepermissions();
 """
 
-CREATE_GET_PERMISSIBLE_tablepermissionS_FUNCTION = """
+CREATE_GET_PERMISSIBLE_TABLEPERMISSIONS_FUNCTION = f"""
 /* 
 Generate a SQL statement to retrieve all permissible groups for a given user.
 :param user_email: The email address of the user.

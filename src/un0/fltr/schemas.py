@@ -9,7 +9,7 @@ from decimal import Decimal
 from pydantic import BaseModel, computed_field
 from sqlalchemy import Table, Column
 
-from un0.schemas import TableSchema
+from un0.db.db_tool import TableTool
 from un0.utilities import convert_snake_to_capital_word
 from un0.fltr.enums import (  # type: ignore
     GraphType,
@@ -21,8 +21,8 @@ from un0.fltr.enums import (  # type: ignore
     numeric_lookups,
     string_lookups,
 )
-from un0.fltr.models import FilterField
 from un0.config import settings as sttngs
+from un0.db.db_tool import VertexTool, EdgeTool, PropertyTool
 
 
 ################
@@ -37,105 +37,59 @@ $$) AS (source agtype, Relationship agtype, Destination agtype);
 """
 
 
-'''
-class FilterSchema(BaseModel):
-    """A filter used to query the database."""
-
-    table: Table
-    graph_type: GraphType
-    label: str
-    include: Include
-    match: Match
-    lookups: list[Lookup]
-
-
 class FilterFieldSchema(BaseModel):
-    """A field used to filter a query."""
+    """A filterfield used to query the database."""
 
-    table: Table
-    from_column: Column
-    to_column: Column | None = None
-    graph_type: GraphType
-    vertex: VertexSchema | None = None
-    edge: EdgeSchema | None = None
-    prop: PropertySchema | None = None
-    lookups: list[Lookup] = []
-    label: str
-
-    @computed_field
-    def vertex(self) -> VertexSchema | None:
-        if self.graph_type == GraphType.VERTEX:
-            return VertexSchema(table=self.table, column=self.from_column)
-        return None
-
-    @computed_field
-    def edge(self) -> EdgeSchema | None:
-        if self.graph_type == GraphType.EDGE:
-            return EdgeSchema(
-                table=self.table,
-                start_column=self.from_column,
-                end_column=self.to_column,
-            )
-        return None
-
-    @computed_field
-    def prop(self) -> PropertySchema | None:
-        if self.graph_type == GraphType.PROPERTY:
-            return PropertySchema(table=self.table, column=self.from_column)
-        return None
-
-    @computed_field
-    def lookups(self) -> list[Lookup]:
-        if self.prop:
-            return self.prop.lookups
-        return related_lookups
-
-    @computed_field
-    def label(self) -> str:
-        if self.vertex:
-            return self.vertex.label
-        if self.edge:
-            return self.edge.label
-        return self.prop.name
-
-
-
-class FilterFieldSchemaOLD(TableSchema):
-    """ """
-
-    # table: Table <- TableSchema
-
-    # vertex: VertexSchema | None <- computed_field
-    # edge: EdgeSchema | None <- computed_field
-    # prop: PropertySchema | None <- computed_field
+    # name: str <- computed_field
+    # accessor: str <- computed_field
     # lookups: list[Lookup] <- computed_field
-    # label: str <- computed_field
+    # vertex: VertexTool | None <- computed_field
+    # edge: EdgeTool | None <- computed_field
+    # props: PropertyTool | None <- computed_field
 
-    from_column: Column
-    to_column: Column | None = None
+    # to_column: Column | None <- computed_field
+    table: Table
+    column: Column
     graph_type: GraphType
 
+    model_config = {"arbitrary_types_allowed": True}
+
     @computed_field
-    def vertex(self) -> VertexSchema | None:
+    def name(self) -> str:
         if self.graph_type == GraphType.VERTEX:
-            return VertexSchema(table=self.table, column=self.from_column)
-        return None
-
-    @computed_field
-    def edge(self) -> EdgeSchema | None:
+            return convert_snake_to_capital_word(self.column.name)
         if self.graph_type == GraphType.EDGE:
-            return EdgeSchema(
-                table=self.table,
-                start_column=self.from_column,
-                end_column=self.to_column,
-            )
-        return None
+            return self.column.name.upper()
+        return self.column.name
 
     @computed_field
-    def prop(self) -> PropertySchema | None:
-        if self.graph_type == GraphType.PROPERTY:
-            return PropertySchema(table=self.table, column=self.from_column)
-        return None
+    def accessor(self) -> str:
+        return self.table.name
+
+    # @computed_field
+    # def vertex(self) -> VertexTool | None:
+    #    if self.graph_type == GraphType.VERTEX:
+    #        return VertexTool(
+    #            table=self.table,
+    #            column=self.table.primary_key.columns[0],
+    #        )
+    #    return None
+    #
+    #    @computed_field
+    #    def edge(self) -> EdgeTool | None:
+    #        if self.graph_type == GraphType.EDGE:
+    #            return EdgeTool(
+    #                table=self.table,
+    #                from_column=self.from_column,
+    #                to_column=self.to_column,
+    #            )
+    #        return None
+
+    #    @computed_field
+    #    def prop(self) -> PropertyTool | None:
+    #        if self.graph_type == GraphType.PROPERTY:
+    #            return PropertyTool(table=self.table, column=self.from_column)
+    #        return None
 
     @computed_field
     def lookups(self) -> list[Lookup]:
@@ -149,7 +103,7 @@ class FilterFieldSchemaOLD(TableSchema):
             return self.vertex.label
         if self.edge:
             return self.edge.label
-        return self.prop.name
+        return self.prop.accessor
 
     def insert_sql(self) -> str:
         sql = ""
@@ -243,10 +197,59 @@ class FilterFieldSchemaOLD(TableSchema):
         return sql
 
 
-class FilterKeySchema(TableSchema):
+class FilterSetSchema(BaseModel):
+    # filters = list[FilterFieldSchema] <- computed_field
+    table: Table
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @computed_field
+    def filters(self) -> list[FilterFieldSchema]:
+        filters = []
+        if self.table.info.get("vertex", True):
+            filters.append(
+                FilterFieldSchema(
+                    table=self.table,
+                    column=self.table.primary_key.columns[0],
+                    graph_type=GraphType.VERTEX,
+                )
+            )
+        for column in self.table.columns:
+            filters.append(
+                FilterFieldSchema(
+                    table=self.table,
+                    column=column,
+                    graph_type=GraphType.PROPERTY,
+                )
+            )
+        for fk in self.table.foreign_keys:
+            filters.append(
+                FilterFieldSchema(
+                    table=self.table,
+                    to_column=fk.parent,
+                    start_vertex=self,
+                    end_vertex=VertexTool(
+                        table=fk.column.table,
+                        column=fk.parent,
+                    ),
+                )
+            )
+
+        return filters
+
+    def create_sql(self) -> str:
+        sql = ""
+        for filter in self.filters:
+            sql += f"\n{filter.insert_sql()}"
+        return sql
+
+
+'''
+
+class FilterKeySchema(TableTool):
     """ """
 
-    # table: Table <- TableSchema
+    # table: Table <- TableTool
 
     from_filterfield: FilterFieldSchema
     to_filterfield: FilterFieldSchema
@@ -282,10 +285,10 @@ class FilterKeySchema(TableSchema):
         )
 
 
-class PathSchema(TableSchema):
+class PathSchema(TableTool):
     """ """
 
-    # table: Table <- TableSchema
+    # table: Table <- TableTool
 
     # start_filter_field: FilterFieldSchema <- computed_field
     # end_filter_field: FilterFieldSchema <- computed_field

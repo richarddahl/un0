@@ -6,7 +6,7 @@ import pytest  # type: ignore
 
 import sqlalchemy as sa
 
-from un0.auth.models import Group
+from un0.auth.tables import Group
 from un0.config import settings as sttngs
 
 '''

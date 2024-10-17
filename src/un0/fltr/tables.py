@@ -30,37 +30,17 @@ from un0.fltr.enums import (  # type: ignore
     ColumnSecurity,
 )
 from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
-from un0.rltd.models import RelatedObject, TableType
+from un0.rltd.tables import RelatedObject, TableType
 
 
 class FilterField(Base):
-    """FilterFields represent the fields that can be used to filter queries.
-
-    FilterFields are associated with TableTypes and can be used to filter queries
-    on the TableType. FilterFields can be associated with other FilterFields to
-    create a filterable path from one TableType to another or the same table.
-
-    FilterFields represent either a vertex or an edge in a graph. The
-    graph_type attribute indicates if the FilterField represents a vertex
-    or an edge.
-
-    The lookups attribute indicates the types of lookups that can be
-    performed on the FilterField.
-
-    The accessor attribute is used to access the FilterField in queries.
-
-    The name attribute is a human readable name for the FilterField.
-
-    The lookups attribute is a list of lookups that can be performed on the
-    FilterField.
-
-    The graph_type attribute indicates if the FilterField represents a vertex,
-    a property, or an edge.
-    """
-
     __tablename__ = "filterfield"
     __table_args__ = (
-        UniqueConstraint("accessor", "graph_type", name="uq_accessor_graph_type"),
+        UniqueConstraint(
+            "label",
+            "graph_type",
+            name="uq_label_graph_type",
+        ),
         {
             "schema": "un0",
             "comment": "Used to enable user-defined filtering using the graph vertices and edges.",
@@ -75,9 +55,9 @@ class FilterField(Base):
         index=True,
         doc="Primary Key",
     )
-    name: Mapped[str_255] = mapped_column()
-    accessor: Mapped[str] = mapped_column(unique=True, index=True)
-    # data_type: Mapped[str_26] = mapped_column()
+    accessor: Mapped[str_255] = mapped_column()
+    label: Mapped[str] = mapped_column()
+    data_type: Mapped[str_26] = mapped_column()
     graph_type: Mapped[ColumnSecurity] = mapped_column(
         ENUM(
             GraphType,
@@ -142,7 +122,7 @@ class FilterFieldTableType(Base):
             schema="un0",
         ),
         primary_key=True,
-        default=EdgeDirection.FROM,
+        server_default=EdgeDirection.FROM.name,
         doc="The direction of the edge.",
     )
 

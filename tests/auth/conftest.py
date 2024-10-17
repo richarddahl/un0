@@ -4,7 +4,7 @@
 
 import pytest  # type: ignore
 
-from un0.auth.models import User
+from un0.auth.tables import User
 from tests.conftest import mock_rls_vars
 from un0.config import settings as sttngs
 

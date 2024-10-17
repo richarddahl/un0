@@ -9,9 +9,9 @@ import pytz
 from sqlalchemy import func, text, select, update, delete
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.models import User
+from un0.auth.tables import User
 from un0.config import settings as sttngs
-from un0.db.controller import DBController
+from un0.db.tools.db_tool import DBTool
 
 from tests.conftest import mock_rls_vars
 
@@ -21,7 +21,7 @@ class TestUser:
 
     def test_create_user(self, session):
         """Creates the superuser and returns it's id."""
-        db = DBController()
+        db = DBTool()
         assert 1 == 1
 
         superuser_id = db.create_user(

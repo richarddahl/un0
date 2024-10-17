@@ -27,8 +27,8 @@ from un0.wkflw.enums import (  # type: ignore
     WorkflowTrigger,
 )
 from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
-from un0.rltd.models import RelatedObject, TableType
-from un0.fltr.models import Query
+from un0.rltd.tables import RelatedObject, TableType
+from un0.fltr.tables import Query
 
 
 class Workflow(Base):

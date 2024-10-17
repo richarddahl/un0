@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.models import User
+from un0.auth.tables import User
 from un0.config import settings as sttngs
 
 from tests.conftest import mock_rls_vars
