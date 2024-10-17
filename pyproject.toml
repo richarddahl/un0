@@ -55,9 +55,9 @@ path = "src/un0/__about__.py"
 
 # Default Environment
 [tool.hatch.envs.default.scripts]
-main = "uvicorn src/un0.main:app {args: --reload}"
-createdb = "python src/un0/cmd/create_db.py"
-dropdb = "python src/un0/cmd/drop_db.py"
+main = "uvicorn un0.main:app {args: --reload}"
+createdb = "python un0/cmd/create_db.py"
+dropdb = "python un0/cmd/drop_db.py"
 
 
 #Development Environment

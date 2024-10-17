@@ -6,10 +6,13 @@ import pytest
 import json
 import pytz
 
+from pydantic.fields import FieldInfo
+
 from sqlalchemy import func, text, select, update, delete
 from sqlalchemy.exc import ProgrammingError
 
 from un0.auth.tables import User
+from un0.auth.models import UserModel
 from un0.config import settings as sttngs
 from un0.db.tools.db_tool import DBTool
 
@@ -535,3 +538,31 @@ class TestUser:
             session.add(unauthorized_acme_user)
             with pytest.raises(ProgrammingError):
                 session.commit()
+
+    def test_user_model_api_model_creation(self):
+        """Tests the User model."""
+        user_model = UserModel()
+        assert user_model is not None
+        assert user_model.api_model is not None
+        assert user_model.api_model.__annotations__ is not None
+        assert user_model.api_model.__annotations__.get("email") == str
+        assert user_model.api_model.__annotations__.get("handle") == str
+        assert user_model.api_model.__annotations__.get("full_name") == str
+        assert user_model.api_model.__annotations__.get("is_superuser") == bool
+        assert user_model.api_model.__annotations__.get("is_tenant_admin") == bool
+        assert user_model.api_model.__annotations__.get("is_active") == bool
+        assert user_model.api_model.__annotations__.get("is_deleted") == bool
+        assert user_model.api_model.__annotations__.get("tenant_id") == str | None
+        assert (
+            user_model.api_model.__annotations__.get("default_group_id") == str | None
+        )
+        assert (
+            user_model.api_model.__annotations__.get("created_at") == datetime.datetime
+        )
+        assert (
+            user_model.api_model.__annotations__.get("modified_at") == datetime.datetime
+        )
+        assert (
+            user_model.api_model.__annotations__.get("deleted_at")
+            == datetime.datetime | None
+        )

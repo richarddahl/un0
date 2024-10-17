@@ -10,7 +10,12 @@ from fastapi.templating import Jinja2Templates
 
 # from un0.auth.routers import router  # type: ignore
 
-from un0.config import settings  # type: ignore
+
+from un0.config import settings
+from un0.db.models import Un0Base
+from un0.db.base import Base
+import un0.auth.tables as auth_tables
+from un0.auth.models import UserModel
 
 
 app = FastAPI()
@@ -51,4 +56,6 @@ async def app_base(
     )
 
 
-app.include_router(router)
+# router =
+
+# app.include_router(router)

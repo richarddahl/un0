@@ -22,7 +22,8 @@ from un0.fltr.enums import (  # type: ignore
     string_lookups,
 )
 from un0.config import settings as sttngs
-from un0.db.db_tool import VertexTool, EdgeTool, PropertyTool
+from un0.db.tools.db_tool import VertexTool, EdgeTool, PropertyTool
+from un0.db.models import UN0Model
 
 
 ################
@@ -37,7 +38,7 @@ $$) AS (source agtype, Relationship agtype, Destination agtype);
 """
 
 
-class FilterFieldSchema(BaseModel):
+class FilterFieldModel(UN0Model):
     """A filterfield used to query the database."""
 
     # name: str <- computed_field
