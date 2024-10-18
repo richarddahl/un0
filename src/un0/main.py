@@ -12,10 +12,10 @@ from fastapi.templating import Jinja2Templates
 
 
 from un0.config import settings
-from un0.db.models import Un0Base
+from un0.db.models import Un0Obj
 from un0.db.base import Base
 import un0.auth.tables as auth_tables
-from un0.auth.models import UserModel
+from un0.auth.models import UserObj
 
 
 app = FastAPI()

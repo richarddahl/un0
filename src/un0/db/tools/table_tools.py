@@ -6,7 +6,7 @@ import textwrap
 from datetime import datetime, date, time
 from decimal import Decimal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from sqlalchemy import Table, Column
 
@@ -31,9 +31,7 @@ class TableTool(BaseModel):
 
     Attributes:
         table (Table): The SQLAlchemy Table object representing the database table.
-        model_config (dict): Configuration for the Pydantic model, allowing arbitrary types.
-
-    Computed Fields:
+        model_config (ConfigDict): Configuration for the Pydantic model, allowing arbitrary types.
         table_schema (str): The schema of the table.
         table_name (str): The name of the table.
         schema_table_name (str): The full name of the table including schema.
@@ -69,7 +67,7 @@ class TableTool(BaseModel):
 
     table: Table
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def table_schema(self) -> str:
@@ -465,7 +463,7 @@ class PropertyTool(TableTool):
 
     Attributes:
         column (Column): The column associated with the property schema.
-        model_config (dict): Configuration dictionary allowing arbitrary types.
+        model_config (ConfigDict): Configuration dictionary allowing arbitrary types.
 
     Methods:
         accessor() -> str:
@@ -494,7 +492,7 @@ class PropertyTool(TableTool):
 
     column: Column
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def accessor(self) -> str:
@@ -583,7 +581,7 @@ class VertexTool(TableTool):
         column (Column): The column associated with the vertex.
         lookups (list[Lookup]): A list of related lookups.
         table (Table): The table associated with the vertex.
-        model_config (dict): Configuration for the model, allowing arbitrary types.
+        model_config (ConfigDict): Configuration for the model, allowing arbitrary types.
 
     Computed Fields:
         label (str): The label of the vertex, derived from the table name.
@@ -615,7 +613,7 @@ class VertexTool(TableTool):
     column: Column
     lookups: list[Lookup] = related_lookups
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def label(self) -> str:
@@ -918,7 +916,7 @@ class EdgeTool(TableTool):
         end_vertex (VertexTool): The schema of the end vertex.
         lookups (list[Lookup]): A list of related lookups.
         in_vertex (bool): A flag indicating if the edge is in a vertex. Defaults to True.
-        model_config (dict): Configuration for the model, allowing arbitrary types.
+        model_config (ConfigDict): Configuration for the model, allowing arbitrary types.
     Methods:
         label() -> str:
             Computes and returns the label for the edge.
@@ -948,7 +946,7 @@ class EdgeTool(TableTool):
     lookups: list[Lookup] = related_lookups
     in_vertex: bool = True
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def label(self) -> str:
@@ -1249,7 +1247,7 @@ class TableTool(BaseModel):
 
     table: Table
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def table_schema(self) -> str:
@@ -1674,7 +1672,7 @@ class PropertyTool(TableTool):
 
     column: Column
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def accessor(self) -> str:
@@ -1795,7 +1793,7 @@ class VertexTool(TableTool):
     column: Column
     lookups: list[Lookup] = related_lookups
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def label(self) -> str:
@@ -2128,7 +2126,7 @@ class EdgeTool(TableTool):
     lookups: list[Lookup] = related_lookups
     in_vertex: bool = True
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def label(self) -> str:

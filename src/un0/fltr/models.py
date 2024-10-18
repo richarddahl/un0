@@ -53,7 +53,7 @@ class FilterFieldModel(UN0Model):
     column: Column
     graph_type: GraphType
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def name(self) -> str:
@@ -202,7 +202,7 @@ class FilterSetSchema(BaseModel):
     # filters = list[FilterFieldSchema] <- computed_field
     table: Table
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def filters(self) -> list[FilterFieldSchema]:

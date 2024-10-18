@@ -41,7 +41,7 @@ import un0.rprt.tables as rprt_models  # noqa
 import un0.wkflw.tables as wkflw_models  # noqa
 from un0.config import settings as sttngs
 from un0.db.tools.table_tools import TableTool
-from un0.db.models import Un0Base
+from un0.db.models import Un0Obj
 
 
 class DBTool:

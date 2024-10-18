@@ -14,23 +14,23 @@ class Un0Error(Exception):
         self.error_code = error_code
 
 
-class Un0ModelConfigError(Un0Error):
+class Un0BaseModelConfigError(Un0Error):
     pass
 
 
-class Un0ModelRegistryError(Un0Error):
+class Un0BaseModelRegistryError(Un0Error):
     pass
 
 
-class Un0ModelFieldListError(Un0Error):
+class Un0BaseModelFieldListError(Un0Error):
     pass
 
 
-class Un0ModelRelationConfigError(Un0Error):
+class Un0BaseModelRelationConfigError(Un0Error):
     pass
 
 
-class Un0ModelTableError(Un0Error):
+class Un0BaseModelTableError(Un0Error):
     pass
 
 
