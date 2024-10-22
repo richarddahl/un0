@@ -16,7 +16,7 @@ from pydantic.fields import Field
 
 from sqlalchemy import Table, Column, inspect
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, FastAPI
 
 
 from un0.errors import (
@@ -31,16 +31,6 @@ from un0.db.base import engine, Base
 meta_data = Base.metadata
 
 _Unset = PydanticUndefined
-
-
-def un0_router(
-    schema: Type["Un0Model"],
-    path: str = "/",
-    tags: list[str] = [],
-    dependencies: list[Depends] = [],
-):
-    """ """
-    return {"schema": schema.name}
 
 
 class Un0RouterDef(BaseModel):
@@ -82,6 +72,24 @@ class Un0ModelDef(BaseModel):
 
     @model_validator(mode="before")
     def validate_model(cls, values):
+        """
+        Validates the model fields based on the provided values.
+
+        Args:
+            cls: The class of the model being validated.
+            values (dict): A dictionary containing the following keys:
+                - table: The table to inspect.
+                - field_includes: A list of fields to include.
+                - field_excludes: A list of fields to exclude.
+
+        Raises:
+            Un0BaseModelFieldListError: If a field in field_includes or field_excludes does not exist in the table.
+            Un0BaseModelFieldListError: If both field_includes and field_excludes are provided.
+            Un0BaseModelFieldListError: If there are duplicate fields in field_includes or field_excludes.
+
+        Returns:
+            dict: The validated values.
+        """
         inspector = inspect(values.get("table"))
         for field in values.get("field_includes", []):
             if field not in inspector.columns:
@@ -100,6 +108,32 @@ class Un0ModelDef(BaseModel):
             raise Un0BaseModelFieldListError(
                 "You cannot include and exclude fields in the same model.",
                 "INCLUDE_AND_EXCLUDE_FIELDS",
+            )
+
+        uniques = set()
+        include_duplicates = []
+        for field in values.get("field_includes", []):
+            if field in uniques:
+                include_duplicates.append(field)
+            else:
+                uniques.add(field)
+
+        uniques = set()
+        exclude_duplicates = []
+        for field in values.get("field_excludes", []):
+            if field in uniques:
+                exclude_duplicates.append(field)
+            else:
+                uniques.add(field)
+        if include_duplicates:
+            raise Un0BaseModelFieldListError(
+                f"Duplicate fields found in field_includes: {', '.join(include_duplicates)}, for Un0Model {cls.__name__}.",
+                "DUPLICATE_FIELDS_IN_LISTS",
+            )
+        if exclude_duplicates:
+            raise Un0BaseModelFieldListError(
+                f"Duplicate fields found in field_excludes: {', '.join(exclude_duplicates)}, for Un0Model {cls.__name__}.",
+                "DUPLICATE_FIELDS_IN_LISTS",
             )
         return values
 
@@ -126,7 +160,8 @@ class Un0Model(BaseModel):
         model_config (ConfigDict): Configuration dictionary allowing arbitrary types.
     """
 
-    table: Type[Base]
+    # table: Type[Base]
+    # routes: list[Un0RouterDef] = []
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -134,8 +169,27 @@ class Un0Model(BaseModel):
         pass
 
 
-class Un0Router(APIRouter):
-    pass
+class Un0Router:
+    def __init__(
+        self,
+        path: str,
+        schema: Type[Un0Model],
+    ):
+        self.schema = schema
+        self.path = path
+
+    def register_router(self):
+        router = APIRouter()
+        router.add_api_route(
+            self.path,
+            self.get,
+            methods=["GET"],
+            response_model=self.schema,
+        )
+        return router
+
+    def get(self):
+        return {"message": "Hello World"}
 
 
 class Un0Obj(BaseModel):
@@ -178,13 +232,14 @@ class Un0Obj(BaseModel):
     """
 
     # models: dict[str, Type[Un0Model]] = {} <- computed_field
-    # routers: dict[str, Type[Un0Router]] = {} <- computed_field
+    # routers: list[Type[Un0Router]] = [] <- computed_field
 
     un0_model_registry: ClassVar[dict[str, Type[BaseModel]]] = {}
     un0_class_name_map: ClassVar[dict[str, str]] = {}
     db_table_name: ClassVar[str]
     db_table: ClassVar[Table]
     module_name: ClassVar[str]
+    app: FastAPI
 
     schema_defs: dict[str, dict[str, Un0ModelDef]] = {}
     router_defs: dict[str, dict[str, Un0RouterDef]] = {}
@@ -192,7 +247,7 @@ class Un0Obj(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
-    def models(self) -> list[Type[Un0Model]]:
+    def models(self) -> dict[str, Un0Model]:
         models = {}
         for model_name, model_def in self.schema_defs.items():
             models[model_name] = create_model(
@@ -204,13 +259,20 @@ class Un0Obj(BaseModel):
 
     @computed_field
     def routers(self) -> list[Type[Un0Router]]:
-        routers = {}
+        routers = []
+        print(self.models.get("select_schema"))
+        print(type(self.models.get("select_schema")))
+        return [
+            Un0Router(schema=self.models.get("select_schema"), path="users"),
+        ]
         for router_name, router_def in self.router_defs.items():
-            routers[router_name] = Un0Router(
-                schema=router_def.model,
-                path=router_def.path,
-                tags=router_def.tags,
-                dependencies=router_def.dependencies,
+            routers.append(
+                Un0Router(
+                    schema=router_def.model,
+                    path=router_def.path,
+                    tags=router_def.tags,
+                    dependencies=router_def.dependencies,
+                )
             )
         return routers
 
