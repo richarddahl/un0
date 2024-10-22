@@ -31,7 +31,11 @@ app.mount(
 )
 
 
-@app.get("/", response_class=HTMLResponse)
+from un0.auth.models import UserObj
+
+@app.get("/user/select-schema", response_model=UserObj.select_schema())
+async def get_user_select_schema():
+    return {"message": "User select schema"}
 async def index(
     request: Request,
 ):  # settings: Annotated[settings, Depends(get_settings)]):
