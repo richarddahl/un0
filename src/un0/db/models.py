@@ -339,33 +339,18 @@ class Un0Obj(BaseModel):
         Returns:
             tuple[Type, Field]: A tuple containing the field type and the field instance.
         """
-        default = _Unset
-        default_factory = _Unset
-        title = _Unset
-        description = _Unset or column.help_text or column.name
-        title = column.name.title()
         field_type = column.type.python_type
         nullable = column.nullable
-        if column.server_default:
-            default = None
-        elif column.default:
-            if callable(column.default):
-                default_factory = column.default
-            else:
-                default = column.default
-        elif nullable:
-            default = None
-        else:
-            default = ...
+        default = None if column.server_default or nullable else column.default or ...
+        default_factory = column.default if callable(column.default) else _Unset
+
         field = Field(
             default=default,
             default_factory=default_factory,
-            title=title,
-            description=description,
+            title=column.name.title(),
+            description=column.help_text or column.name,
         )
-        if nullable:
-            return (field_type | None, field)
-        return (field_type, field)
+        return (field_type | None, field) if nullable else (field_type, field)
 
     @classmethod
     def suss_fields(cls, model_def: Un0ModelDef) -> dict[str, Any]:
