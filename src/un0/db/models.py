@@ -156,12 +156,8 @@ class Un0Model(BaseModel):
     Un0Model class that inherits from BaseModel.
 
     Attributes:
-        table (Table): The table associated with the model.
         model_config (ConfigDict): Configuration dictionary allowing arbitrary types.
     """
-
-    # table: Type[Base]
-    # routes: list[Un0RouterDef] = []
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
