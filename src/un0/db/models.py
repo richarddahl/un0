@@ -257,8 +257,6 @@ class Un0Obj(BaseModel):
     @computed_field
     def routers(self) -> list[Type[Un0Router]]:
         routers = []
-        print(self.models.get("select_schema"))
-        print(type(self.models.get("select_schema")))
         return [
             Un0Router(schema=self.models.get("select_schema"), path="users"),
         ]
