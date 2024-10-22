@@ -373,21 +373,17 @@ class Un0Obj(BaseModel):
         Suss out the fields for an Un0Obj based on the table columns.
 
         Args:
-            cls (type): The class object.
+            model_def (Un0ModelDef): The model definition containing field includes and excludes.
 
         Returns:
-            A dictionary of fields for the Un0Obj.
+            dict[str, Any]: A dictionary of fields for the Un0Obj.
         """
-        fields = {}
-        for column in cls.db_table.columns:
-            if column.name in model_def.field_excludes:
-                continue
-            if model_def.field_includes and column.name not in model_def.field_includes:
-                continue
-            column_name = column.name
-            field = cls.create_model_field(column)
-            fields[column_name] = field
-        return fields
+        return {
+            column.name: cls.create_model_field(column)
+            for column in cls.db_table.columns
+            if column.name not in model_def.field_excludes
+            and (not model_def.field_includes or column.name in model_def.field_includes)
+        }
 
     @classmethod
     def get_model_from_registry_by_table_name(
