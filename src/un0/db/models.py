@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 from typing import Any, Type, ClassVar
+from hello import hello
 
 from pydantic import (
     BaseModel,
