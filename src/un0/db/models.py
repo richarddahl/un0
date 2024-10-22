@@ -250,6 +250,7 @@ class Un0Obj(BaseModel):
     def models(self) -> dict[str, Un0Model]:
         models = {}
         for model_name, model_def in self.schema_defs.items():
+            # Create a Pydantic model using the base class from model_def
             models[model_name] = create_model(
                 model_name,
                 __base__=model_def.base,
