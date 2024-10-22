@@ -376,13 +376,15 @@ class Un0Obj(BaseModel):
             model_def (Un0ModelDef): The model definition containing field includes and excludes.
 
         Returns:
-            dict[str, Any]: A dictionary of fields for the Un0Obj.
+            dict[str, Any]: A dictionary of fields for the Un0Model.
         """
         return {
             column.name: cls.create_model_field(column)
             for column in cls.db_table.columns
             if column.name not in model_def.field_excludes
-            and (not model_def.field_includes or column.name in model_def.field_includes)
+            and (
+                not model_def.field_includes or column.name in model_def.field_includes
+            )
         }
 
     @classmethod
