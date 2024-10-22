@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 from typing import Annotated
 
+from pydantic import BaseModel
+
 from fastapi import FastAPI, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -15,7 +17,7 @@ from un0.config import settings
 from un0.db.models import Un0Obj
 from un0.db.base import Base
 import un0.auth.tables as auth_tables
-from un0.auth.models import UserObj
+from un0.auth.models import UserObj, UserModel
 
 
 app = FastAPI()
@@ -54,8 +56,3 @@ async def app_base(
             "site_name": settings.SITE_NAME,
         },
     )
-
-
-# router =
-
-# app.include_router(router)
