@@ -26,3 +26,16 @@ def test_user_list_route():
         headers={"X_Token": encode_test_token()},
     )
     assert response.status_code == 200
+
+def test_userobj_get_route():
+    response = client.get(
+        "/api/auth/userobj",
+        headers={"X_Token": encode_test_token()},
+    )
+    assert response.status_code == 200
+    # Add more assertions here based on the expected response content
+    response = client.get(
+        "/api/auth/users",
+        headers={"X_Token": encode_test_token()},
+    )
+    assert response.status_code == 200
