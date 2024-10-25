@@ -180,13 +180,18 @@ class User(Base):
         doc="Tenant admin status",
         info={"column_security": "Secret"},
     )
-    is_active: Mapped[bool] = mapped_column(server_default=text("true"), doc="Active")
+    is_active: Mapped[bool] = mapped_column(
+        server_default=text("true"),
+        doc="Indicates if the record is active",
+    )
     is_deleted: Mapped[bool] = mapped_column(
-        server_default=text("false"), doc="Deleted"
+        server_default=text("false"),
+        doc="Indicates if the record is deleted",
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         server_default=func.current_timestamp(),
         doc="Time the record was created",
+        info={"editable": False},
     )
     owner_id: Mapped[Optional[str_26]] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
@@ -196,19 +201,21 @@ class User(Base):
     modified_at: Mapped[datetime.datetime] = mapped_column(
         doc="Time the record was last modified",
         server_default=func.current_timestamp(),
+        server_onupdate=func.current_timestamp(),
     )
     modified_by_id: Mapped[Optional[str_26]] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "WAS_LAST_MODIFIED_BY"},
+        info={"edge": "WAS_LAST_MODIFIED_BY", "editable": False},
     )
     deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(
-        doc="Time the record was deleted"
+        doc="Time the record was deleted",
+        info={"editable": False},
     )
     deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "WAS_DELETED_BY"},
+        info={"edge": "WAS_DELETED_BY", "editable": False},
     )
 
     # Relationships

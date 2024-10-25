@@ -1,5 +1,5 @@
-# un0/db/tools/db_tool_sql.py
-The tools.db_tool_sql.py file contains the following SQL Constants used by the DBTool to configure the database instance.
+# un0/db/management/db_manager_sql.py
+The management.db_manager_sql.py file contains the following SQL Constants used by the DBManager to configure the database instance.
 
 
 __NOTE__ - The use of f strings to provide the schema name and database name DOES NOT provide any protection against SQL injection. 
@@ -11,7 +11,7 @@ They are not user input, and are only used to create or update the db during dev
 
 __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
 
-## ::: un0.db.tools.db_tool_sql.CONFIGURE_AGE_EXTENSION
+## ::: un0.db.management.db_manager_sql.CONFIGURE_AGE_EXTENSION
 
     handler: python
     options:
@@ -19,7 +19,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CONFIGURE_ROLE_SCHEMA_PRIVILEGES
+## ::: un0.db.management.db_manager_sql.CONFIGURE_ROLE_SCHEMA_PRIVILEGES
 
     handler: python
     options:
@@ -27,7 +27,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CONFIGURE_ROLE_TABLE_PRIVILEGES
+## ::: un0.db.management.db_manager_sql.CONFIGURE_ROLE_TABLE_PRIVILEGES
 
     handler: python
     options:
@@ -35,7 +35,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_AUTHORIZE_USER_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_AUTHORIZE_USER_FUNCTION
 
     handler: python
     options:
@@ -43,7 +43,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_CAN_INSERT_GROUP_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_CAN_INSERT_GROUP_FUNCTION
 
     handler: python
     options:
@@ -51,7 +51,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_DATABASE
+## ::: un0.db.management.db_manager_sql.CREATE_DATABASE
 
     handler: python
     options:
@@ -59,7 +59,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_EXTENSIONS
+## ::: un0.db.management.db_manager_sql.CREATE_EXTENSIONS
 
     handler: python
     options:
@@ -67,7 +67,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_GET_PERMISSIBLE_TABLEPERMISSIONS_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_GET_PERMISSIBLE_TABLEPERMISSIONS_FUNCTION
 
     handler: python
     options:
@@ -75,7 +75,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_INSERT_GROUP_CONSTRAINT
+## ::: un0.db.management.db_manager_sql.CREATE_INSERT_GROUP_CONSTRAINT
 
     handler: python
     options:
@@ -83,7 +83,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER
+## ::: un0.db.management.db_manager_sql.CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER
 
     handler: python
     options:
@@ -91,7 +91,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_INSERT_RELATED_OBJECT_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_INSERT_RELATED_OBJECT_FUNCTION
 
     handler: python
     options:
@@ -99,7 +99,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER
+## ::: un0.db.management.db_manager_sql.CREATE_INSERT_TABLEPERMISSION_FUNCTION_AND_TRIGGER
 
     handler: python
     options:
@@ -107,7 +107,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_PGULID
+## ::: un0.db.management.db_manager_sql.CREATE_PGULID
 
     handler: python
     options:
@@ -115,7 +115,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_ROLES
+## ::: un0.db.management.db_manager_sql.CREATE_ROLES
 
     handler: python
     options:
@@ -123,7 +123,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_SCHEMAS
+## ::: un0.db.management.db_manager_sql.CREATE_SCHEMAS
 
     handler: python
     options:
@@ -131,7 +131,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_SET_OWNER_AND_MODIFIED_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_SET_OWNER_AND_MODIFIED_FUNCTION
 
     handler: python
     options:
@@ -139,7 +139,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_TOKEN_SECRET
+## ::: un0.db.management.db_manager_sql.CREATE_TOKEN_SECRET
 
     handler: python
     options:
@@ -147,7 +147,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_TOKEN_SECRET_TABLE
+## ::: un0.db.management.db_manager_sql.CREATE_TOKEN_SECRET_TABLE
 
     handler: python
     options:
@@ -155,7 +155,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_USER_TABLE_RLS_SELECT_POLICY
+## ::: un0.db.management.db_manager_sql.CREATE_USER_TABLE_RLS_SELECT_POLICY
 
     handler: python
     options:
@@ -163,7 +163,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.CREATE_VALIDATE_DELETE_FUNCTION
+## ::: un0.db.management.db_manager_sql.CREATE_VALIDATE_DELETE_FUNCTION
 
     handler: python
     options:
@@ -171,7 +171,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.DROP_DATABASE
+## ::: un0.db.management.db_manager_sql.DROP_DATABASE
 
     handler: python
     options:
@@ -179,7 +179,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.DROP_ROLES
+## ::: un0.db.management.db_manager_sql.DROP_ROLES
 
     handler: python
     options:
@@ -187,7 +187,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: tru
 
-## ::: un0.db.tools.db_tool_sql.REVOKE_ACCESS
+## ::: un0.db.management.db_manager_sql.REVOKE_ACCESS
 
     handler: python
     options:
@@ -195,7 +195,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.SET_PGMETA_CONFIG
+## ::: un0.db.management.db_manager_sql.SET_PGMETA_CONFIG
 
     handler: python
     options:
@@ -203,7 +203,7 @@ __DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!__
       show_source: true
       separate_signature: true
 
-## ::: un0.db.tools.db_tool_sql.SET_SEARCH_PATHS
+## ::: un0.db.management.db_manager_sql.SET_SEARCH_PATHS
 
     handler: python
     options:

@@ -10,14 +10,16 @@ from enum import Enum
 from decimal import Decimal
 from typing import Annotated, AsyncIterator
 
+from asyncio import current_task
+
 from sqlalchemy import create_engine, MetaData, text, func, ForeignKey
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
-    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
+    async_scoped_session,
 )
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
@@ -38,64 +40,62 @@ from sqlalchemy.orm import (
     declared_attr,
     mapped_column,
 )
-
-from un0.config import settings
-
-
-# Creates the async engine and sets the echo to true if DEBUG is true
-async_engine = create_async_engine(settings.DB_URL)
-engine = create_engine(settings.DB_URL)
+from un0.config import settings as sttngs
 
 
 class DatabaseSessionManager:
-    def __init__(self) -> None:
-        self._engine: AsyncEngine | None = None
-        self._sessionmaker: async_sessionmaker | None = None
+    def __init__(self):
+        self.engine: AsyncEngine | None = None
+        self.session_maker = None
+        self.session = None
+        self.init_db()
 
-    def init(self, host: str) -> None:
-        self._engine = create_async_engine(host)
-        self._sessionmaker = async_sessionmaker(autocommit=False, bind=self._engine)
+    def init_db(self):
+        # Database connection parameters...
 
-    async def close(self) -> None:
-        if self._engine is None:
+        # Creating an asynchronous engine
+        self.engine = create_async_engine(
+            sttngs.DB_URL,
+            pool_size=100,
+            max_overflow=0,
+            pool_pre_ping=False,
+        )
+
+        # Creating an asynchronous session class
+        self.session_maker = async_sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=self.engine,
+        )
+
+        # Creating a scoped session
+        self.session = async_scoped_session(self.session_maker, scopefunc=current_task)
+
+    async def close(self):
+        # Closing the database session...
+        if self.engine is None:
             raise Exception("DatabaseSessionManager is not initialized")
-        await self._engine.dispose()
-        self._engine = None
-        self._sessionmaker = None
-
-    @contextlib.asynccontextmanager
-    async def connect(self) -> AsyncIterator[AsyncConnection]:
-        if self._engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
-
-        async with self._engine.begin() as connection:
-            try:
-                yield connection
-            except Exception:
-                await connection.rollback()
-                raise
-
-    @contextlib.asynccontextmanager
-    async def session(self) -> AsyncIterator[AsyncSession]:
-        if self._sessionmaker is None:
-            raise Exception("DatabaseSessionManager is not initialized")
-
-        session = self._sessionmaker()
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+        await self.engine.dispose()
 
 
+# Initialize the DatabaseSessionManager
 sessionmanager = DatabaseSessionManager()
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    async with sessionmanager.session() as session:
+    session = sessionmanager.session()
+    if session is None:
+        raise Exception("DatabaseSessionManager is not initialized")
+    try:
+        # Setting the search path and yielding the session...
+        # await session.execute(text(f"SET search_path TO {SCHEMA}"))
         yield session
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        # Closing the session after use...
+        await session.close()
 
 
 # configures the naming convention for the database implicit constraints and indexes
@@ -110,7 +110,7 @@ POSTGRES_INDEXES_NAMING_CONVENTION = {
 # Creates the metadata object, used to define the database tables
 meta_data = MetaData(
     naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
-    schema=settings.DB_NAME,
+    schema=sttngs.DB_NAME,
 )
 
 str_26 = Annotated[VARCHAR, 26]
@@ -141,13 +141,18 @@ class Base(AsyncAttrs, DeclarativeBase):
 
 class BaseMixin:
     # Columns
-    is_active: Mapped[bool] = mapped_column(server_default=text("true"), doc="Active")
+    is_active: Mapped[bool] = mapped_column(
+        server_default=text("true"),
+        doc="Indicates if the record is active",
+    )
     is_deleted: Mapped[bool] = mapped_column(
-        server_default=text("false"), doc="Deleted"
+        server_default=text("false"),
+        doc="Indicates if the record has been deleted",
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         server_default=func.current_timestamp(),
         doc="Time the record was created",
+        info={"editable": False},
     )
     owner_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
@@ -157,19 +162,22 @@ class BaseMixin:
     modified_at: Mapped[datetime.datetime] = mapped_column(
         doc="Time the record was last modified",
         server_default=func.current_timestamp(),
+        server_onupdate=func.current_timestamp(),
+        info={"editable": False},
     )
     modified_by_id: Mapped[str_26] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "WAS_LAST_MODIFIED_BY"},
+        info={"edge": "WAS_LAST_MODIFIED_BY", "editable": False},
     )
     deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(
-        doc="Time the record was deleted"
+        doc="Time the record was deleted",
+        info={"editable": False},
     )
     deleted_by_id: Mapped[Optional[str_26]] = mapped_column(
         ForeignKey("un0.user.id", ondelete="CASCADE"),
         index=True,
-        info={"edge": "WAS_DELETED_BY"},
+        info={"edge": "WAS_DELETED_BY", "editable": False},
     )
     import_id: Mapped[Optional[int]] = mapped_column(
         doc="Primary Key of the original system of the record"

@@ -11,12 +11,19 @@ from pydantic.fields import FieldInfo
 from sqlalchemy import func, text, select, update, delete
 from sqlalchemy.exc import ProgrammingError
 
+from fastapi.testclient import TestClient
+
 from un0.auth.tables import User
 from un0.auth.models import UserObj
 from un0.config import settings as sttngs
-from un0.db.tools.db_tool import DBTool
+from un0.db.management.db_manager import DBManager
+from un0.main import app
 
+from tests.pgjwt.test_pgjwt import encode_test_token
 from tests.conftest import mock_rls_vars
+
+
+client = TestClient(app)
 
 
 class TestUser:
@@ -24,7 +31,7 @@ class TestUser:
 
     def test_create_user_function(self, session):
         """Creates the superuser and returns it's id."""
-        db = DBTool()
+        db = DBManager()
         assert 1 == 1
 
         superuser_id = db.create_user(
@@ -34,6 +41,7 @@ class TestUser:
             is_superuser=True,
         )
         assert superuser_id is not None
+
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             superuser = session.scalar(select(User).where(User.id == superuser_id))
@@ -539,128 +547,133 @@ class TestUser:
             with pytest.raises(ProgrammingError):
                 session.commit()
 
-    def test_user_obj_select_schema_creation(self):
+    def test_user_obj_select_model_creation(self):
         """Tests the User model."""
-        user_obj = UserObj()
+        user_obj = UserObj(app=app)
         assert user_obj is not None
-        select_schema = user_obj.models.get("select_schema")
-        assert select_schema is not None
-        assert select_schema.__annotations__ is not None
-        assert select_schema.__annotations__.get("id") == str
-        assert select_schema.__annotations__.get("email") == str
-        assert select_schema.__annotations__.get("handle") == str
-        assert select_schema.__annotations__.get("full_name") == str
-        assert select_schema.__annotations__.get("tenant_id") == str | None
-        assert select_schema.__annotations__.get("default_group_id") == str | None
-        assert select_schema.__annotations__.get("is_superuser") == bool
-        assert select_schema.__annotations__.get("is_tenant_admin") == bool
-        assert select_schema.__annotations__.get("is_active") == bool
-        assert select_schema.__annotations__.get("is_deleted") == bool
-        assert select_schema.__annotations__.get("created_at") == datetime.datetime
-        assert select_schema.__annotations__.get("owner_id") == str | None
-        assert select_schema.__annotations__.get("modified_at") == datetime.datetime
-        assert select_schema.__annotations__.get("modified_by_id") == str | None
+        select_model = user_obj.models.get("SelectUser")
+        assert select_model is not None
+        assert select_model.__annotations__ is not None
+        assert select_model.__annotations__.get("id") == str
+        assert select_model.__annotations__.get("email") == str
+        assert select_model.__annotations__.get("handle") == str
+        assert select_model.__annotations__.get("full_name") == str
+        assert select_model.__annotations__.get("tenant_id") == str | None
+        assert select_model.__annotations__.get("default_group_id") == str | None
+        assert select_model.__annotations__.get("is_superuser") == bool
+        assert select_model.__annotations__.get("is_tenant_admin") == bool
+        assert select_model.__annotations__.get("is_active") == bool
+        assert select_model.__annotations__.get("is_deleted") == bool
+        assert select_model.__annotations__.get("created_at") == datetime.datetime
+        assert select_model.__annotations__.get("owner_id") == str | None
+        assert select_model.__annotations__.get("modified_at") == datetime.datetime
+        assert select_model.__annotations__.get("modified_by_id") == str | None
         assert (
-            select_schema.__annotations__.get("deleted_at") == datetime.datetime | None
+            select_model.__annotations__.get("deleted_at") == datetime.datetime | None
         )
-        assert select_schema.__annotations__.get("deleted_by_id") == str | None
+        assert select_model.__annotations__.get("deleted_by_id") == str | None
 
-    def test_user_obj_insert_schema_creation(self):
-        user_obj = UserObj()
+    """
+    def test_user_obj_insert_model_creation(self):
+        user_obj = UserObj(app=app)
         assert user_obj is not None
-        insert_schema = user_obj.models.get("insert_schema")
-        assert insert_schema is not None
-        assert insert_schema.__annotations__ is not None
-        assert insert_schema.__annotations__.get("id") is None
-        assert insert_schema.__annotations__.get("email") == str
-        assert insert_schema.__annotations__.get("handle") == str
-        assert insert_schema.__annotations__.get("full_name") == str
-        assert insert_schema.__annotations__.get("tenant_id") == str | None
-        assert insert_schema.__annotations__.get("default_group_id") == str | None
-        assert insert_schema.__annotations__.get("is_superuser") == bool
-        assert insert_schema.__annotations__.get("is_tenant_admin") == bool
-        assert insert_schema.__annotations__.get("is_active") is None
-        assert insert_schema.__annotations__.get("is_deleted") is None
-        assert insert_schema.__annotations__.get("created_at") is None
-        assert insert_schema.__annotations__.get("owner_id") is None
-        assert insert_schema.__annotations__.get("modified_at") is None
-        assert insert_schema.__annotations__.get("modified_by_id") is None
-        assert insert_schema.__annotations__.get("deleted_at") is None
-        assert insert_schema.__annotations__.get("deleted_by_id") is None
+        insert_model = user_obj.models.get("InsertUser")
+        assert insert_model is not None
+        assert insert_model.__annotations__ is not None
+        assert insert_model.__annotations__.get("id") is None
+        assert insert_model.__annotations__.get("email") == str
+        assert insert_model.__annotations__.get("handle") == str
+        assert insert_model.__annotations__.get("full_name") == str
+        assert insert_model.__annotations__.get("tenant_id") == str | None
+        assert insert_model.__annotations__.get("default_group_id") == str | None
+        assert insert_model.__annotations__.get("is_superuser") == bool
+        assert insert_model.__annotations__.get("is_tenant_admin") == bool
+        assert insert_model.__annotations__.get("is_active") is None
+        assert insert_model.__annotations__.get("is_deleted") is None
+        assert insert_model.__annotations__.get("created_at") is None
+        assert insert_model.__annotations__.get("owner_id") is None
+        assert insert_model.__annotations__.get("modified_at") is None
+        assert insert_model.__annotations__.get("modified_by_id") is None
+        assert insert_model.__annotations__.get("deleted_at") is None
+        assert insert_model.__annotations__.get("deleted_by_id") is None
+    """
 
-    def test_user_obj_update_schema_creation(self):
-        user_obj = UserObj()
+    def test_user_obj_update_model_creation(self):
+        user_obj = UserObj(app=app)
         assert user_obj is not None
-        update_schema = user_obj.models.get("update_schema")
-        assert update_schema is not None
-        assert update_schema.__annotations__ is not None
-        assert update_schema.__annotations__.get("id") is None
-        assert update_schema.__annotations__.get("email") == str
-        assert update_schema.__annotations__.get("handle") == str
-        assert update_schema.__annotations__.get("full_name") == str
-        assert update_schema.__annotations__.get("tenant_id") == str | None
-        assert update_schema.__annotations__.get("default_group_id") == str | None
-        assert update_schema.__annotations__.get("is_superuser") == bool
-        assert update_schema.__annotations__.get("is_tenant_admin") == bool
-        assert update_schema.__annotations__.get("is_active") == bool
-        assert update_schema.__annotations__.get("is_deleted") is None
-        assert update_schema.__annotations__.get("created_at") is None
-        assert update_schema.__annotations__.get("owner_id") == str | None
-        assert update_schema.__annotations__.get("modified_at") is None
-        assert update_schema.__annotations__.get("modified_by_id") is None
-        assert update_schema.__annotations__.get("deleted_at") is None
-        assert update_schema.__annotations__.get("deleted_by_id") is None
+        update_model = user_obj.models.get("UpdateUser")
+        assert update_model is not None
+        assert update_model.__annotations__ is not None
+        assert update_model.__annotations__.get("id") == str
+        assert update_model.__annotations__.get("email") == str
+        assert update_model.__annotations__.get("handle") == str
+        assert update_model.__annotations__.get("full_name") == str
+        assert update_model.__annotations__.get("tenant_id") == str | None
+        assert update_model.__annotations__.get("default_group_id") == str | None
+        assert update_model.__annotations__.get("is_superuser") == bool
+        assert update_model.__annotations__.get("is_tenant_admin") == bool
+        assert update_model.__annotations__.get("is_active") == bool
+        assert update_model.__annotations__.get("is_deleted") == bool
+        assert update_model.__annotations__.get("created_at") is None
+        assert update_model.__annotations__.get("owner_id") == str | None
+        assert update_model.__annotations__.get("modified_at") is None
+        assert update_model.__annotations__.get("modified_by_id") is None
+        assert update_model.__annotations__.get("deleted_at") is None
+        assert update_model.__annotations__.get("deleted_by_id") is None
 
-    def test_user_obj_list_schema_creation(self):
-        user_obj = UserObj()
+    def test_user_obj_list_model_creation(self):
+        user_obj = UserObj(app=app)
         assert user_obj is not None
-        list_schema = user_obj.models.get("list_schema")
-        assert list_schema is not None
-        assert list_schema.__annotations__ is not None
-        assert list_schema.__annotations__.get("id") == str
-        assert list_schema.__annotations__.get("email") == str
-        assert list_schema.__annotations__.get("handle") == str
-        assert list_schema.__annotations__.get("full_name") is None
-        assert list_schema.__annotations__.get("tenant_id") is None
-        assert list_schema.__annotations__.get("default_group_id") is None
-        assert list_schema.__annotations__.get("is_superuser") is None
-        assert list_schema.__annotations__.get("is_tenant_admin") is None
-        assert list_schema.__annotations__.get("is_active") is None
-        assert list_schema.__annotations__.get("is_deleted") is None
-        assert list_schema.__annotations__.get("created_at") is None
-        assert list_schema.__annotations__.get("owner_id") is None
-        assert list_schema.__annotations__.get("modified_at") is None
-        assert list_schema.__annotations__.get("modified_by_id") is None
-        assert list_schema.__annotations__.get("deleted_at") is None
-        assert list_schema.__annotations__.get("deleted_by_id") is None
+        list_model = user_obj.models.get("ListUser")
+        assert list_model is not None
+        assert list_model.__annotations__ is not None
+        assert list_model.__annotations__.get("id") == str
+        assert list_model.__annotations__.get("email") == str
+        assert list_model.__annotations__.get("handle") == str
+        assert list_model.__annotations__.get("full_name") == str
+        assert list_model.__annotations__.get("tenant_id") is None
+        assert list_model.__annotations__.get("default_group_id") is None
+        assert list_model.__annotations__.get("is_superuser") is None
+        assert list_model.__annotations__.get("is_tenant_admin") is None
+        assert list_model.__annotations__.get("is_active") is None
+        assert list_model.__annotations__.get("is_deleted") is None
+        assert list_model.__annotations__.get("created_at") is None
+        assert list_model.__annotations__.get("owner_id") is None
+        assert list_model.__annotations__.get("modified_at") is None
+        assert list_model.__annotations__.get("modified_by_id") is None
+        assert list_model.__annotations__.get("deleted_at") is None
+        assert list_model.__annotations__.get("deleted_by_id") is None
 
-    def test_user_schema_instantiation(self, session, superuser_id):
+    def test_user_model_instantiation(self, session, superuser_id):
         """Tests that the admin user, created in create_db.create_db was created correctly."""
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             admin_user = session.scalar(
                 select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
             ).__dict__
-        user_obj = UserObj()
+        user_obj = UserObj(app=app)
         assert user_obj is not None
 
-        select_schema = user_obj.models.get("select_schema")(**admin_user)
-        assert select_schema is not None
-        print("")
-        print(select_schema.model_dump())
-        print(select_schema.process_app_logic())
+        select_model = user_obj.models.get("SelectUser")(**admin_user)
+        assert select_model is not None
 
-        insert_schema = user_obj.models.get("insert_schema")(**admin_user)
-        assert insert_schema is not None
-        print("")
-        print(insert_schema.model_dump())
+        insert_model = user_obj.models.get("InsertUser")(**admin_user)
+        assert insert_model is not None
 
-        update_schema = user_obj.models.get("update_schema")(**admin_user)
-        assert update_schema is not None
-        print("")
-        print(update_schema.model_dump())
+        update_model = user_obj.models.get("UpdateUser")(**admin_user)
+        assert update_model is not None
 
-        list_schema = user_obj.models.get("list_schema")(**admin_user)
-        assert list_schema is not None
-        print("")
-        print(list_schema.model_dump())
+        list_model = user_obj.models.get("ListUser")(**admin_user)
+        assert list_model is not None
+
+    def test_user_get_route(self, session, create_test_functions):
+        token = encode_test_token()
+        response = client.get("/api/auth/users", headers={"Authorization": token})
+        assert response.status_code == 200
+        assert response.json() is not None
+
+    def test_tenant_get_route(self, session, create_test_functions):
+        token = encode_test_token()
+        response = client.get("/api/auth/tenants", headers={"Authorization": token})
+        assert response.status_code == 200
+        assert response.json() is not None

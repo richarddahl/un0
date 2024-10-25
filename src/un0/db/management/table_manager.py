@@ -25,9 +25,9 @@ from un0.fltr.enums import (  # type: ignore
 from un0.config import settings as sttngs
 
 
-class TableTool(BaseModel):
+class TableManager(BaseModel):
     """
-    TableTool is a Pydantic model that represents the schema of a database table. It includes various computed fields and methods to generate SQL statements for configuring the table, enabling auditing, and creating triggers.
+    TableManager is a Pydantic model that represents the schema of a database table. It includes various computed fields and methods to generate SQL statements for configuring the table, enabling auditing, and creating triggers.
 
     Attributes:
         table (Table): The SQLAlchemy Table object representing the database table.
@@ -160,7 +160,8 @@ class TableTool(BaseModel):
         - Setting the role to the database admin.
         - Changing the table owner and setting privileges.
         - Creating a table type record.
-        - Optionally creating triggers for setting owner and modified timestamps, and validating deletes if the table has an "owner_id" column.
+        - Optionally creating triggers for setting owner and modified timestamps,
+            and validating deletes if the table has an "owner_id" column.
         - Enabling auditing based on the table's audit type:
             - "basic": Enables default auditing.
             - "history": Creates a history table and trigger for auditing changes.
@@ -455,9 +456,9 @@ class TableTool(BaseModel):
         return textwrap.dedent(sql_str)
 
 
-class PropertyTool(TableTool):
+class PropertyTool(TableManager):
     """
-    PropertyTool is a subclass of TableTool that represents the schema for a property in a database table.
+    PropertyTool is a subclass of TableManager that represents the schema for a property in a database table.
     It includes computed fields and methods to generate SQL statements for creating filter fields and their
     associated table types.
 
@@ -571,9 +572,9 @@ class PropertyTool(TableTool):
         )
 
 
-class VertexTool(TableTool):
+class VertexTool(TableManager):
     """
-    VertexTool is a subclass of TableTool that represents the schema for a vertex in a graph database.
+    VertexTool is a subclass of TableManager that represents the schema for a vertex in a graph database.
     It includes various computed fields and methods to generate SQL statements for creating, updating,
     deleting, and truncating vertices and their associated edges and properties.
 
@@ -906,9 +907,9 @@ class VertexTool(TableTool):
         )
 
 
-class EdgeTool(TableTool):
+class EdgeTool(TableManager):
     """
-    EdgeTool is a class that represents the schema for an edge in a graph database. It extends the TableTool class and includes additional attributes and methods specific to edges.
+    EdgeTool is a class that represents the schema for an edge in a graph database. It extends the TableManager class and includes additional attributes and methods specific to edges.
     Attributes:
         table (Table): The table associated with the edge.
         to_column (Column): The column representing the edge.
@@ -1203,9 +1204,9 @@ class EdgeTool(TableTool):
         )
 
 
-class TableTool(BaseModel):
+class TableManager(BaseModel):
     """
-    TableTool is a Pydantic model that represents the schema of a database table. It includes various computed fields and methods to generate SQL statements for configuring the table, enabling auditing, and creating triggers.
+    TableManager is a Pydantic model that represents the schema of a database table. It includes various computed fields and methods to generate SQL statements for configuring the table, enabling auditing, and creating triggers.
 
     Attributes:
         table (Table): The SQLAlchemy Table object representing the database table.
@@ -1635,9 +1636,9 @@ class TableTool(BaseModel):
         return textwrap.dedent(sql_str)
 
 
-class PropertyTool(TableTool):
+class PropertyTool(TableManager):
     """
-    PropertyTool is a subclass of TableTool that represents the schema for a property in a database table.
+    PropertyTool is a subclass of TableManager that represents the schema for a property in a database table.
     It includes computed fields and methods to generate SQL statements for creating filter fields and their
     associated table types.
 
@@ -1751,9 +1752,9 @@ class PropertyTool(TableTool):
         )
 
 
-class VertexTool(TableTool):
+class VertexTool(TableManager):
     """
-    VertexTool is a subclass of TableTool that represents the schema for a vertex in a graph database.
+    VertexTool is a subclass of TableManager that represents the schema for a vertex in a graph database.
     It includes various computed fields and methods to generate SQL statements for creating, updating,
     deleting, and truncating vertices and their associated edges and properties.
 
@@ -2086,9 +2087,9 @@ class VertexTool(TableTool):
         )
 
 
-class EdgeTool(TableTool):
+class EdgeTool(TableManager):
     """
-    EdgeTool is a class that represents the schema for an edge in a graph database. It extends the TableTool class and includes additional attributes and methods specific to edges.
+    EdgeTool is a class that represents the schema for an edge in a graph database. It extends the TableManager class and includes additional attributes and methods specific to edges.
     Attributes:
         table (Table): The table associated with the edge.
         to_column (Column): The column representing the edge.

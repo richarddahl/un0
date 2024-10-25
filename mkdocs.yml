@@ -16,9 +16,9 @@ nav:
    - Structure: structure.md
    - Commands: commands.md
    - DB: 
-      - DB Tools: db/tool.md
-      - DB Tool SQL: db/tool_sql.md
-      - Table Tools: db/table_tools.md
+      - DB Tools: db/management.md
+      - DB Tool SQL: db/manager_sql.md
+      - Table Tools: db/table_manager.md
       - Un0Obj: db/models.md
    - Authorization:
       - Enums: auth/enums.md

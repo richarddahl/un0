@@ -16,38 +16,37 @@ from un0.config import settings as sttngs
 from tests.conftest import mock_rls_vars
 
 
+# Not marked as a fixture as need to call it with different parameters for testing
+def encode_test_token(
+    email: str = sttngs.SUPERUSER_EMAIL,  # Email for sub
+    has_sub: bool = True,  # Has subject
+    has_exp: bool = True,  # Has expiration
+    is_expired: bool = False,  # Expired token
+    invalid_secret: bool = False,  # Invalid secret
+) -> str:
+    """Returns a JWT token for use in tests."""
+    token_payload: dict[str, Any] = {}
+    if has_exp and not is_expired:
+        token_payload["exp"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ) + datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
+    elif has_exp and is_expired:
+        token_payload["exp"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
+
+    if has_sub:
+        token_payload["sub"] = email
+
+    if invalid_secret:
+        return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
+    return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
+
+
 class TestJWT:
-    # Not marked as a fixture as need to call it with different parameters for testing
-    @classmethod
-    def encode_test_token(
-        cls,
-        email: str = sttngs.SUPERUSER_EMAIL,  # Email for sub
-        has_sub: bool = True,  # Has subject
-        has_exp: bool = True,  # Has expiration
-        is_expired: bool = False,  # Expired token
-        invalid_secret: bool = False,  # Invalid secret
-    ) -> str:
-        """Returns a JWT token for use in tests."""
-        token_payload: dict[str, Any] = {}
-        if has_exp and not is_expired:
-            token_payload["exp"] = datetime.datetime.now(
-                datetime.timezone.utc
-            ) + datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
-        elif has_exp and is_expired:
-            token_payload["exp"] = datetime.datetime.now(
-                datetime.timezone.utc
-            ) - datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
-
-        if has_sub:
-            token_payload["sub"] = email
-
-        if invalid_secret:
-            return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
-        return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
-
     def test_valid_jwt(self, session, create_test_functions):
         """Tests that a valid JWT token can be verified and the session variables set."""
-        token = self.encode_test_token()
+        token = encode_test_token()
         with session.begin():
             result = session.execute(func.un0.authorize_user(token))
             assert result.scalars().first() is True
@@ -62,7 +61,7 @@ class TestJWT:
 
     def test_expired_jwt(self, session):
         """Tests that an expired JWT token cannot be authorized."""
-        token = self.encode_test_token(is_expired=True)
+        token = encode_test_token(is_expired=True)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
@@ -70,7 +69,7 @@ class TestJWT:
 
     def test_invalid_secret_jwt(self, session):
         """Tests that a JWT token with an invalid secret cannot be authorized."""
-        token = self.encode_test_token(invalid_secret=True)
+        token = encode_test_token(invalid_secret=True)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
@@ -78,7 +77,7 @@ class TestJWT:
 
     def test_invalid_sub_jwt(self, session):
         """Tests that a JWT token with an invalid sub cannot be authorized."""
-        token = self.encode_test_token(email="anonymous@nowheres.none")
+        token = encode_test_token(email="anonymous@nowheres.none")
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
@@ -86,7 +85,7 @@ class TestJWT:
 
     def test_no_sub_jwt(self, session):
         """Tests that a JWT token without a sub cannot be authorized."""
-        token = self.encode_test_token(has_sub=False)
+        token = encode_test_token(has_sub=False)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
@@ -94,7 +93,7 @@ class TestJWT:
 
     def test_no_exp_jwt(self, session):
         """Tests that a JWT token without an expiration cannot be authorized."""
-        token = self.encode_test_token(has_exp=False)
+        token = encode_test_token(has_exp=False)
         with session.begin():
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
@@ -102,7 +101,7 @@ class TestJWT:
 
     def test_inactive_user_jwt(self, session, superuser_id, user_dict):
         """Tests that an inactive user cannot be authorized."""
-        token = self.encode_test_token(email="user1@acme.com")
+        token = encode_test_token(email="user1@acme.com")
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             session.execute(func.un0.mock_role("writer"))
@@ -116,7 +115,7 @@ class TestJWT:
 
     def test_deleted_user_jwt(self, session, superuser_id, user_dict):
         """Tests that a deleted user cannot be authorized."""
-        token = self.encode_test_token(email="user2@acme.com")
+        token = encode_test_token(email="user2@acme.com")
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             session.execute(func.un0.mock_role("writer"))

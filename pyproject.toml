@@ -68,7 +68,14 @@ dropdb = "ENV=dev python src/un0/cmd/drop_db.py"
 
 # Testing Environment
 [tool.hatch.envs.test]
-dependencies = ["coverage[toml]>=6.5", "pytest", "pytest_asyncio", "asyncio"]
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "pytest_asyncio",
+  "asyncio",
+  "httpx",
+  "requests",
+]
 
 [tool.coverage.run]
 source_pkgs = ["un0", "tests"]

@@ -30,4 +30,4 @@ It's meant as an homage to GNU of course.
 
 Why not `uno`?
 
-That name is already registerd at pypi, and un0 is designed to work with 0KUI, the zero-knowledge web interface, so it made sense to link thier names.
+That name is already registerd at pypi, and un0 is designed to work with 0kui, the zero-knowledge web interface, so it made sense to link thier names.

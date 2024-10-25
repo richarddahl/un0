@@ -26,7 +26,7 @@ The db/models.py file contains the class Un0Obj, the superclass of the app table
       show_root_heading: true
       show_source: true
 
-## ::: un0.db.models.Un0FrozenModelDef
+## ::: un0.db.models.Un0FrozenSchemaDef
 
     handler: python
     options:

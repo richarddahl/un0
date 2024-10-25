@@ -2,68 +2,119 @@
 #
 # SPDX-License-Identifier: MIT
 
-from sqlalchemy.sql.schema import Table
+from un0.db.models import Un0Obj, Un0ModelDef, Un0Model, Un0RouterDef, Un0Router
+from un0.auth.tables import (
+    User,
+    Tenant,
+    Role,
+    Group,
+)
 
-from un0.db.models import Un0Obj, Un0ModelDef, Un0Model
-from un0.auth.tables import User
-from un0.db.base import Base
+
+class TenantModel(Un0Model):
+    def process_app_logic(self) -> bool:
+        super().process_app_logic()
+        return True
+
+
+class TenantObj(
+    Un0Obj,
+    table_name="un0.tenant",
+    table=Tenant,
+    module_name="auth",
+    obj_name="Tenant",
+    path_objs="tenants",
+    model_base=TenantModel,
+):
+    un0_model_defs: dict[str, TenantModel] = {
+        "ListTenant": Un0ModelDef(
+            table=Tenant,
+            field_includes=[
+                "id",
+                "name",
+                "tenant_type",
+            ],
+        ),
+    }
 
 
 class UserModel(Un0Model):
-    table: Base = User
-
     def process_app_logic(self) -> bool:
         super().process_app_logic()
-        print("process_app_logic")
         return True
 
 
 class UserObj(
     Un0Obj,
-    module_name=__name__,
-    db_table_name="un0.user",
-    db_table=User,
+    table_name="un0.user",
+    table=User,
+    module_name="auth",
+    obj_name="User",
+    path_objs="users",
+    model_base=UserModel,
 ):
-    schema_defs: dict[str, Un0ModelDef] = {
-        "insert_schema": Un0ModelDef(
+    un0_model_defs: dict[str, UserModel] = {
+        "ListUser": Un0ModelDef(
             table=User,
-            base=UserModel,
-            field_excludes=[
-                "id",
-                "is_active",
-                "is_deleted",
-                "created_at",
-                "modified_at",
-                "deleted_at",
-                "owner_id",
-                "modified_by_id",
-                "deleted_by_id",
-            ],
-        ),
-        "update_schema": Un0ModelDef(
-            table=User,
-            base=UserModel,
-            field_excludes=[
-                "id",
-                "is_deleted",
-                "created_at",
-                "modified_at",
-                "deleted_at",
-                "modified_by_id",
-                "deleted_by_id",
-            ],
-        ),
-        "select_schema": Un0ModelDef(
-            table=User,
-            base=UserModel,
-        ),
-        "list_schema": Un0ModelDef(
-            table=User,
-            base=UserModel,
             field_includes=[
                 "id",
                 "handle",
                 "email",
+                "full_name",
+            ],
+        ),
+    }
+
+
+class RoleModel(Un0Model):
+    def process_app_logic(self) -> bool:
+        super().process_app_logic()
+        return True
+
+
+class RoleObj(
+    Un0Obj,
+    table_name="un0.role",
+    table=Role,
+    module_name="auth",
+    obj_name="Role",
+    path_objs="roles",
+    model_base=RoleModel,
+):
+    un0_model_defs: dict[str, UserModel] = {
+        "ListRole": Un0ModelDef(
+            table=Role,
+            field_includes=[
+                "id",
+                "tenant_id",
+                "name",
+            ],
+        ),
+    }
+
+
+class GroupModel(Un0Model):
+    def process_app_logic(self) -> bool:
+        super().process_app_logic()
+        return True
+
+
+class GroupObj(
+    Un0Obj,
+    table_name="un0.group",
+    table=Group,
+    module_name="auth",
+    obj_name="Group",
+    path_objs="groups",
+    model_base=GroupModel,
+):
+    un0_model_defs: dict[str, UserModel] = {
+        "ListGroup": Un0ModelDef(
+            table=Group,
+            field_includes=[
+                "id",
+                "tenant_id",
+                "name",
             ],
         ),
     }

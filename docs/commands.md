@@ -5,11 +5,11 @@ The un0/db/cmd folder contains the following:
 ## create_db.py
 
 ```python
-from un0.db.tools.db_tool import DBTool
+from un0.db.management.db_tool import DBManager
 
 
 if __name__ == "__main__":
-    db = DBTool()
+    db = DBManager()
     db.drop_db()
     db.create_db()
 ```
@@ -17,10 +17,10 @@ if __name__ == "__main__":
 ## drop_db.py
 
 ```python
-from un0.db.tools.db_tool import DBTool
+from un0.db.management.db_tool import DBManager
 
 
 if __name__ == "__main__":
-    db = DBTool()
+    db = DBManager()
     db.drop_db()
 ```

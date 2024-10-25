@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-from un0.db.tools.db_tool import DBTool
+from un0.db.management.db_manager import DBManager
 
 
 if __name__ == "__main__":
-    db = DBTool()
+    db = DBManager()
     db.drop_db()
     db.create_db()

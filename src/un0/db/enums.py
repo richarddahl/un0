@@ -9,10 +9,9 @@ class ModelMaskConfigDataType(str, enum.Enum):
     Enumeration representing the data types for mask configurations.
 
     Attributes:
-        NATIVE (str): Native data type.
+        NATIVE (str): Native (python) data type.
         STRING (str): Babel formatted (localized) string.
         ELEMENT (str): HTML Form Element Dictionary.
-
     """
 
     NATIVE = "native"
@@ -20,7 +19,7 @@ class ModelMaskConfigDataType(str, enum.Enum):
     ELEMENT = dict
 
 
-class UnoSelectResultType(str, enum.Enum):
+class Un0SelectResultType(str, enum.Enum):
     """
     Enumeration representing the result types for database select operations.
 

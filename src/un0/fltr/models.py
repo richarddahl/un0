@@ -9,7 +9,7 @@ from decimal import Decimal
 from pydantic import BaseModel, computed_field
 from sqlalchemy import Table, Column
 
-from un0.db.db_tool import TableTool
+from un0.db.db_tool import TableManager
 from un0.utilities import convert_snake_to_capital_word
 from un0.fltr.enums import (  # type: ignore
     GraphType,
@@ -22,7 +22,7 @@ from un0.fltr.enums import (  # type: ignore
     string_lookups,
 )
 from un0.config import settings as sttngs
-from un0.db.tools.db_tool import VertexTool, EdgeTool, PropertyTool
+from un0.db.management.db_manager import VertexTool, EdgeTool, PropertyTool
 from un0.db.models import UN0Model
 
 
@@ -247,10 +247,10 @@ class FilterSetSchema(BaseModel):
 
 '''
 
-class FilterKeySchema(TableTool):
+class FilterKeySchema(TableManager):
     """ """
 
-    # table: Table <- TableTool
+    # table: Table <- TableManager
 
     from_filterfield: FilterFieldSchema
     to_filterfield: FilterFieldSchema
@@ -286,10 +286,10 @@ class FilterKeySchema(TableTool):
         )
 
 
-class PathSchema(TableTool):
+class PathSchema(TableManager):
     """ """
 
-    # table: Table <- TableTool
+    # table: Table <- TableManager
 
     # start_filter_field: FilterFieldSchema <- computed_field
     # end_filter_field: FilterFieldSchema <- computed_field
