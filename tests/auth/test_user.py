@@ -646,11 +646,10 @@ class TestUser:
 
     def test_user_model_instantiation(self, session, superuser_id):
         """Tests that the admin user, created in create_db.create_db was created correctly."""
-        with session.begin():
-            session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
-            admin_user = session.scalar(
-                select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
-            ).__dict__
+        session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+        admin_user = session.scalar(
+            select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
+        ).__dict__
         user_obj = UserObj(app=app)
         assert user_obj is not None
 
@@ -666,13 +665,20 @@ class TestUser:
         list_model = user_obj.models.get("ListUser")(**admin_user)
         assert list_model is not None
 
-    def test_user_get_route(self, session, create_test_functions):
+    def test_user_get_route(self, create_test_functions):
         token = encode_test_token()
         response = client.get("/api/auth/users", headers={"Authorization": token})
         assert response.status_code == 200
         assert response.json() is not None
 
-    def test_tenant_get_route(self, session, create_test_functions):
+    def test_user_get_by_id_route(self, superuser_id, create_test_functions):
+        id = superuser_id
+        token = encode_test_token()
+        response = client.get(f"/api/auth/users/{id}", headers={"Authorization": token})
+        assert response.status_code == 200
+        assert response.json() is not None
+
+    def test_tenant_get_route(self, create_test_functions):
         token = encode_test_token()
         response = client.get("/api/auth/tenants", headers={"Authorization": token})
         assert response.status_code == 200
