@@ -20,6 +20,24 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+
+# Create the database engine
+engine = create_async_engine(
+    sttngs.DATABASE_URL,
+    echo=True,  # Set to True for SQL query logging
+)
+
+# Create a sessionmaker factory
+async_session_factory = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+# Dependency to provide a session
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async with async_session_factory() as session:
+        yield session
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
     TIMESTAMP,
