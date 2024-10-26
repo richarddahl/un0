@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
-    async_scoped_session,
 )
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
@@ -68,8 +67,8 @@ class DatabaseSessionManager:
             bind=self.engine,
         )
 
-        # Creating a scoped session
-        self.session = async_scoped_session(self.session_maker, scopefunc=current_task)
+        # Creating a session
+        self.session = self.session_maker
 
     async def close(self):
         # Closing the database session...
