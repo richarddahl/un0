@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: MIT
 import datetime
-import contextlib
 
 from typing import Optional
 
@@ -10,34 +9,14 @@ from enum import Enum
 from decimal import Decimal
 from typing import Annotated, AsyncIterator
 
-from asyncio import current_task
-
-from sqlalchemy import create_engine, MetaData, text, func, ForeignKey
+from sqlalchemy import MetaData, text, func, ForeignKey
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-# Create the database engine
-engine = create_async_engine(
-    sttngs.DATABASE_URL,
-    echo=True,  # Set to True for SQL query logging
-)
-
-# Create a sessionmaker factory
-async_session_factory = async_sessionmaker(
-    bind=engine,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
-
-# Dependency to provide a session
-async def get_db() -> AsyncIterator[AsyncSession]:
-    async with async_session_factory() as session:
-        yield session
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
     TIMESTAMP,
@@ -58,6 +37,26 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 from un0.config import settings as sttngs
+
+
+# Create the database engine
+engine = create_async_engine(
+    sttngs.DATABASE_URL,
+    echo=True,  # Set to True for SQL query logging
+)
+
+# Create a sessionmaker factory
+async_session_factory = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+
+# Dependency to provide a session
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async with async_session_factory() as session:
+        yield session
 
 
 # configures the naming convention for the database implicit constraints and indexes
