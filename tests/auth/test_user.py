@@ -671,6 +671,24 @@ class TestUser:
         assert response.status_code == 200
         assert response.json() is not None
 
+    def test_user_get_by_id_returns_select_user_model(self, superuser_id, create_test_functions):
+        """Test that the /api/users/{id} endpoint returns a UserObj SelectUser model."""
+        token = encode_test_token()
+        response = client.get(f"/api/auth/users/{superuser_id}", headers={"Authorization": token})
+        assert response.status_code == 200
+        user_data = response.json()
+        assert user_data is not None
+
+        # Validate the response structure against the SelectUser model
+        user_obj = UserObj(app=app)
+        select_user_model = user_obj.models.get("SelectUser")
+        assert select_user_model is not None
+
+        # Check if the response data matches the SelectUser model's annotations
+        for field, field_type in select_user_model.__annotations__.items():
+            assert field in user_data
+            assert isinstance(user_data[field], field_type)
+
     def test_user_get_by_id_route(self, superuser_id, create_test_functions):
         id = superuser_id
         token = encode_test_token()
