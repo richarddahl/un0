@@ -42,61 +42,6 @@ from sqlalchemy.orm import (
 from un0.config import settings as sttngs
 
 
-class DatabaseSessionManager:
-    def __init__(self):
-        self.engine: AsyncEngine | None = None
-        self.session_maker = None
-        self.session = None
-        self.init_db()
-
-    def init_db(self):
-        # Database connection parameters...
-
-        # Creating an asynchronous engine
-        self.engine = create_async_engine(
-            sttngs.DB_URL,
-            pool_size=100,
-            max_overflow=0,
-            pool_pre_ping=False,
-        )
-
-        # Creating an asynchronous session class
-        self.session_maker = async_sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=self.engine,
-        )
-
-        # Creating a session
-        self.session = self.session_maker
-
-    async def close(self):
-        # Closing the database session...
-        if self.engine is None:
-            raise Exception("DatabaseSessionManager is not initialized")
-        await self.engine.dispose()
-
-
-# Initialize the DatabaseSessionManager
-sessionmanager = DatabaseSessionManager()
-
-
-async def get_db() -> AsyncIterator[AsyncSession]:
-    session = sessionmanager.session()
-    if session is None:
-        raise Exception("DatabaseSessionManager is not initialized")
-    try:
-        # Setting the search path and yielding the session...
-        # await session.execute(text(f"SET search_path TO {SCHEMA}"))
-        yield session
-    except Exception:
-        await session.rollback()
-        raise
-    finally:
-        # Closing the session after use...
-        await session.close()
-
-
 # configures the naming convention for the database implicit constraints and indexes
 POSTGRES_INDEXES_NAMING_CONVENTION = {
     "ix": "%(column_0_label)s_idx",
