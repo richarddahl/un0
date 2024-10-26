@@ -701,3 +701,39 @@ class TestUser:
         response = client.get("/api/auth/tenants", headers={"Authorization": token})
         assert response.status_code == 200
         assert response.json() is not None
+
+
+# Define a router that returns a select_user_model
+from fastapi import APIRouter, HTTPException
+
+router = APIRouter()
+
+@router.get("/api/users/{user_id}", response_model=UserObj.models["SelectUser"])
+async def get_user(user_id: str):
+    # Simulate fetching a user from the database
+    user_obj = UserObj(app=app)
+    select_user_model = user_obj.models.get("SelectUser")
+    if not select_user_model:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Example user data
+    user_data = {
+        "id": user_id,
+        "email": "example@example.com",
+        "handle": "example_handle",
+        "full_name": "Example User",
+        "tenant_id": None,
+        "default_group_id": None,
+        "is_superuser": False,
+        "is_tenant_admin": False,
+        "is_active": True,
+        "is_deleted": False,
+        "created_at": datetime.datetime.now(),
+        "owner_id": None,
+        "modified_at": datetime.datetime.now(),
+        "modified_by_id": None,
+        "deleted_at": None,
+        "deleted_by_id": None,
+    }
+    
+    return select_user_model(**user_data)
