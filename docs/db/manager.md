@@ -1,6 +1,6 @@
-# un0/db/management/db_tools.py
+# un0/db/management/db_manager.py
   
-## ::: un0.db.management.db_tool.DBManager
+## ::: un0.db.management.db_manager.DBManager
 
     handler: python
     options:
