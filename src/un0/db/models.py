@@ -2,441 +2,555 @@
 #
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Type, ClassVar, List, Annotated
+import textwrap
+
+import datetime
+
+from enum import Enum
+from decimal import Decimal
+from typing import Annotated, Optional, ClassVar, Type, Any, Callable
+
+from sqlalchemy import (
+    MetaData,
+    text,
+    TextClause,
+    func,
+    ForeignKey,
+    Column,
+    UniqueConstraint,
+    Index,
+    CheckConstraint,
+)
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    registry,
+    declared_attr,
+    mapped_column,
+)
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.dialects.postgresql import (
+    BIGINT,
+    TIMESTAMP,
+    DATE,
+    TIME,
+    VARCHAR,
+    BOOLEAN,
+    ENUM,
+    NUMERIC,
+    ARRAY,
+)
 
 from pydantic import (
     BaseModel,
     ConfigDict,
-    create_model,
     computed_field,
-    model_validator,
     field_validator,
+    model_validator,
 )
-from pydantic_core import PydanticUndefined
-from pydantic.fields import Field
 
-from sqlalchemy import (
-    Table,
-    Column,
-    inspect,
-    create_engine,
-    func,
-    select,
-)  # update, delete, insert
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from fastapi import APIRouter, Request, Depends, FastAPI, Header
-
-
-from un0.errors import (
-    Un0BaseModelRegistryError,
-    Un0BaseModelTableError,
-    Un0BaseModelFieldListError,
-    Un0BaseModelConfigError,
-    Un0BaseModelRelationConfigError,
-)
-from un0.db.base import Base
+from un0.db.management.db_manager_sql import CREATE_VALIDATE_DELETE_FUNCTION
 from un0.config import settings as sttngs
 
+# configures the naming convention for the database implicit constraints and indexes
+POSTGRES_INDEXES_NAMING_CONVENTION = {
+    "ix": "%(column_0_label)s_idx",
+    "uq": "%(table_name)s_%(column_0_name)s_key",
+    "ck": "%(table_name)s_%(constraint_name)s_check",
+    "fk": "%(table_name)s_%(column_0_name)s_fkey",
+    "pk": "%(table_name)s_pkey",
+}
 
-meta_data = Base.metadata
+# Creates the metadata object, used to define the database tables
+meta_data = MetaData(
+    naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
+    schema=sttngs.DB_NAME,
+)
 
-_Unset = PydanticUndefined
-
-
-class Un0RouterDef(BaseModel):
-    un0_model_name: str | None = None
-    path_suffix: str | None = None
-    path_objs: str = ""
-    method: str = "GET"
-    endpoint: str = "get"
-    multiple: bool = False
-    include_in_schema: bool = True
-    summary: str = ""
-    description: str = ""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+str_26 = Annotated[VARCHAR, 26]
+str_64 = Annotated[VARCHAR, 64]
+str_128 = Annotated[VARCHAR, 128]
+str_255 = Annotated[VARCHAR, 255]
+decimal = Annotated[Decimal, 19]
 
 
-class Un0Router(BaseModel):
-    # path: str <- computed_field
-
-    table: Type[Base]
-    app: FastAPI
-    model: Any
-    obj_name: str
-    path_objs: str
-    path_module: str
-    path_suffix: str | None = None
-    method: str = "GET"
-    endpoint: str = "get"
-    multiple: bool = False
-    include_in_schema: bool = True
-    summary: str = ""
-    description: str = ""
-    tags: list[str] = []
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    @computed_field
-    def path(self) -> str:
-        suffix = f"/{self.path_suffix}" if self.path_suffix else ""
-        return f"/api/{self.path_module}/{self.path_objs}{suffix}"
-
-    def add_to_app(self):
-        router = APIRouter()
-        router.add_api_route(
-            self.path,
-            endpoint=getattr(self, self.endpoint),
-            methods=[self.method],
-            response_model=self.model if not self.multiple else List[self.model],
-            include_in_schema=self.include_in_schema,
-            tags=self.tags,
-            summary=self.summary,
-            description=self.description,
+class Base(AsyncAttrs, DeclarativeBase):
+    registry = registry(
+        type_annotation_map=(
+            {
+                int: BIGINT,
+                datetime.datetime: TIMESTAMP(timezone=True),
+                datetime.date: DATE,
+                datetime.time: TIME,
+                str: VARCHAR,
+                Enum: ENUM,
+                bool: BOOLEAN,
+                list: ARRAY,
+                str_26: VARCHAR(26),
+                str_64: VARCHAR(64),
+                str_128: VARCHAR(128),
+                str_255: VARCHAR(255),
+                decimal: NUMERIC,
+            }
         )
-        self.app.include_router(router)
-        return router
-
-    def get_by_id(self):
-        return {"message": "get_by_id"}
-
-    # async def get(self, db_session: AsyncSession = Depends(get_db)):
-    def get(self, authorization: Annotated[str, Header()]):
-        engine = create_engine(sttngs.DB_URL)
-        session = sessionmaker(bind=engine)
-        s = session()
-        with s.begin():
-            s.execute(func.un0.authorize_user(authorization))
-            result = s.scalars(select(self.table))
-            return result
-        # for session in db_session:
-        #    result = await session.execute(select(self.table))
-        #    res = await result.scalars()
-        #    return res
-
-    def post(self):
-        return {"message": "post"}
-
-    def put(self):
-        return {"message": "put"}
-
-    def delete(self):
-        return {"message": "delete"}
+    )
+    metadata = meta_data
 
 
-class Un0ModelDef(BaseModel):
-    table: Type[Base]
-    field_includes: list[str] = []
-    field_excludes: list[str] = []
-    use_defaults: str | None = None
+class AuditEnum(Enum):
+    DEFAULT = "default"
+    NONE = "none"
+    HISTORY = "history"
+
+
+class DBObjectBase(BaseModel):
+    doc: Optional[str] = ""
+    info: Optional[dict[str, str]] = {}
+    comment: Optional[str] = ""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    @model_validator(mode="before")
-    def validate_model(cls, values):
-        # Validate the model fields provided in field_includes and field_excludes
-        inspector = inspect(values.get("table"))
-        for field in values.get("field_includes", []):
-            if field not in inspector.columns:
-                raise Un0BaseModelFieldListError(
-                    "Field in field_excludes does not exist in the table.",
-                    "FIELD_NOT_FOUND_IN_TABLE",
-                )
-        for field in values.get("field_excludes", []):
-            if field not in inspector.columns:
-                raise Un0BaseModelFieldListError(
-                    "Field in field_includes does not exist in the table.",
-                    "FIELD_NOT_FOUND_IN_TABLE",
-                )
 
-        if values.get("field_includes") and values.get("field_excludes"):
-            raise Un0BaseModelFieldListError(
-                "You cannot include and exclude fields in the same model.",
-                "INCLUDE_AND_EXCLUDE_FIELDS",
-            )
-
-        uniques = set()
-        include_duplicates = []
-        for field in values.get("field_includes", []):
-            if field in uniques:
-                include_duplicates.append(field)
-            else:
-                uniques.add(field)
-
-        uniques = set()
-        exclude_duplicates = []
-        for field in values.get("field_excludes", []):
-            if field in uniques:
-                exclude_duplicates.append(field)
-            else:
-                uniques.add(field)
-        if include_duplicates:
-            raise Un0BaseModelFieldListError(
-                f"Duplicate fields found in field_includes: {', '.join(include_duplicates)}, for Un0Model {cls.__name__}.",
-                "DUPLICATE_FIELDS_IN_LISTS",
-            )
-        if exclude_duplicates:
-            raise Un0BaseModelFieldListError(
-                f"Duplicate fields found in field_excludes: {', '.join(exclude_duplicates)}, for Un0Model {cls.__name__}.",
-                "DUPLICATE_FIELDS_IN_LISTS",
-            )
-
-        # Create the default list of fields to include based on the use_defaults value
-        defaults = values.get("use_defaults")
-        if defaults:
-            field_includes = [
-                field.name
-                for field in inspector.columns
-                if (
-                    field.info.get("editable", True)
-                    and (defaults == "Insert" and not field.server_default)
-                    or field.info.get("editable", True)
-                    and (defaults == "Update" and not field.server_onupdate)
-                    or field.info.get("editable", True)
-                    and (defaults == "Unique" and field.unique)
-                )
-            ]
-            values["field_includes"] = field_includes
-        return values
-
-
-class Un0FrozenSchemaDef(Un0ModelDef):
-    model_config = ConfigDict(frozen=True)
-
-
-class Un0Model(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def process_app_logic(self):
-        pass
-
-
-class Un0Obj(BaseModel):
-    # models: dict[str, Type[Un0Model]] = {} <- computed_field
-    # routers: list[Type[Un0Router]] = [] <- computed_field
-
-    un0_model_registry: ClassVar[dict[str, Type[BaseModel]]] = {}
-    un0_class_name_map: ClassVar[dict[str, str]] = {}
-    module_name: ClassVar[str]
-    table_name: ClassVar[str]
-    table: ClassVar[Table]
-    un0_model_base: ClassVar[Type[Un0Model]]
-
-    app: FastAPI
-    un0_model_defs: dict[str, dict[str, Un0ModelDef]] = {}
-    default_un0_model_names: list[str] = ["Insert", "Update", "Select", "List"]
-    un0_router_defs: dict[str, dict[str, Un0RouterDef]] = {}
-    default_un0_router_defs: dict[str, Un0RouterDef] = {
-        "Insert": Un0RouterDef(
-            method="POST",
-            endpoint="post",
-        ),
-        "List": Un0RouterDef(
-            method="GET",
-            endpoint="get",
-            multiple=True,
-        ),
-        "Update": Un0RouterDef(
-            path_suffix="{id}",
-            method="PUT",
-            endpoint="put",
-        ),
-        "Select": Un0RouterDef(
-            path_suffix="{id}",
-            method="GET",
-            endpoint="get_by_id",
-        ),
-        "Delete": Un0RouterDef(
-            path_suffix="{id}",
-            method="DELETE",
-            endpoint="delete",
-        ),
-    }
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+class DBTableBase(DBObjectBase):
+    # table: Base <- computed_column
+    db_schema: str = "un0"
 
     @computed_field
-    def models(self) -> dict[str, Un0Model]:
-        models = {}
-        # Creates the models defined in the default_un0_model_defs
-        # May be overriden by the un0_model_defs or by declaring
-        # default_un0_model_defs in the subclass
-        for model_prefix in self.default_un0_model_names:
-            model_name = f"{model_prefix}{self.table_name.split(".")[1].capitalize()}"
-            models.update(
-                {
-                    model_name: create_model(
-                        model_name,
-                        __base__=self.model_base,
-                        __module__=self.module_name,
-                        **self.suss_fields(
-                            model_def=Un0ModelDef(
-                                table=self.table,
-                                use_defaults=model_prefix,
-                            )
-                        ),
-                    )
-                }
-            )
-        # Creates the models defined in the un0_model_defs
-        # May override the defaults to include or exclude additional fields
-        for model_name, model_def in self.un0_model_defs.items():
-            models.update(
-                {
-                    model_name: create_model(
-                        model_name,
-                        __base__=self.model_base,
-                        __module__=self.module_name,
-                        **self.suss_fields(model_def=model_def),
-                    )
-                }
-            )
-        return models
-
-    @computed_field
-    def routers(self) -> list[Type[Un0Router]]:
-        routers = []
-        for name, router_def in self.default_un0_router_defs.items():
-            model_name = f"{name}{self.obj_name}"
-            if self.models.get(model_name):
-                # Ensure the model for the route exists
-                routers.append(
-                    Un0Router(
-                        table=self.table,
-                        model=self.models.get(model_name),
-                        obj_name=self.obj_name,
-                        app=self.app,
-                        method=router_def.method,
-                        endpoint=router_def.endpoint,
-                        path_objs=self.path_objs,
-                        path_module=self.module_name,
-                        path_suffix=router_def.path_suffix,
-                        multiple=router_def.multiple,
-                        include_in_schema=router_def.include_in_schema,
-                        tags=[self.module_name],
-                        summary=router_def.summary,
-                        description=router_def.description,
-                    )
-                )
-        for router_def in self.un0_router_defs.values():
-            if self.models.get(router_def.un0_model_name):
-                # Ensure the model for the route exists
-                routers.append(
-                    Un0Router(
-                        table=self.table,
-                        model=self.models.get(router_def.un0_model_name),
-                        app=self.app,
-                        method=router_def.method,
-                        endpoint=router_def.endpoint,
-                        path_objs=self.path_objs,
-                        path_module=self.module_name,
-                        path_suffix=router_def.path_suffix,
-                        multiple=router_def.multiple,
-                        include_in_schema=router_def.include_in_schema,
-                        tags=[self.module_name],
-                        summary=router_def.summary,
-                        description=router_def.description,
-                    )
-                )
-        return routers
-
-    def __init_subclass__(
-        cls: Type["Un0Obj"],
-        table_name: str,
-        table: Table,
-        module_name: str,
-        obj_name: str,
-        path_objs: str,
-        model_base: Type[Un0Model],
-        **kwargs: dict[str, Any],
-    ) -> None:
-        # This prevents the base class (Un0Obj) from being created and added to the registry
-        if table_name is not None:
-            cls.table_name = table_name
-            cls.table = table
-            cls.module_name = module_name
-            cls.obj_name = obj_name
-            cls.path_objs = path_objs
-            cls.model_base = model_base
-
-            # Ensure the table exists in meta_data.tables
-            if table_name in meta_data.tables:
-                cls.db_table = meta_data.tables.get(table_name)
-            else:
-                raise Un0BaseModelTableError(
-                    f"Table {table_name} does not exist in the sqlalchemy meta_data.",
-                    "TABLE_NOT_FOUND_IN_TABLE_COLLECTION",
-                )
-
-            # This is here as we only want to create and add the class to the registry once
-            # The BaseClass registry is shared by all subclasses
-            # It's like a singleton, it exists in the base class and is shared by all subclasses
-            if table_name not in cls.un0_model_registry:
-                # Add the subclass to the table_name_registry
-                cls.un0_model_registry.update({table_name: cls})
-                # Add the subclass to the model_name_registry if it is not there (shouldn't be there, but just in case)
-                if cls.__name__ not in cls.un0_class_name_map:
-                    cls.un0_class_name_map.update({cls.__name__: cls.table_name})
-                else:
-                    raise Un0BaseModelRegistryError(
-                        f"A class with the table name {table_name} already exists.",
-                        "MODEL_NAME_EXISTS_IN_REGISTRY",
-                    )
-            else:
-                raise Un0BaseModelRegistryError(
-                    f"A class with the table name {table_name} already exists.",
-                    "TABLE_NAME_EXISTS_IN_REGISTRY",
-                )
-
-    @classmethod
-    def create_model_field(cls, column: Column) -> tuple[Type, Field]:
-        field_type = column.type.python_type
-        nullable = column.nullable
-        default = None if column.server_default or nullable else column.default or ...
-        default_factory = column.default if callable(column.default) else _Unset
-
-        field = Field(
-            default=default,
-            default_factory=default_factory,
-            title=column.name.title(),
-            description=column.doc or column.name,
+    def table(self) -> Base:
+        table = type(
+            self.name,
+            (Base,),
+            {
+                "__tablename__": self.name.lower(),
+                "__table_args__": {
+                    "schema": self.db_schema.value,
+                    "comment": self.comment,
+                },
+            },
         )
-        return (field_type | None, field) if nullable else (field_type, field)
+        for field_name, field in self.model_fields.items():
+            setattr(table, field_name, field.column)
 
-    @classmethod
-    def suss_fields(cls, model_def: Un0ModelDef) -> dict[str, Any]:
-        return {
-            column.name: cls.create_model_field(column)
-            for column in cls.db_table.columns
-            if column.name not in model_def.field_excludes
-            and (
-                not model_def.field_includes or column.name in model_def.field_includes
-            )
-        }
 
-    @classmethod
-    def get_model_from_registry_by_table_name(
-        cls,
-        db_table_name: str,
-    ) -> Type["BaseModel"] | None:
-        try:
-            return cls.un0_model_registry.get(db_table_name)
-        except KeyError:
-            raise Un0BaseModelRegistryError(
-                f"No Un0Obj found for {db_table_name}.", "MODEL_NOT_FOUND"
-            )
+class ModelBase(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    @classmethod
-    def get_model_from_registry_by_model_name(
-        cls,
-        model_name: str,
-    ) -> Type["BaseModel"] | None:
-        try:
-            db_table_name = cls.un0_class_name_map.get(model_name)
-            return cls.get_model_from_registry_by_table_name(db_table_name)  # type: ignore
-        except KeyError:
-            raise Un0BaseModelRegistryError(
-                f"No Table found for {cls.db_table_name}.",
-                "MODEL_NOT_FOUND_BY_TABLE_NAME",
-            )
+
+class Model(ModelBase):
+    # db_table: ClassVar[Type[Base]] <- computed_column
+
+    db_schema_name: ClassVar[str]
+    db_table_name: ClassVar[str]
+
+    verbose_name: ClassVar[str]
+    verbose_name_plural: ClassVar[str]
+
+    unique_together: ClassVar[list[str]] = []
+    indexes: ClassVar[list[Index]] = []
+    unique_constraints: ClassVar[list[UniqueConstraint]] = []
+    check_constraints: ClassVar[list[CheckConstraint]] = []
+
+    auditing: ClassVar[AuditEnum] = AuditEnum.DEFAULT
+
+    include_in_graph: ClassVar[bool] = True
+    vertex: ClassVar[str | bool] = True
+
+    rls_policy: ClassVar[str | bool] = "default"
+    force_rls: ClassVar[bool] = True
+
+    def emit_sql(self) -> str:
+        sql = ""
+        for cls in type(self).__mro__:
+            if cls is Model:
+                sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
+                sql += f"{self.emit_create_tabletype_record_sql()}\n"
+                if self.rls_policy:
+                    sql += f"{self.emit_enable_rls_sql()}\n"
+                if self.force_rls:
+                    sql += f"{self.emit_force_rls_sql()}\n"
+                if self.auditing == AuditEnum.HISTORY:
+                    sql += f"{self.emit_create_history_table_sql()}\n"
+                    sql += f"{self.emit_create_history_table_trigger_sql()}\n"
+                elif self.auditing == AuditEnum.DEFAULT:
+                    sql += f"{self.emit_enable_auditing_sql()}\n"
+            elif hasattr(cls, "emit_sql"):
+                sql += f"{cls.emit_sql(self)}\n"
+        return sql
+
+    def emit_sql_old(self) -> str:
+        sql = ""
+        for cls in type(self).__mro__:
+            if cls is Model:
+                sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
+                sql += f"{self.emit_create_tabletype_record_sql()}\n"
+                if self.rls_policy:
+                    sql += f"{self.emit_enable_rls_sql()}\n"
+                if self.force_rls:
+                    sql += f"{self.emit_force_rls_sql()}\n"
+                if self.auditing == AuditEnum.HISTORY:
+                    sql += f"{self.emit_create_history_table_sql()}\n"
+                    sql += f"{self.emit_create_history_table_trigger_sql()}\n"
+                elif self.auditing == AuditEnum.DEFAULT:
+                    sql += f"{self.emit_enable_auditing_sql()}\n"
+            elif hasattr(cls, "emit_sql"):
+                sql += f"{cls.emit_sql(self)}\n"
+        return sql
+
+    def emit_change_table_owner_and_set_privileges_sql(self) -> str:
+        """
+        Generates a SQL command to change the owner of a table and set privileges.
+
+        The generated SQL command will:
+        - Change the owner of the table to the admin user of the database.
+        - Grant SELECT privileges to the reader and writer roles.
+        - Grant INSERT, UPDATE, and DELETE privileges to the writer role.
+
+        Returns:
+            str: A formatted SQL command string.
+        """
+        return textwrap.dedent(
+            f"""
+            ALTER TABLE {self.db_schema_name}.{self.db_table_name} OWNER TO {sttngs.DB_NAME}_admin;
+            GRANT SELECT ON {self.db_schema_name}.{self.db_table_name} TO
+                {sttngs.DB_NAME}_reader,
+                {sttngs.DB_NAME}_writer;
+            GRANT INSERT, UPDATE, DELETE ON {self.db_schema_name}.{self.db_table_name} TO
+                {sttngs.DB_NAME}_writer;
+            """
+        )
+
+    def emit_create_tabletype_record_sql(self) -> str:
+        """
+        Emits the SQL statement to insert a record into the `un0.tabletype` table.
+
+        This method creates a SQL INSERT statement that adds a new record to the
+        `un0.tabletype` table with the schema and name provided by the instance's
+        `table_schema` and `table_name` attributes.
+
+        Returns:
+            str: A formatted SQL INSERT statement as a string.
+        """
+        return textwrap.dedent(
+            f"""
+            -- Create the tabletype record
+            INSERT INTO un0.tabletype (schema, name)
+            VALUES ('{self.db_schema_name}', '{self.db_table_name}');
+            """
+        )
+
+    def emit_enable_rls_sql(self) -> str:
+        """
+        Emits the SQL statements to enable Row Level Security (RLS)
+        on a specified table.
+
+        Returns:
+            str: A string containing the SQL statements to enable RLS for the table.
+        """
+        return textwrap.dedent(
+            f"""
+            -- Enable RLS for the table
+            ALTER TABLE {self.db_schema_name}.{self.db_table_name} ENABLE ROW LEVEL SECURITY;
+            """
+        )
+
+    def emit_force_rls_sql(self) -> str:
+        """
+        Emits the SQL statements to force Row Level Security (RLS)
+        on a specified table even for table owners and db superusers.
+
+        Returns:
+            str: A string containing the SQL statements to force RLS for the table.
+        """
+        return textwrap.dedent(
+            f"""
+            -- FORCE RLS for the table
+            ALTER TABLE {self.db_schema_name}.{self.db_table_name} FORCE ROW LEVEL SECURITY;
+            """
+        )
+
+    def emit_enable_auditing_sql(self) -> str:
+        """
+        Generates a SQL query to enable auditing for the specified table.
+
+        Returns:
+            str: A SQL query string that enables auditing for the table.
+        """
+        if self.auditing == AuditEnum.NONE:
+            return ""
+        if self.auditing == AuditEnum.HISTORY:
+            return f"{self.emit_create_history_table_sql()}\n{self.emit_create_history_table_trigger_sql()}"
+        return textwrap.dedent(
+            f"""
+            -- Enable auditing for the table
+            SELECT audit.enable_tracking('{self.db_schema_name}.{self.db_table_name}'::regclass);
+            """
+        )
+
+    def emit_create_history_table_sql(self) -> str:
+        """
+        Creates a SQL statement to generate a history table for auditing purposes.
+
+        The history table will be created in the 'audit' schema and will have the same structure
+        as the original table, but without any data. Additionally, it will have an auto-incrementing
+        primary key column and two indexes: one on the primary key and another on the combination
+        of 'id' and 'modified_at' columns.
+
+        Returns:
+            str: A SQL statement to create the history table.
+        """
+        return textwrap.dedent(
+            f"""
+            CREATE TABLE audit.{self.table_schema}_{self.table_name}
+            AS (SELECT * FROM {self.table_schema}.{self.table_name})
+            WITH NO DATA;
+
+            ALTER TABLE audit.{self.table_schema}_{self.table_name}
+            ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+
+            CREATE INDEX {self.table_schema}_{self.table_name}_pk_idx
+            ON audit.{self.table_schema}_{self.table_name} (pk);
+
+            CREATE INDEX {self.table_schema}_{self.table_name}_id_modified_at_idx
+            ON audit.{self.table_schema}_{self.table_name} (id, modified_at);
+            """
+        )
+
+    def emit_create_history_table_trigger_sql(self) -> str:
+        """
+        Generates a SQL trigger function and trigger for auditing changes to a table.
+
+        This method creates a PostgreSQL function and trigger that logs changes to a specified table
+        into an audit table. The function and trigger are created within the same schema as the target table.
+
+        Returns:
+            str: A string containing the SQL statements to create the audit function and trigger.
+        """
+        return textwrap.dedent(
+            f"""
+            CREATE OR REPLACE FUNCTION {self.table_schema}.{self.table_name}_audit()
+            RETURNS TRIGGER
+            LANGUAGE plpgsql
+            SECURITY DEFINER
+            AS $$
+            BEGIN
+                INSERT INTO audit.{self.table_schema}_{self.table_name}
+                SELECT *
+                FROM {self.table_schema}.{self.table_name}
+                WHERE id = NEW.id;
+                RETURN NEW;
+            END;
+            $$;
+
+            CREATE OR REPLACE TRIGGER {self.table_name}_audit_trigger
+            AFTER INSERT OR UPDATE ON {self.table_schema}.{self.table_name}
+            FOR EACH ROW EXECUTE FUNCTION {self.table_schema}.{self.table_name}_audit();
+            """
+        )
+
+
+class FieldBase(DBObjectBase):
+    # table: Table <- computed_column
+    # column: mapped_column <- computed_column
+
+    value: ClassVar[Any | None] = None
+
+    name: str
+    type: Any
+
+    required: bool = False
+    constraint: str | None = None
+    default: Any = None
+    server_default: Any = None
+    server_onupdate: Any = None
+    server_ondelete: Any = None
+    foreign_key: ForeignKey | None = None
+    related_name: str | None = None
+    many_to_many: list["FieldBase"] | None = None
+    index: bool = False
+    autoincrement: bool = False
+    nullable: bool = False
+    primary_key: bool = False
+    unique: bool = False
+    include_in_masks: list[str] = ["insert", "update", "select", "list"]
+    exclude_in_masks: list[str] = []
+    exclude_from_graph: bool = False
+    forward_edge_name: str | None = None
+    reverse_edge_name: str | None = None
+    editable: bool = True
+
+    @computed_field
+    def column(self) -> Column:
+        return mapped_column(
+            name=self.name,
+            type_=self.type,
+            nullable=self.nullable,
+            primary_key=self.primary_key,
+            unique=self.unique,
+            autoincrement=self.autoincrement,
+            server_default=self.server_default,
+            server_onupdate=self.server_onupdate,
+            server_ondelete=self.server_ondelete,
+            comment=self.comment,
+        )
+
+
+class RelatedObjectMixin(ModelBase):
+    id: FieldBase = FieldBase(
+        name="id",
+        type=str_26,
+        primary_key=True,
+        index=True,
+        unique=True,
+        nullable=False,
+        foreign_key=ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        related_name="relatedobject",
+        server_default=func.un0.insert_relatedobject("un0", "user"),
+        doc="Primary Key",
+        forward_edge_name="HAS_ID",
+        reverse_edge_name="IS_ID_OF",
+    )
+
+
+class ActiveMixin(ModelBase):
+    is_active: FieldBase = FieldBase(
+        name="is_active",
+        type=BOOLEAN,
+        server_default=text("true"),
+        doc="Indicates if the record is active",
+    )
+
+
+class DeleteMixin(ModelBase):
+    is_deleted: FieldBase = FieldBase(
+        name="is_deleted",
+        type=BOOLEAN,
+        server_default=text("false"),
+        doc="Indicates if the record is deleted",
+    )
+    deleted_at: FieldBase = FieldBase(
+        name="deleted_at",
+        type=TIMESTAMP(timezone=True),
+        required=False,
+        editable=False,
+        doc="Time at which the record was deleted",
+    )
+    deleted_by: FieldBase = FieldBase(
+        name="deleted_by",
+        type=str_26,
+        required=False,
+        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
+        related_name="deleted",
+        index=True,
+        doc="User that deleted the record",
+        forward_edge_name="WAS_DELETED_BY",
+        reverse_edge_name="DELETED",
+    )
+
+    def emit_sql(self) -> str:
+        """
+        Generates a SQL trigger creation statement for validating deletions.
+
+        This method creates a SQL trigger named `validate_delete_trigger` that is
+        executed before a delete operation on the specified table. The trigger
+        calls the `un0.validate_delete()` function to perform validation.
+
+        Returns:
+            str: A SQL statement for creating the `validate_delete_trigger`.
+        """
+        return textwrap.dedent(
+            f"""
+            CREATE TRIGGER validate_delete_trigger 
+            BEFORE DELETE ON {self.db_schema_name}.{self.db_table_name}
+            FOR EACH ROW
+            EXECUTE FUNCTION un0.validate_delete();
+            """
+        )
+
+
+class CreatedModifiedMixin(ModelBase):
+    created_at: FieldBase = FieldBase(
+        name="created_at",
+        type=TIMESTAMP(timezone=True),
+        server_default=func.current_timestamp(),
+        doc="Time the record was created",
+        editable=False,
+    )
+    owned_by: FieldBase = FieldBase(
+        name="owned_by",
+        type=str_26,
+        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
+        related_name="owned",
+        index=True,
+        doc="User that owns the record",
+        forward_edge_name="IS_OWNED_BY",
+        reverse_edge_name="OWNS",
+    )
+    modified_at: FieldBase = FieldBase(
+        name="modified_at",
+        type=TIMESTAMP(timezone=True),
+        server_default=func.current_timestamp(),
+        server_onupdate=func.current_timestamp(),
+        doc="Time the record was modified_at",
+        editable=False,
+    )
+    modified_by: FieldBase = FieldBase(
+        name="modified_by",
+        type=str_26,
+        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
+        related_name="modified",
+        index=True,
+        doc="User that last modified the record",
+        forward_edge_name="WAS_LAST_MODIFIED_BY",
+        reverse_edge_name="LAST_MODIFIED",
+    )
+
+    def emit_sql(self) -> str:
+        return textwrap.dedent(
+            f"""
+            CREATE TRIGGER set_owner_and_modified_trigger
+            BEFORE INSERT OR UPDATE ON {self.db_schema_name}.{self.db_table_name}
+            FOR EACH ROW
+            EXECUTE FUNCTION un0.set_owner_and_modified();
+            """
+        )
+
+
+class ImportMixin(ModelBase):
+    import_id: FieldBase = FieldBase(
+        name="import_id",
+        type=int,
+        doc="Primary Key of the original system of the record",
+    )
+    import_key: FieldBase = FieldBase(
+        name="import_key",
+        type=str_26,
+        doc="Unique identifier of the original system of the record",
+    )
+
+
+class NameDescriptionMixin(ModelBase):
+    name: FieldBase = FieldBase(
+        name="name",
+        type=str_128,
+        doc="Name of the record",
+    )
+    description: FieldBase = FieldBase(
+        name="description",
+        type=str_255,
+        doc="Description of the record",
+    )
+
+
+class TenantMixin(ModelBase):
+    tenant: FieldBase = FieldBase(
+        name="tenant",
+        type=str_26,
+        foreign_key=ForeignKey("un0.tenant.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
