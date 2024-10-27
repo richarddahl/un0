@@ -165,21 +165,20 @@ class Model(ModelBase):
 
     def emit_sql(self) -> str:
         sql = ""
-        for cls in type(self).__mro__:
-            if cls is Model:
-                sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
-                sql += f"{self.emit_create_tabletype_record_sql()}\n"
-                if self.rls_policy:
-                    sql += f"{self.emit_enable_rls_sql()}\n"
-                if self.force_rls:
-                    sql += f"{self.emit_force_rls_sql()}\n"
-                if self.auditing == AuditEnum.HISTORY:
-                    sql += f"{self.emit_create_history_table_sql()}\n"
-                    sql += f"{self.emit_create_history_table_trigger_sql()}\n"
-                elif self.auditing == AuditEnum.DEFAULT:
-                    sql += f"{self.emit_enable_auditing_sql()}\n"
-            elif hasattr(cls, "emit_sql"):
+        for cls in reversed(type(self).__mro__):
+            if hasattr(cls, "emit_sql") and cls is not Model:
                 sql += f"{cls.emit_sql(self)}\n"
+        sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
+        sql += f"{self.emit_create_tabletype_record_sql()}\n"
+        if self.rls_policy:
+            sql += f"{self.emit_enable_rls_sql()}\n"
+        if self.force_rls:
+            sql += f"{self.emit_force_rls_sql()}\n"
+        if self.auditing == AuditEnum.HISTORY:
+            sql += f"{self.emit_create_history_table_sql()}\n"
+            sql += f"{self.emit_create_history_table_trigger_sql()}\n"
+        elif self.auditing == AuditEnum.DEFAULT:
+            sql += f"{self.emit_enable_auditing_sql()}\n"
         return sql
 
     def emit_sql_old(self) -> str:
