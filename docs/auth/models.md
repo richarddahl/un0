@@ -1,6 +1,6 @@
 # un0/auth/models.py
 
-## ::: un0.auth.models.UserObj
+## ::: un0.auth.models.Model
 
     handler: python
     options:

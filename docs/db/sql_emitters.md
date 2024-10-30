@@ -1,4 +1,5 @@
-# un0/db/management/db_manager_sql.py
+# un0/db/sql_emitters.py
+
 The management.db_manager_sql.py file contains the following SQL Constants used by the DBManager to configure the database instance.
 
 

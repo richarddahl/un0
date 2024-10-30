@@ -1,6 +1,6 @@
-# un0/db/management/db_manager.py
+# un0/db/models.py
   
-## ::: un0.db.management.db_manager.DBManager
+## ::: un0.db.models.ModelMixin
 
     handler: python
     options:

@@ -1,8 +1,6 @@
 # un0/db/models.py
-
-The db/models.py file contains the Model
-
-## ::: un0.db.models.Model
+  
+## ::: un0.db.models.FieldDefinition
 
     handler: python
     options:

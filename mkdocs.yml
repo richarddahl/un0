@@ -16,36 +16,35 @@ nav:
    - Structure: structure.md
    - Commands: commands.md
    - DB:
-      - DB Management: 
-         - DB Manager: db/management.md
-         - DB Manager SQL: db/manager_sql.md
-         - Table Manager: db/table_manager.md
-      - DB Operation:
-         - Un0DB: db/un0db.md
-         - Un0Obj: db/models.md
-         - Un0Mask: db/masks.md
-   - Capabilities:
-      - Authorization:
-         - Enums: auth/enums.md
-         - Models: auth/models.md
-         - Tables: auth/tables.md
-      - Filtering:
-         - Enums: filters/enums.md
-         - Models: filters/models.md
-         - Tables: filters/tables.md
-      - Mwssaging:
-         - Enums: messaging/enums.md
-         - Models: messaging/models.md
-         - Tables: messaging/tables.md
-      - Reporting:
-         - Enums: reporting/enums.md
-         - Models: reporting/models.md
-         - Tables: reporting/tables.md
-      - Workflow:
-         - Enums: workflow/enums.md
-         - Models: workflow/models.md
-         - Tables: workflow/tables.md
-      - Attributes:
-         - Enums: attributes/enums.md
-         - Models: attributes/models.md
-         - Tables: attributes/tables.md
+      - Models: db/models.md
+      - SQL Emitters: db/sql_emitters.md
+      - Model Mixins: db/model_mixin.md
+   #   - DB Operation:
+   #      - Un0DB: db/un0db.md
+   #      - Un0Obj: db/models.md
+   #      - Un0Mask: db/masks.md
+   #- Capabilities:
+   #   - Authorization:
+   #      - Enums: auth/enums.md
+   #      - Models: auth/models.md
+   #      - Tables: auth/tables.md
+   #   - Filtering:
+   #      - Enums: filters/enums.md
+   #      - Models: filters/models.md
+   #      - Tables: filters/tables.md
+   #   - Mwssaging:
+   #      - Enums: messaging/enums.md
+   #      - Models: messaging/models.md
+   #      - Tables: messaging/tables.md
+   #   - Reporting:
+   #      - Enums: reporting/enums.md
+   #      - Models: reporting/models.md
+   #      - Tables: reporting/tables.md
+   #   - Workflow:
+   #      - Enums: workflow/enums.md
+   #      - Models: workflow/models.md
+   #      - Tables: workflow/tables.md
+   #   - Attributes:
+   #      - Enums: attributes/enums.md
+   #      - Models: attributes/models.md
+   #      - Tables: attributes/tables.md
