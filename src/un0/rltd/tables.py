@@ -38,7 +38,7 @@ class RelatedObject(Base):
     allowing for a single point of reference for attributes, queries, workflows, and reports
     """
 
-    __tablename__ = "relatedobject"
+    __tablename__ = "related_object"
     __table_args__ = {
         "schema": "un0",
         "comment": textwrap.dedent(

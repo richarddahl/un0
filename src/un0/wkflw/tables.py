@@ -145,10 +145,10 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     }
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -159,7 +159,7 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     )
     date_due: Mapped[datetime.date] = mapped_column(doc="Date the workflow is due")
     workflow_object_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "IS_EVENT_FOR"},
     )
@@ -178,10 +178,10 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
     }
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -214,14 +214,14 @@ class WorkflowRecord(Base, BaseMixin, RBACMixin):
         doc="User defined or auto-generated comment on the workflow execution",
     )
     workflowrecord_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         info={"edge": "RECORDS_EXECUTION"},
     )
     # ForeignKeyConstraint(
     #    ["workflowrecord_id"],
-    #    ["un0.relatedobject.id"],
-    #    name="fk_workflowrecord_record_relatedobject_id",
+    #    ["un0.related_object.id"],
+    #    name="fk_workflowrecord_record_related_object_id",
     #    ondelete="CASCADE",
     # )
 

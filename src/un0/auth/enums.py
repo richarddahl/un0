@@ -18,13 +18,13 @@ class TenantType(str, enum.Enum):
 
     Attributes:
         INDIVIDUAL (str): Represents an individual group.
-        SMALL_BUSINESS (str): Represents a small business group.
+        BUSINESS (str): Represents a small business group.
         CORPORATE (str): Represents a corporate group.
         ENTERPRISE (str): Represents an enterprise group.
     """
 
     INDIVIDUAL = "Individual"
-    SMALL_BUSINESS = "Small Business"
+    BUSINESS = "Business"
     CORPORATE = "Corporate"
     ENTERPRISE = "Enterprise"
 

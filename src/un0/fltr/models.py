@@ -6,7 +6,7 @@ import textwrap
 from datetime import datetime, date, time
 from decimal import Decimal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, ConfigDict
 from sqlalchemy import Table, Column
 
 from un0.db.db_tool import TableManager
@@ -16,14 +16,17 @@ from un0.fltr.enums import (  # type: ignore
     Include,
     Match,
     Lookup,
-    ColumnSecurity,
     related_lookups,
     numeric_lookups,
     string_lookups,
 )
-from un0.config import settings as sttngs
-from un0.db.management.db_manager import VertexTool, EdgeTool, PropertyTool
-from un0.db.models import UN0Model
+from un0.config import settings
+from un0.db.management.db_manager import (
+    VertexSqlEmitter,
+    EdgeSqlEmitter,
+    PropertySqlEmitter,
+)
+from un0.data.models import UN0Model
 
 
 ################
@@ -44,9 +47,9 @@ class FilterFieldModel(UN0Model):
     # name: str <- computed_field
     # accessor: str <- computed_field
     # lookups: list[Lookup] <- computed_field
-    # vertex: VertexTool | None <- computed_field
-    # edge: EdgeTool | None <- computed_field
-    # props: PropertyTool | None <- computed_field
+    # vertex: VertexSqlEmitter | None <- computed_field
+    # edge: EdgeSqlEmitter | None <- computed_field
+    # props: PropertySqlEmitter | None <- computed_field
 
     # to_column: Column | None <- computed_field
     table: Table
@@ -68,18 +71,18 @@ class FilterFieldModel(UN0Model):
         return self.table.name
 
     # @computed_field
-    # def vertex(self) -> VertexTool | None:
+    # def vertex(self) -> VertexSqlEmitter | None:
     #    if self.graph_type == GraphType.VERTEX:
-    #        return VertexTool(
+    #        return VertexSqlEmitter(
     #            table=self.table,
     #            column=self.table.primary_key.columns[0],
     #        )
     #    return None
     #
     #    @computed_field
-    #    def edge(self) -> EdgeTool | None:
+    #    def edge(self) -> EdgeSqlEmitter | None:
     #        if self.graph_type == GraphType.EDGE:
-    #            return EdgeTool(
+    #            return EdgeSqlEmitter(
     #                table=self.table,
     #                from_column=self.from_column,
     #                to_column=self.to_column,
@@ -87,9 +90,9 @@ class FilterFieldModel(UN0Model):
     #        return None
 
     #    @computed_field
-    #    def prop(self) -> PropertyTool | None:
+    #    def prop(self) -> PropertySqlEmitter | None:
     #        if self.graph_type == GraphType.PROPERTY:
-    #            return PropertyTool(table=self.table, column=self.from_column)
+    #            return PropertySqlEmitter(table=self.table, column=self.from_column)
     #        return None
 
     @computed_field
@@ -138,7 +141,7 @@ class FilterFieldModel(UN0Model):
         #    )
         sql += textwrap.dedent(
             f"""
-            SET ROLE {sttngs.DB_NAME}_admin;
+            SET ROLE {settings.DB_NAME}_admin;
             -- Create the FilterField
             INSERT INTO un0.filterfield(
                 name,
@@ -229,7 +232,7 @@ class FilterSetSchema(BaseModel):
                     table=self.table,
                     to_column=fk.parent,
                     start_vertex=self,
-                    end_vertex=VertexTool(
+                    end_vertex=VertexSqlEmitter(
                         table=fk.column.table,
                         column=fk.parent,
                     ),
@@ -267,7 +270,7 @@ class FilterKeySchema(TableManager):
     def insert_sql(self) -> str:
         return textwrap.dedent(
             f"""
-            SET ROLE {sttngs.DB_NAME}_admin;
+            SET ROLE {settings.DB_NAME}_admin;
             -- Create the FilterKey
             INSERT INTO un0.filterkey(
                 from_filterfield_id,
@@ -322,7 +325,7 @@ class PathSchema(TableManager):
     def insert_sql(self) -> str:
         return textwrap.dedent(
             f"""
-            SET ROLE {sttngs.DB_NAME}_admin;
+            SET ROLE {settings.DB_NAME}_admin;
             -- Create the Path
             INSERT INTO un0.filterkey(
                 start_filter_field_id,

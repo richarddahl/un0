@@ -5,24 +5,6 @@ import enum
 # Filter Enumerations
 
 
-class ColumnSecurity(str, enum.Enum):
-    """
-    Enumeration class representing the security levels for UnoModel columns.
-
-    Attributes:
-        PUBLIC (str): The column is publicly accessible (in accordance with row-level security enforcement).
-        PRIVATE (str): The column is accessible only to the owner or the group admin (if used) and superusers.
-        SECRET (str): The column is accessible only to superusers.
-        SYSTEM (str): The column is accessible only to the system.
-
-    """
-
-    PUBLIC = "public"
-    PRIVATE = "private"
-    SECRET = "secret"
-    SYSTEM = "system"
-
-
 class Include(str, enum.Enum):
     """
     Enumeration class for querying the database.

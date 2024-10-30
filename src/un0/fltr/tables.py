@@ -27,7 +27,6 @@ from un0.fltr.enums import (  # type: ignore
     Include,
     Match,
     Lookup,
-    ColumnSecurity,
 )
 from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
 from un0.rltd.tables import RelatedObject, TableType
@@ -58,7 +57,7 @@ class FilterField(Base):
     accessor: Mapped[str_255] = mapped_column()
     label: Mapped[str] = mapped_column()
     data_type: Mapped[str_26] = mapped_column()
-    graph_type: Mapped[ColumnSecurity] = mapped_column(
+    graph_type: Mapped[GraphType] = mapped_column(
         ENUM(
             GraphType,
             name="graphtype",
@@ -167,7 +166,7 @@ class FilterKey(Base):
         primary_key=True,
         doc="The accessor for the filter key.",
     )
-    graph_type: Mapped[ColumnSecurity] = mapped_column(
+    graph_type: Mapped[GraphType] = mapped_column(
         ENUM(
             GraphType,
             name="graphtype",
@@ -237,10 +236,10 @@ class FilterValue(Base, BaseMixin, RBACMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -281,7 +280,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     timestamp_value: Mapped[Optional[datetime.datetime]] = mapped_column()
     string_value: Mapped[Optional[str_255]] = mapped_column()
     object_value_id: Mapped[Optional[str_26]] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         index=True,
         nullable=True,
         info={"edge": "HAS_OBJECT_VALUE"},
@@ -294,7 +293,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     )
     """
     fields: Mapped["Field"] = relationship(back_populates="filtervalues")
-    # relatedobject: Mapped["RelatedObject"] = relationship(
+    # related_object: Mapped["RelatedObject"] = relationship(
     #    viewonly=True,
     #    back_populates="filtervalue",
     #    foreign_keys=[object_value_id],
@@ -320,10 +319,10 @@ class Query(Base, BaseMixin, RBACMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )

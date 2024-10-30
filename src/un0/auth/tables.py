@@ -36,7 +36,7 @@ class Tenant(Base, BaseMixin):
     Represents organizations using the application
 
     Attributes:
-        id (Mapped[str_26]): Primary key, foreign key to `un0.relatedobject.id`, with cascade delete.
+        id (Mapped[str_26]): Primary key, foreign key to `un0.related_object.id`, with cascade delete.
         name (Mapped[str_255]): Unique name of the tenant.
         tenant_type (Mapped[TenantType]): Type of the tenant, defaults to `TenantType.INDIVIDUAL`.
         users (Mapped[list["User"]]): List of users that belong to the tenant.
@@ -57,10 +57,10 @@ class Tenant(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -90,7 +90,7 @@ class User(Base):
     Application users.
 
     Attributes:
-        id (str_26): Primary Key, foreign key to `un0.relatedobject.id`.
+        id (str_26): Primary Key, foreign key to `un0.related_object.id`.
         email (str_255): Email address, used as login ID, unique.
         handle (str_255): User's displayed name and alternate login ID, unique.
         full_name (str_255): User's full name.
@@ -142,10 +142,10 @@ class User(Base):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -306,7 +306,7 @@ class Role(Base, BaseMixin):
     Represents a role within the system, created by end user group admins. Roles enable the assignment of group permissions by functionality, department, etc., to users.
 
     Attributes:
-        id (str_26): Primary key. Foreign key referencing `un0.relatedobject.id`. Indexed and cascades on delete.
+        id (str_26): Primary key. Foreign key referencing `un0.related_object.id`. Indexed and cascades on delete.
         tenant_id (str_26): Foreign key referencing `un0.tenant.id`. Indicates the tenant the role belongs to. Indexed and cascades on delete.
         name (str_255): Name of the role.
         description (str): Description of the role.
@@ -332,10 +332,10 @@ class Role(Base, BaseMixin):
 
     # Columns
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )
@@ -432,10 +432,10 @@ class Group(Base, BaseMixin):
     # Columns
 
     id: Mapped[str_26] = mapped_column(
-        ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
+        ForeignKey("un0.related_object.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
-        server_default=func.un0.insert_relatedobject("un0", "user"),
+        server_default=func.un0.insert_related_object("un0", "user"),
         doc="Primary Key",
         info={"edge": "HAS_ID"},
     )

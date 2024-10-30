@@ -31,24 +31,20 @@ from sqlalchemy.dialects.postgresql import (
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
-    relationship,
     registry,
     declared_attr,
     mapped_column,
 )
-from un0.config import settings as sttngs
+from un0.config import settings
 
 
 # Create the database engine
-engine = create_async_engine(
-    sttngs.DATABASE_URL,
-    echo=True,  # Set to True for SQL query logging
-)
+engine = create_async_engine(settings.DB_URL)
 
 # Create a sessionmaker factory
 async_session_factory = async_sessionmaker(
     bind=engine,
-    expire_on_commit=False,
+    expire_on_commit=True,
     class_=AsyncSession,
 )
 
@@ -71,10 +67,11 @@ POSTGRES_INDEXES_NAMING_CONVENTION = {
 # Creates the metadata object, used to define the database tables
 meta_data = MetaData(
     naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
-    schema=sttngs.DB_NAME,
+    schema=settings.DB_NAME,
 )
 
 str_26 = Annotated[VARCHAR, 26]
+str_64 = Annotated[VARCHAR, 64]
 str_128 = Annotated[VARCHAR, 128]
 str_255 = Annotated[VARCHAR, 255]
 decimal = Annotated[Decimal, 19]
@@ -82,20 +79,23 @@ decimal = Annotated[Decimal, 19]
 
 class Base(AsyncAttrs, DeclarativeBase):
     registry = registry(
-        type_annotation_map={
-            int: BIGINT,
-            datetime.datetime: TIMESTAMP(timezone=True),
-            datetime.date: DATE,
-            datetime.time: TIME,
-            str: VARCHAR,
-            Enum: ENUM,
-            bool: BOOLEAN,
-            list: ARRAY,
-            str_26: VARCHAR(26),
-            str_128: VARCHAR(128),
-            str_255: VARCHAR(255),
-            decimal: NUMERIC,
-        }
+        type_annotation_map=(
+            {
+                int: BIGINT,
+                datetime.datetime: TIMESTAMP(timezone=True),
+                datetime.date: DATE,
+                datetime.time: TIME,
+                str: VARCHAR,
+                Enum: ENUM,
+                bool: BOOLEAN,
+                list: ARRAY,
+                str_26: VARCHAR(26),
+                str_64: VARCHAR(64),
+                str_128: VARCHAR(128),
+                str_255: VARCHAR(255),
+                decimal: NUMERIC,
+            }
+        )
     )
     metadata = meta_data
 
@@ -151,9 +151,9 @@ class BaseMixin:
     # Relationships
     # @declared_attr
     # @classmethod
-    # def relatedobject(cls) -> Mapped["RelatedObject"]:
+    # def related_object(cls) -> Mapped["RelatedObject"]:
     #    return relationship(
-    #        back_populates="relatedobject",
+    #        back_populates="related_object",
     #        doc="Related Object of the record",
     #    )
 
@@ -208,7 +208,7 @@ class RBACMixin:
     # @declared_attr
     # def group(cls) -> Mapped["Group"]:
     #    return relationship(
-    #        back_populates="relatedobject",
+    #        back_populates="related_object",
     #        foreign_keys=[cls.group_id],
     #        doc="Group of the record",
     #    )

@@ -14,29 +14,24 @@ class Un0Error(Exception):
         self.error_code = error_code
 
 
-class Un0BaseModelConfigError(Un0Error):
+class ModelConfigError(Un0Error):
     pass
 
 
-class Un0BaseModelRegistryError(Un0Error):
+class ModelRegistryError(Un0Error):
     pass
 
 
-class Un0BaseModelFieldListError(Un0Error):
+class ModelFieldListError(Un0Error):
     pass
 
 
-class Un0BaseModelRelationConfigError(Un0Error):
+class ModelRelationConfigError(Un0Error):
     pass
 
 
-class Un0BaseModelTableError(Un0Error):
+class ModelTableError(Un0Error):
     pass
-
-
-class Un0HTTPError(HTTPException):
-    status_code = 400
-    detail = "Record matching data already exists in database."
 
 
 class DataExistsError(HTTPException):

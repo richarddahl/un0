@@ -41,8 +41,8 @@ class General(BaseSettings):
     # Max Groups and Users for each type of tenant
     MAX_INDIVIDUAL_GROUPS: int = 1
     MAX_INDIVIDUAL_USERS: int = 1
-    MAX_SMALL_BUSINESS_GROUPS: int = 5
-    MAX_SMALL_BUSINESS_USERS: int = 5
+    MAX_BUSINESS_GROUPS: int = 5
+    MAX_BUSINESS_USERS: int = 5
     MAX_CORPORATE_GROUPS: int = 25
     MAX_CORPORATE_USERS: int = 25
     MAX_ENTERPRISE_GROUPS: int = -1

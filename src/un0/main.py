@@ -8,10 +8,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from un0.config import settings
-from un0.db.models import Un0Obj
+from un0.data.models import Un0Obj
 from un0.db.management.db_manager import DBManager
 
 try:
+    DBManager().drop_db()
     DBManager().create_db()
 except Exception as e:
     print(e)

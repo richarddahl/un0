@@ -4,22 +4,27 @@
 import enum
 
 
-class ModelMaskConfigDataType(str, enum.Enum):
+class ColumnSecurity(str, enum.Enum):
     """
-    Enumeration representing the data types for mask configurations.
+    Enumeration class representing the security levels for UnoModel columns.
 
     Attributes:
-        NATIVE (str): Native (python) data type.
-        STRING (str): Babel formatted (localized) string.
-        ELEMENT (str): HTML Form Element Dictionary.
+        PUBLIC (str): The column is publicly accessible (in accordance with row-level security enforcement).
+        PRIVATE (str): The column is accessible only to the owner, the tenant admin (if used), and superusers.
+        ADMIN (str): The column is accessible only to the tenant admin (if used) and superusers.
+        SECRET (str): The column is accessible only to superusers.
+        SYSTEM (str): The column is accessible only to the system.
+
     """
 
-    NATIVE = "native"
-    STRING = str
-    ELEMENT = dict
+    PUBLIC = "public"
+    PRIVATE = "private"
+    ADMIN = "admin"
+    SUPERUSER = "superuser"
+    SYSTEM = "system"
 
 
-class Un0SelectResultType(str, enum.Enum):
+class SelectResultType(str, enum.Enum):
     """
     Enumeration representing the result types for database select operations.
 

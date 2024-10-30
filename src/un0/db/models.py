@@ -2,37 +2,22 @@
 #
 # SPDX-License-Identifier: MIT
 
-import textwrap
-
 import datetime
 
 from enum import Enum
 from decimal import Decimal
-from typing import Annotated, Optional, ClassVar, Type, Any, Callable
+from typing import Annotated, ClassVar, Type
 
 from sqlalchemy import (
     MetaData,
-    text,
-    TextClause,
-    func,
-    ForeignKey,
-    Column,
-    UniqueConstraint,
-    Index,
-    CheckConstraint,
+    Table,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
-    Mapped,
     registry,
-    declared_attr,
-    mapped_column,
 )
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
 )
 from sqlalchemy.dialects.postgresql import (
     BIGINT,
@@ -46,40 +31,63 @@ from sqlalchemy.dialects.postgresql import (
     ARRAY,
 )
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    computed_field,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel
 
-from un0.db.management.db_manager_sql import CREATE_VALIDATE_DELETE_FUNCTION
-from un0.config import settings as sttngs
+from un0.errors import ModelRegistryError
+from un0.utilities import convert_snake_to_title
+from un0.db.sql_emitters import (
+    SQLEmitter,
+    BaseTableSQLEmitter,
+)
+from un0.db.fields import (
+    IX,
+    CK,
+    UQ,
+    FieldDefinition,
+)
+from un0.db.types import str_26, str_64, str_128, str_255, decimal
+from un0.config import settings
 
 # configures the naming convention for the database implicit constraints and indexes
 POSTGRES_INDEXES_NAMING_CONVENTION = {
-    "ix": "%(column_0_label)s_idx",
-    "uq": "%(table_name)s_%(column_0_name)s_key",
-    "ck": "%(table_name)s_%(constraint_name)s_check",
-    "fk": "%(table_name)s_%(column_0_name)s_fkey",
-    "pk": "%(table_name)s_pkey",
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s",
+    "pk": "pk_%(table_name)s",
 }
 
 # Creates the metadata object, used to define the database tables
 meta_data = MetaData(
     naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
-    schema=sttngs.DB_NAME,
+    schema=settings.DB_NAME,
 )
-
-str_26 = Annotated[VARCHAR, 26]
-str_64 = Annotated[VARCHAR, 64]
-str_128 = Annotated[VARCHAR, 128]
-str_255 = Annotated[VARCHAR, 255]
-decimal = Annotated[Decimal, 19]
 
 
 class Base(AsyncAttrs, DeclarativeBase):
+    """
+    Base class for SQLAlchemy models with asynchronous attributes and custom type annotations.
+
+    Attributes:
+        registry (sqlalchemy.orm.registry): A registry object that maps Python types to SQLAlchemy column types.
+        metadata (sqlalchemy.MetaData): Metadata object for the database schema.
+
+    Type Annotations:
+        int: BIGINT
+        datetime.datetime: TIMESTAMP(timezone=True)
+        datetime.date: DATE
+        datetime.time: TIME
+        str: VARCHAR
+        Enum: ENUM
+        bool: BOOLEAN
+        list: ARRAY
+        str_26: VARCHAR(26)
+        str_64: VARCHAR(64)
+        str_128: VARCHAR(128)
+        str_255: VARCHAR(255)
+        decimal: NUMERIC
+    """
+
     registry = registry(
         type_annotation_map=(
             {
@@ -102,454 +110,208 @@ class Base(AsyncAttrs, DeclarativeBase):
     metadata = meta_data
 
 
-class AuditEnum(Enum):
-    DEFAULT = "default"
-    NONE = "none"
-    HISTORY = "history"
+class Model(BaseModel):
+    """
+    Model is a base class for defining database models with SQLAlchemy. It provides mechanisms for
+    automatically generating and registering table schemas, field definitions, constraints, and indices.
+    The class also supports emitting SQL statements for table creation.
 
+    Attributes:
+        table (ClassVar[Table]): The SQLAlchemy Table object associated with the model.
+        registry (ClassVar[dict[str, Model]]): A registry mapping table names to model classes.
+        class_name_map (ClassVar[dict[str, str]]): A mapping of class names to table names.
+        db_schema (ClassVar[str]): The database schema name.
+        table_name (ClassVar[str]): The name of the table.
+        table_name_plural (ClassVar[str]): The plural form of the table name.
+        verbose_name (ClassVar[str]): A human-readable name for the table.
+        verbose_name_plural (ClassVar[str]): A human-readable plural name for the table.
+        table_comment (ClassVar[str]): A comment describing the table.
+        field_definitions (ClassVar[dict[str, "FieldDefinition"]]): Definitions of the fields in the table.
+        indices (ClassVar[list[IX]]): A list of indices for the table.
+        constraints (ClassVar[list[CK | UQ]]): A list of constraints for the table.
+        sql_emitters (ClassVar[list[SQLEmitter]]): A list of SQL emitters for generating SQL statements.
 
-class DBObjectBase(BaseModel):
-    doc: Optional[str] = ""
-    info: Optional[dict[str, str]] = {}
-    comment: Optional[str] = ""
+    Methods:
+        __init_subclass__: Initializes a subclass, setting up table attributes and registering the class.
+        update_field_definitions: Updates the field definitions by merging those from parent classes.
+        update_constraints: Updates the constraints by extending those from parent classes.
+        update_indices: Updates the indices by extending those from parent classes.
+        emit_sql: Generates and returns SQL statements emitted by all associated SQL emitters.
+    """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    table: ClassVar[Table]
 
+    registry: ClassVar[dict[str, "Model"]] = {}
+    class_name_map: ClassVar[dict[str, str]] = {}
 
-class DBTableBase(DBObjectBase):
-    # table: Base <- computed_column
-    db_schema: str = "un0"
-
-    @computed_field
-    def table(self) -> Base:
-        table = type(
-            self.name,
-            (Base,),
-            {
-                "__tablename__": self.name.lower(),
-                "__table_args__": {
-                    "schema": self.db_schema.value,
-                    "comment": self.comment,
-                },
-            },
-        )
-        for field_name, field in self.model_fields.items():
-            setattr(table, field_name, field.column)
-
-
-class ModelBase(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class Model(ModelBase):
-    # db_table: ClassVar[Type[Base]] <- computed_column
-
-    db_schema_name: ClassVar[str]
-    db_table_name: ClassVar[str]
-
+    db_schema: ClassVar[str]
+    table_name: ClassVar[str]
+    table_name_plural: ClassVar[str]
     verbose_name: ClassVar[str]
     verbose_name_plural: ClassVar[str]
+    table_comment: ClassVar[str] = ""
+    field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
+    indices: ClassVar[list[IX]] = []
+    constraints: ClassVar[list[CK | UQ]] = []
+    sql_emitters: ClassVar[list[SQLEmitter]] = [BaseTableSQLEmitter]
 
-    unique_together: ClassVar[list[str]] = []
-    indexes: ClassVar[list[Index]] = []
-    unique_constraints: ClassVar[list[UniqueConstraint]] = []
-    check_constraints: ClassVar[list[CheckConstraint]] = []
-
-    auditing: ClassVar[AuditEnum] = AuditEnum.DEFAULT
-
-    include_in_graph: ClassVar[bool] = True
-    vertex: ClassVar[str | bool] = True
-
-    rls_policy: ClassVar[str | bool] = "default"
-    force_rls: ClassVar[bool] = True
-
-    def emit_sql(self) -> str:
-        sql = ""
-        for cls in reversed(type(self).__mro__):
-            if hasattr(cls, "emit_sql") and cls is not Model:
-                sql += f"{cls.emit_sql(self)}\n"
-        sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
-        sql += f"{self.emit_create_tabletype_record_sql()}\n"
-        if self.rls_policy:
-            sql += f"{self.emit_enable_rls_sql()}\n"
-        if self.force_rls:
-            sql += f"{self.emit_force_rls_sql()}\n"
-        if self.auditing == AuditEnum.HISTORY:
-            sql += f"{self.emit_create_history_table_sql()}\n"
-            sql += f"{self.emit_create_history_table_trigger_sql()}\n"
-        elif self.auditing == AuditEnum.DEFAULT:
-            sql += f"{self.emit_enable_auditing_sql()}\n"
-        return sql
-
-    def emit_sql_old(self) -> str:
-        sql = ""
-        for cls in type(self).__mro__:
-            if cls is Model:
-                sql += f"{self.emit_change_table_owner_and_set_privileges_sql()}\n"
-                sql += f"{self.emit_create_tabletype_record_sql()}\n"
-                if self.rls_policy:
-                    sql += f"{self.emit_enable_rls_sql()}\n"
-                if self.force_rls:
-                    sql += f"{self.emit_force_rls_sql()}\n"
-                if self.auditing == AuditEnum.HISTORY:
-                    sql += f"{self.emit_create_history_table_sql()}\n"
-                    sql += f"{self.emit_create_history_table_trigger_sql()}\n"
-                elif self.auditing == AuditEnum.DEFAULT:
-                    sql += f"{self.emit_enable_auditing_sql()}\n"
-            elif hasattr(cls, "emit_sql"):
-                sql += f"{cls.emit_sql(self)}\n"
-        return sql
-
-    def emit_change_table_owner_and_set_privileges_sql(self) -> str:
+    def __init_subclass__(
+        cls,
+        db_schema: str | None = settings.DB_NAME,
+        table_name: str | None = None,
+        table_name_plural: str | None = None,
+        verbose_name: str | None = None,
+        verbose_name_plural: str | None = None,
+    ) -> None:
         """
-        Generates a SQL command to change the owner of a table and set privileges.
+        Initialize a subclass of the Model class.
 
-        The generated SQL command will:
-        - Change the owner of the table to the admin user of the database.
-        - Grant SELECT privileges to the reader and writer roles.
-        - Grant INSERT, UPDATE, and DELETE privileges to the writer role.
+        This method is automatically called when a new subclass is created. It sets up
+        various class attributes and ensures the subclass is properly registered.
+
+        Args:
+            cls: The subclass being initialized.
+            db_schema (str | None): The database schema name. Defaults to the value of settings.DB_NAME.
+            table_name (str | None): The name of the table. Defaults to None.
+            table_name_plural (str | None): The plural name of the table. Defaults to None.
+            verbose_name (str | None): A human-readable name for the table. Defaults to None.
+            verbose_name_plural (str | None): A human-readable plural name for the table. Defaults to None.
+
+        Raises:
+            ModelRegistryError: If a class with the same table name or model name already exists in the registry.
+
+        Notes:
+            - This method prevents the base class from being created and added to the registry.
+            - It updates field definitions, constraints, and indices from the parent classes.
+            - It sets various class attributes such as table_name, db_schema, table_name_plural, verbose_name, and verbose_name_plural.
+            - It ensures the subclass is added to the registry only once.
+            - It creates the SQLAlchemy table object and adds columns, constraints, and indices to it.
+        """
+
+        # This prevents the base class from being created and added to the registry
+        if isinstance(cls, Model):
+            return
+
+        # Update the field_definitions, constraints, and indices from the parent classes
+        cls.update_field_definitions()
+        cls.update_constraints()
+        cls.update_indices()
+
+        # Set the class attributes
+        cls.table_name = table_name
+        cls.db_schema = db_schema
+        cls.table_name_plural = (
+            f"{table_name}s" if table_name_plural is None else table_name_plural
+        )
+        cls.verbose_name = (
+            convert_snake_to_title(table_name) if verbose_name is None else verbose_name
+        )
+        cls.verbose_name_plural = (
+            convert_snake_to_title(cls.table_name_plural)
+            if verbose_name_plural is None
+            else verbose_name_plural
+        )
+
+        # This is here as we only want to create and add the class to the registry once
+        # The BaseClass registry is shared by all subclasses
+        # It's like a singleton, it exists in the base class and is shared by all subclasses
+        if cls.table_name not in cls.registry:
+            # Add the subclass to the table_name_registry
+            cls.registry.update({cls.table_name: cls})
+            # Add the subclass to the model_name_registry if it is not there (shouldn't be there, but just in case)
+            if cls.__name__ not in cls.class_name_map:
+                cls.class_name_map.update({cls.__name__: cls})
+            else:
+                raise ModelRegistryError(
+                    f"A class with the table name {cls.table_name} already exists.",
+                    "MODEL_NAME_EXISTS_IN_REGISTRY",
+                )
+        else:
+            raise ModelRegistryError(
+                f"A class with the table name {cls.table_name} already exists.",
+                "TABLE_NAME_EXISTS_IN_REGISTRY",
+            )
+
+        # Create the sqlalchemy table object
+        table = Table(
+            cls.table_name,
+            Base.metadata,
+            schema=cls.db_schema,
+            comment=cls.table_comment,
+        )
+        # Add the columns to the table
+        for field_name, field_definition in cls.field_definitions.items():
+            table.append_column(field_definition.create_column(name=field_name))
+        # Add the constraints to the table
+        for constraint in cls.constraints:
+            table.append_constraint(constraint.create_constraint())
+        # Add the indices to the table
+        for index in cls.indices:
+            table.indexes.add(index.create_index())
+        # Set the table attribute on the class
+        cls.table = table
+
+    @classmethod
+    def update_field_definitions(cls) -> None:
+        """
+        Updates the `field_definitions` attribute of the class by iterating through
+        the method resolution order (MRO) of the class and merging the `field_definitions`
+        from each class in the hierarchy.
+
+        This method ensures that the `field_definitions` attribute contains all field
+        definitions from the current class and its ancestors.
 
         Returns:
-            str: A formatted SQL command string.
+            None
         """
-        return textwrap.dedent(
-            f"""
-            ALTER TABLE {self.db_schema_name}.{self.db_table_name} OWNER TO {sttngs.DB_NAME}_admin;
-            GRANT SELECT ON {self.db_schema_name}.{self.db_table_name} TO
-                {sttngs.DB_NAME}_reader,
-                {sttngs.DB_NAME}_writer;
-            GRANT INSERT, UPDATE, DELETE ON {self.db_schema_name}.{self.db_table_name} TO
-                {sttngs.DB_NAME}_writer;
-            """
-        )
+        for klass in cls.__class__.mro(cls):
+            if hasattr(klass, "field_definitions"):
+                cls.field_definitions.update(klass.field_definitions)
 
-    def emit_create_tabletype_record_sql(self) -> str:
+    @classmethod
+    def update_constraints(cls) -> None:
         """
-        Emits the SQL statement to insert a record into the `un0.tabletype` table.
+        Updates the constraints of the class by extending the current class's
+        constraints with those of its parent classes.
 
-        This method creates a SQL INSERT statement that adds a new record to the
-        `un0.tabletype` table with the schema and name provided by the instance's
-        `table_schema` and `table_name` attributes.
+        This method iterates through the method resolution order (MRO) of the
+        class and checks if each class in the hierarchy has a 'constraints'
+        attribute. If it does, the constraints of the current class are extended
+        with the constraints of that class.
 
         Returns:
-            str: A formatted SQL INSERT statement as a string.
+            None
         """
-        return textwrap.dedent(
-            f"""
-            -- Create the tabletype record
-            INSERT INTO un0.tabletype (schema, name)
-            VALUES ('{self.db_schema_name}', '{self.db_table_name}');
-            """
-        )
+        for klass in cls.__class__.mro(cls):
+            if hasattr(klass, "constraints"):
+                cls.constraints.extend(klass.constraints)
 
-    def emit_enable_rls_sql(self) -> str:
+    @classmethod
+    def update_indices(cls) -> None:
         """
-        Emits the SQL statements to enable Row Level Security (RLS)
-        on a specified table.
+        Updates the indices of the class by extending the current class's indices
+        with the indices of all its parent classes in the method resolution order (MRO).
+
+        This method iterates through the MRO of the class and checks if each class
+        has an attribute named 'indices'. If the attribute exists, it extends the
+        current class's indices with the indices of that class.
 
         Returns:
-            str: A string containing the SQL statements to enable RLS for the table.
+            None
         """
-        return textwrap.dedent(
-            f"""
-            -- Enable RLS for the table
-            ALTER TABLE {self.db_schema_name}.{self.db_table_name} ENABLE ROW LEVEL SECURITY;
-            """
-        )
+        for klass in cls.__class__.mro(cls):
+            if hasattr(klass, "indices"):
+                cls.indices.extend(klass.indices)
 
-    def emit_force_rls_sql(self) -> str:
+    @classmethod
+    def emit_sql(cls) -> str:
         """
-        Emits the SQL statements to force Row Level Security (RLS)
-        on a specified table even for table owners and db superusers.
+        Generates and returns the SQL statements emitted by all SQL emitters associated with the class.
 
         Returns:
-            str: A string containing the SQL statements to force RLS for the table.
+            str: A string containing the concatenated SQL statements emitted by each SQL emitter.
         """
-        return textwrap.dedent(
-            f"""
-            -- FORCE RLS for the table
-            ALTER TABLE {self.db_schema_name}.{self.db_table_name} FORCE ROW LEVEL SECURITY;
-            """
-        )
-
-    def emit_enable_auditing_sql(self) -> str:
-        """
-        Generates a SQL query to enable auditing for the specified table.
-
-        Returns:
-            str: A SQL query string that enables auditing for the table.
-        """
-        if self.auditing == AuditEnum.NONE:
-            return ""
-        if self.auditing == AuditEnum.HISTORY:
-            return f"{self.emit_create_history_table_sql()}\n{self.emit_create_history_table_trigger_sql()}"
-        return textwrap.dedent(
-            f"""
-            -- Enable auditing for the table
-            SELECT audit.enable_tracking('{self.db_schema_name}.{self.db_table_name}'::regclass);
-            """
-        )
-
-    def emit_create_history_table_sql(self) -> str:
-        """
-        Creates a SQL statement to generate a history table for auditing purposes.
-
-        The history table will be created in the 'audit' schema and will have the same structure
-        as the original table, but without any data. Additionally, it will have an auto-incrementing
-        primary key column and two indexes: one on the primary key and another on the combination
-        of 'id' and 'modified_at' columns.
-
-        Returns:
-            str: A SQL statement to create the history table.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE TABLE audit.{self.table_schema}_{self.table_name}
-            AS (SELECT * FROM {self.table_schema}.{self.table_name})
-            WITH NO DATA;
-
-            ALTER TABLE audit.{self.table_schema}_{self.table_name}
-            ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
-
-            CREATE INDEX {self.table_schema}_{self.table_name}_pk_idx
-            ON audit.{self.table_schema}_{self.table_name} (pk);
-
-            CREATE INDEX {self.table_schema}_{self.table_name}_id_modified_at_idx
-            ON audit.{self.table_schema}_{self.table_name} (id, modified_at);
-            """
-        )
-
-    def emit_create_history_table_trigger_sql(self) -> str:
-        """
-        Generates a SQL trigger function and trigger for auditing changes to a table.
-
-        This method creates a PostgreSQL function and trigger that logs changes to a specified table
-        into an audit table. The function and trigger are created within the same schema as the target table.
-
-        Returns:
-            str: A string containing the SQL statements to create the audit function and trigger.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE OR REPLACE FUNCTION {self.table_schema}.{self.table_name}_audit()
-            RETURNS TRIGGER
-            LANGUAGE plpgsql
-            SECURITY DEFINER
-            AS $$
-            BEGIN
-                INSERT INTO audit.{self.table_schema}_{self.table_name}
-                SELECT *
-                FROM {self.table_schema}.{self.table_name}
-                WHERE id = NEW.id;
-                RETURN NEW;
-            END;
-            $$;
-
-            CREATE OR REPLACE TRIGGER {self.table_name}_audit_trigger
-            AFTER INSERT OR UPDATE ON {self.table_schema}.{self.table_name}
-            FOR EACH ROW EXECUTE FUNCTION {self.table_schema}.{self.table_name}_audit();
-            """
-        )
-
-
-class FieldBase(DBObjectBase):
-    # table: Table <- computed_column
-    # column: mapped_column <- computed_column
-
-    value: ClassVar[Any | None] = None
-
-    name: str
-    type: Any
-
-    required: bool = False
-    constraint: str | None = None
-    default: Any = None
-    server_default: Any = None
-    server_onupdate: Any = None
-    server_ondelete: Any = None
-    foreign_key: ForeignKey | None = None
-    related_name: str | None = None
-    many_to_many: list["FieldBase"] | None = None
-    index: bool = False
-    autoincrement: bool = False
-    nullable: bool = False
-    primary_key: bool = False
-    unique: bool = False
-    include_in_masks: list[str] = ["insert", "update", "select", "list"]
-    exclude_in_masks: list[str] = []
-    exclude_from_graph: bool = False
-    forward_edge_name: str | None = None
-    reverse_edge_name: str | None = None
-    editable: bool = True
-
-    @computed_field
-    def column(self) -> Column:
-        return mapped_column(
-            name=self.name,
-            type_=self.type,
-            nullable=self.nullable,
-            primary_key=self.primary_key,
-            unique=self.unique,
-            autoincrement=self.autoincrement,
-            server_default=self.server_default,
-            server_onupdate=self.server_onupdate,
-            server_ondelete=self.server_ondelete,
-            comment=self.comment,
-        )
-
-
-class RelatedObjectMixin(ModelBase):
-    id: FieldBase = FieldBase(
-        name="id",
-        type=str_26,
-        primary_key=True,
-        index=True,
-        unique=True,
-        nullable=False,
-        foreign_key=ForeignKey("un0.relatedobject.id", ondelete="CASCADE"),
-        related_name="relatedobject",
-        server_default=func.un0.insert_relatedobject("un0", "user"),
-        doc="Primary Key",
-        forward_edge_name="HAS_ID",
-        reverse_edge_name="IS_ID_OF",
-    )
-
-
-class ActiveMixin(ModelBase):
-    is_active: FieldBase = FieldBase(
-        name="is_active",
-        type=BOOLEAN,
-        server_default=text("true"),
-        doc="Indicates if the record is active",
-    )
-
-
-class DeleteMixin(ModelBase):
-    is_deleted: FieldBase = FieldBase(
-        name="is_deleted",
-        type=BOOLEAN,
-        server_default=text("false"),
-        doc="Indicates if the record is deleted",
-    )
-    deleted_at: FieldBase = FieldBase(
-        name="deleted_at",
-        type=TIMESTAMP(timezone=True),
-        required=False,
-        editable=False,
-        doc="Time at which the record was deleted",
-    )
-    deleted_by: FieldBase = FieldBase(
-        name="deleted_by",
-        type=str_26,
-        required=False,
-        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
-        related_name="deleted",
-        index=True,
-        doc="User that deleted the record",
-        forward_edge_name="WAS_DELETED_BY",
-        reverse_edge_name="DELETED",
-    )
-
-    def emit_sql(self) -> str:
-        """
-        Generates a SQL trigger creation statement for validating deletions.
-
-        This method creates a SQL trigger named `validate_delete_trigger` that is
-        executed before a delete operation on the specified table. The trigger
-        calls the `un0.validate_delete()` function to perform validation.
-
-        Returns:
-            str: A SQL statement for creating the `validate_delete_trigger`.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE TRIGGER validate_delete_trigger 
-            BEFORE DELETE ON {self.db_schema_name}.{self.db_table_name}
-            FOR EACH ROW
-            EXECUTE FUNCTION un0.validate_delete();
-            """
-        )
-
-
-class CreatedModifiedMixin(ModelBase):
-    created_at: FieldBase = FieldBase(
-        name="created_at",
-        type=TIMESTAMP(timezone=True),
-        server_default=func.current_timestamp(),
-        doc="Time the record was created",
-        editable=False,
-    )
-    owned_by: FieldBase = FieldBase(
-        name="owned_by",
-        type=str_26,
-        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
-        related_name="owned",
-        index=True,
-        doc="User that owns the record",
-        forward_edge_name="IS_OWNED_BY",
-        reverse_edge_name="OWNS",
-    )
-    modified_at: FieldBase = FieldBase(
-        name="modified_at",
-        type=TIMESTAMP(timezone=True),
-        server_default=func.current_timestamp(),
-        server_onupdate=func.current_timestamp(),
-        doc="Time the record was modified_at",
-        editable=False,
-    )
-    modified_by: FieldBase = FieldBase(
-        name="modified_by",
-        type=str_26,
-        foreign_key=ForeignKey("un0.user.id", ondelete="CASCADE"),
-        related_name="modified",
-        index=True,
-        doc="User that last modified the record",
-        forward_edge_name="WAS_LAST_MODIFIED_BY",
-        reverse_edge_name="LAST_MODIFIED",
-    )
-
-    def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
-            CREATE TRIGGER set_owner_and_modified_trigger
-            BEFORE INSERT OR UPDATE ON {self.db_schema_name}.{self.db_table_name}
-            FOR EACH ROW
-            EXECUTE FUNCTION un0.set_owner_and_modified();
-            """
-        )
-
-
-class ImportMixin(ModelBase):
-    import_id: FieldBase = FieldBase(
-        name="import_id",
-        type=int,
-        doc="Primary Key of the original system of the record",
-    )
-    import_key: FieldBase = FieldBase(
-        name="import_key",
-        type=str_26,
-        doc="Unique identifier of the original system of the record",
-    )
-
-
-class NameDescriptionMixin(ModelBase):
-    name: FieldBase = FieldBase(
-        name="name",
-        type=str_128,
-        doc="Name of the record",
-    )
-    description: FieldBase = FieldBase(
-        name="description",
-        type=str_255,
-        doc="Description of the record",
-    )
-
-
-class TenantMixin(ModelBase):
-    tenant: FieldBase = FieldBase(
-        name="tenant",
-        type=str_26,
-        foreign_key=ForeignKey("un0.tenant.id", ondelete="CASCADE"),
-        index=True,
-        nullable=True,
-    )
+        emitted_sql = ""
+        for sql_emitter in cls.sql_emitters:
+            emitted_sql += f"{sql_emitter(table_name=cls.table_name, db_schema=cls.db_schema).emit_sql()}\n"
+        return emitted_sql
