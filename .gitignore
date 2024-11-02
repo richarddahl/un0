@@ -194,3 +194,5 @@ bin/python3.12
 bin/uvicorn
 include/site/python3.12/greenlet/greenlet.h
 pyvenv.cfg
+.pgdata/*
+src/scratch.sql

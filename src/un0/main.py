@@ -8,14 +8,16 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from un0.config import settings
-from un0.data.models import Un0Obj
-from un0.db.management.db_manager import DBManager
+from un0.database.models import Model
+from un0.database.base import Base
+from un0.database.management.db_manager import DBManager
+import un0.authorization.models
 
-try:
-    DBManager().drop_db()
-    DBManager().create_db()
-except Exception as e:
-    print(e)
+# try:
+#    DBManager().drop_db()
+#    DBManager().create_db()
+# except Exception as e:
+#    print(e)
 
 
 tags_metadata = [
@@ -42,9 +44,9 @@ app = FastAPI(
     summary="fasterAPI.",
     # description="""
     #    Build fastAPI apps faster and DRYer.
-    #    Un0 leverages sqlalchemy, postgreSQL, apacheAGE, supa-audit, and pydantic to:
+    #    un0 leverages sqlalchemy, postgreSQL, apacheAGE, supa-audit, and pydantic to:
     #        Provide authorization and auditing
-    #        Generate models and routes
+    #        Generate routes
     #        Provide a simple mechanism for complex filtering and sorting data
     #    So developers can focus on business logic.
     #    """,
@@ -83,9 +85,6 @@ async def app_base(
     )
 
 
-un0_obj = Un0Obj(app=app)
-import un0.auth.models
-
-for obj in un0_obj.un0_model_registry.values():
-    for router in obj(app=app).routers:
-        router.add_to_app()
+for model_name, model in Model.registry.items():
+    for router in model.routers:
+        router.add_to_app(app=app)

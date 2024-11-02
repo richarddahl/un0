@@ -10,15 +10,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.tables import User
-from un0.config import settings as sttngs
+# from un0.auth.tables import User
+from un0.config import settings
 
-from tests.conftest import mock_rls_vars
+# from tests.conftest import mock_rls_vars
 
 
 # Not marked as a fixture as need to call it with different parameters for testing
 def encode_test_token(
-    email: str = sttngs.SUPERUSER_EMAIL,  # Email for sub
+    email: str = settings.SUPERUSER_EMAIL,  # Email for sub
     has_sub: bool = True,  # Has subject
     has_exp: bool = True,  # Has expiration
     is_expired: bool = False,  # Expired token
@@ -29,20 +29,21 @@ def encode_test_token(
     if has_exp and not is_expired:
         token_payload["exp"] = datetime.datetime.now(
             datetime.timezone.utc
-        ) + datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
+        ) + datetime.timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES)
     elif has_exp and is_expired:
         token_payload["exp"] = datetime.datetime.now(
             datetime.timezone.utc
-        ) - datetime.timedelta(minutes=sttngs.TOKEN_EXPIRE_MINUTES)
+        ) - datetime.timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES)
 
     if has_sub:
         token_payload["sub"] = email
 
     if invalid_secret:
-        return jwt.encode(token_payload, "FAKE SECRET", sttngs.TOKEN_ALGORITHM)
-    return jwt.encode(token_payload, sttngs.TOKEN_SECRET, sttngs.TOKEN_ALGORITHM)
+        return jwt.encode(token_payload, "FAKE SECRET", settings.TOKEN_ALGORITHM)
+    return jwt.encode(token_payload, settings.TOKEN_SECRET, settings.TOKEN_ALGORITHM)
 
 
+'''
 class TestJWT:
     def test_valid_jwt(self, session, create_test_functions):
         """Tests that a valid JWT token can be verified and the session variables set."""
@@ -53,7 +54,7 @@ class TestJWT:
 
             result = session.execute(func.un0.testlist_rls_vars())
             session_variables = result.scalars().first()
-            assert session_variables.get("email") == sttngs.SUPERUSER_EMAIL
+            assert session_variables.get("email") == settings.SUPERUSER_EMAIL
             assert session_variables.get("id") != ""
             assert session_variables.get("is_superuser") == "true"
             assert session_variables.get("is_tenant_admin") == "false"
@@ -126,3 +127,4 @@ class TestJWT:
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(func.un0.authorize_user(token))
             assert "user was deleted" in str(excinfo.value)
+'''

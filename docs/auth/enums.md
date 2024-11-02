@@ -8,7 +8,7 @@
       show_root_heading: true
       show_source: true
   
-## ::: un0.auth.enums.PermissionAction
+## ::: un0.db.enums.SQLOperation
 
     handler: python
     options:

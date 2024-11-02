@@ -5,13 +5,13 @@
 import pytest  # type: ignore
 from sqlalchemy import create_engine
 
-from un0.config import settings as sttngs
+from un0.config import settings
 
 
 @pytest.fixture(scope="class")
 def connection():
     eng = create_engine(
-        f"{sttngs.DB_DRIVER}://{sttngs.DB_NAME}_login@/{sttngs.DB_NAME}"
+        f"{settings.DB_DRIVER}://{settings.DB_NAME}_login@/{settings.DB_NAME}"
     )
     yield eng.connect().execution_options(isolation_level="AUTOCOMMIT")
 

@@ -5,10 +5,10 @@ import pytest
 
 import sqlalchemy as sa
 
-from un0.auth.tables import Tenant
-from un0.auth.enums import TenantType
-from un0.auth.tables import User
-from un0.cmd import create_db, drop_db
+# from un0.auth.tables import Tenant
+# from un0.auth.enums import TenantType
+# from un0.auth.tables import User
+# from un0.cmd import create_db, drop_db
 
 
 '''
@@ -80,7 +80,7 @@ async def test_group_dict_on_tenant_creation(async_session, admin_user):
         acme = Tenant(name="Acme Inc.", tenant_type=TenantType.ENTERPRISE)
         nacme = Tenant(name="NAcme Inc.", tenant_type=TenantType.CORPORATE)
         coyote = Tenant(
-            name="Wiley Coyote", tenant_type=TenantType.SMALL_BUSINESS
+            name="Wiley Coyote", tenant_type=TenantType.BUSINESS
         )
         bird = Tenant(name="Road Runner", tenant_type=TenantType.INDIVIDUAL)
         tenants = [acme, nacme, coyote, bird]
@@ -212,4 +212,15 @@ async def test_tenant_graphs(async_session, admin_user):
     # assert session.query(UserGroupRole).count() == 2
 
     session.close()
+
+
+
+
+
+
+    def test_tenant_get_route(self, create_test_functions):
+        token = encode_test_token()
+        response = client.get("/api/auth/tenants", headers={"Authorization": token})
+        assert response.status_code == 200
+        assert response.json() is not None
 '''

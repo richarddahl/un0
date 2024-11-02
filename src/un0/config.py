@@ -39,6 +39,8 @@ class General(BaseSettings):
 
     # APPLICATION SETTINGS
     # Max Groups and Users for each type of tenant
+    ENFORCE_MAX_GROUPS: bool = True
+    ENFORCE_MAX_USERS: bool = True
     MAX_INDIVIDUAL_GROUPS: int = 1
     MAX_INDIVIDUAL_USERS: int = 1
     MAX_BUSINESS_GROUPS: int = 5

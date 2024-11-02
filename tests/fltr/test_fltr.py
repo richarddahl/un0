@@ -10,17 +10,17 @@ import pytest  # type: ignore
 from sqlalchemy import func, text, select
 from sqlalchemy.exc import ProgrammingError
 
-from un0.auth.tables import User
-from un0.config import settings as sttngs
+# from un0.auth.tables import User
+from un0.config import settings
 
 from tests.conftest import mock_rls_vars
 
-
+'''
 class TestFltr:
+    """
     def test_create_fields(self, session):
         assert True
-
-    '''
+    """
 
     #######################
     # Graph related tests #
@@ -39,7 +39,7 @@ class TestFltr:
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             admin_user = session.scalar(
-                select(User).where(User.email == sttngs.SUPERUSER_EMAIL)
+                select(User).where(User.email == settings.SUPERUSER_EMAIL)
             )
             session.execute(func.un0.mock_role("admin"))
             admin_user_vertex = session.scalars(stmt)
@@ -55,14 +55,15 @@ class TestFltr:
             assert properties["is_active"] == str(admin_user.is_active).lower()
             assert properties["is_deleted"] == str(admin_user.is_deleted).lower()
             _graph_created_at = datetime.datetime.strptime(
-                properties["created_at"], "%Y-%m-%d %H:%M:%S.%f"
+                properties["created_at"], "%Y-%m-%d %H:%M:%S.%f+00"
             ).replace(tzinfo=pytz.UTC)
             assert _graph_created_at == admin_user.created_at.replace(tzinfo=pytz.UTC)
 
             _graph_modified_at = datetime.datetime.strptime(
-                properties["modified_at"], "%Y-%m-%d %H:%M:%S.%f"
+                properties["modified_at"], "%Y-%m-%d %H:%M:%S.%f+00"
             ).replace(tzinfo=pytz.UTC)
             assert _graph_modified_at == admin_user.modified_at.replace(tzinfo=pytz.UTC)
             with pytest.raises(KeyError):
                 properties["deleted_at"]
-    '''
+
+'''

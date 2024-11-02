@@ -3,7 +3,7 @@
 The management.db_manager_sql.py file contains the following SQL Constants used by the DBManager to configure the database instance.
 
 
-__NOTE__ - The use of f strings to provide the schema name and database name DOES NOT provide any protection against SQL injection. 
+__NOTE__ - The use of f strings to provide the schema_name name and database name DOES NOT provide any protection against SQL injection. 
 
 You cannot paramaterize postgres DDL statements.
 

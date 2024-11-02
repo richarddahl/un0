@@ -12,12 +12,13 @@ import pytest
 
 from sqlalchemy import func, select, delete, text, create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from un0.cmd import create_db, drop_db
-from un0.auth.tables import Tenant, Group, User
-from un0.auth.enums import TenantType
-from un0.db.management.db_manager import DBManager
-from un0.config import settings as sttngs
+from un0.database.management.db_manager import DBManager
+from un0.database.models import Base
+from un0.authorization.models import Tenant, Group, User
+from un0.authorization.enums import TenantType
+from un0.config import settings
 
 
 ###########################################
@@ -56,11 +57,11 @@ BEGIN
     Used for testing purposes
     */
     RETURN jsonb_build_object(
-        'id', current_setting('user_var.user_id', true),
-        'email', current_setting('user_var.email', true),
-        'is_superuser', current_setting('user_var.is_superuser', true),
-        'is_tenant_admin', current_setting('user_var.is_tenant_admin', true),
-        'tenant_id', current_setting('user_var.tenant_id', true)
+        'id', current_setting('rls_var.user_id', true),
+        'email', current_setting('rls_var.email', true),
+        'is_superuser', current_setting('rls_var.is_superuser', true),
+        'is_tenant_admin', current_setting('rls_var.is_tenant_admin', true),
+        'tenant_id', current_setting('rls_var.tenant_id', true)
     );
 END;
 $$;
@@ -86,11 +87,11 @@ BEGIN
     */
 
     --Set the session variables
-    PERFORM set_config('user_var.id', id, true);
-    PERFORM set_config('user_var.email', email, true);
-    PERFORM set_config('user_var.is_superuser', is_superuser, true);
-    PERFORM set_config('user_var.is_tenant_admin', is_tenant_admin, true);
-    PERFORM set_config('user_var.tenant_id', tenant_id, true);
+    PERFORM set_config('rls_var.id', id, true);
+    PERFORM set_config('rls_var.email', email, true);
+    PERFORM set_config('rls_var.is_superuser', is_superuser, true);
+    PERFORM set_config('rls_var.is_tenant_admin', is_tenant_admin, true);
+    PERFORM set_config('rls_var.tenant_id', tenant_id, true);
 
     --Set the role to the databases reader role
     PERFORM un0.mock_role(role_name);
@@ -107,7 +108,7 @@ def create_mock_role_function():
         LANGUAGE plpgsql
         AS $$
         DECLARE
-            full_role_name VARCHAR:= '{sttngs.DB_NAME}_' || role_name;
+            full_role_name VARCHAR:= '{settings.DB_NAME}_' || role_name;
         BEGIN
             /*
             Function used to set the role of the current session to
@@ -135,7 +136,7 @@ def create_mock_role_function():
 
 def mock_rls_vars(
     id: str,
-    email: str = sttngs.SUPERUSER_EMAIL,
+    email: str = settings.SUPERUSER_EMAIL,
     is_superuser: str = "true",
     is_tenant_admin: str = "false",
     tenant_id: str = "",
@@ -149,19 +150,38 @@ def mock_rls_vars(
 ############
 
 
-@pytest.fixture(scope="class")
-def db_url():
-    return f"{sttngs.DB_DRIVER}://{sttngs.DB_NAME}_login:{sttngs.DB_USER_PW}@{sttngs.DB_HOST}:{sttngs.DB_PORT}/{sttngs.DB_NAME}"
+@pytest.fixture(scope="session")
+def engine():
+    return create_engine(settings.DB_URL)
 
 
-@pytest.fixture(scope="class")
-def engine(db_url):
-    yield create_engine(db_url)
+@pytest.fixture(scope="session")
+def async_engine():
+    return create_async_engine(settings.DB_URL)
+
+
+@pytest.fixture(scope="session")
+def db_connection(engine):
+    """Returns an sqlalchemy session, and after the test tears down everything properly."""
+    connection = engine.connect()
+    # begin the nested transaction
+    transaction = connection.begin()
+    yield connection
+    # roll back the broader transaction
+    transaction.rollback()
+    # put back the connection to the connection pool
+    connection.close()
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def async_engine():
+    return create_async_engine(settings.DB_URL)
 
 
 @pytest.fixture(scope="class")
 def superuser_id():
-    """Creates the database and returns the superuser id."""
+    """Creates the database and a superuser and returns the superuser id."""
     db = DBManager()
     db.drop_db()
     db.create_db()
@@ -169,19 +189,25 @@ def superuser_id():
 
 
 @pytest.fixture(scope="class")
-def session(engine, superuser_id, create_test_functions):
-    session = sessionmaker(bind=engine, expire_on_commit=False)
-    yield session()
+def session(superuser_id, create_test_functions):
+    engine = create_engine(settings.DB_URL)
+    session_factory = sessionmaker(
+        bind=engine,
+        expire_on_commit=True,
+    )
+    with session_factory() as session:
+        yield session
+        session.close()
     engine.dispose()
 
 
 @pytest.fixture(scope="class")
 def create_test_functions() -> None:
     eng = create_engine(
-        f"{sttngs.DB_DRIVER}://{sttngs.DB_NAME}_login@/{sttngs.DB_NAME}"
+        f"{settings.DB_DRIVER}://{settings.DB_NAME}_login:{settings.DB_USER_PW}@{settings.DB_HOST}/{settings.DB_NAME}"
     )
     with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(f"SET ROLE {sttngs.DB_NAME}_admin"))
+        conn.execute(text(f"SET ROLE {settings.DB_NAME}_admin"))
         conn.execute(text(create_mock_role_function()))
         conn.execute(text(CREATE_TEST_RAISE_CURRENT_ROLE_FUNCTION))
         conn.execute(text(CREATE_TEST_LIST_USER_VARS_FUNCTION))
@@ -200,7 +226,7 @@ def tenant_dict(session, superuser_id):
     tenant_list = [
         ["Acme Inc.", TenantType.ENTERPRISE],
         ["Nacme Corp", TenantType.CORPORATE],
-        ["Coyote LLP", TenantType.SMALL_BUSINESS],
+        ["Coyote LLP", TenantType.BUSINESS],
         ["Birdy", TenantType.INDIVIDUAL],
     ]
     tenants = [
@@ -250,7 +276,7 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
             rng = range(1, 10)
         elif tenant_value.get("tenant_type") == TenantType.CORPORATE:
             rng = range(1, 5)
-        elif tenant_value.get("tenant_type") == TenantType.SMALL_BUSINESS:
+        elif tenant_value.get("tenant_type") == TenantType.BUSINESS:
             rng = range(1, 3)
         else:
             rng = range(1, 1)
