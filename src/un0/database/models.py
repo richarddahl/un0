@@ -27,7 +27,9 @@ class RelatedModel:
     models: list[Type["Model"]] = Field(default_factory=list)
 
 
-class Model(BaseModel):
+class FieldMixin:
+
+class Model(BaseModel, FieldMixin):
     table: ClassVar[Table]
 
     registry: ClassVar[dict[str, "Model"]] = {}
