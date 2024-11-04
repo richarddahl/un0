@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from un0.config import settings
 from un0.database.models import Model
-from un0.database.base import Base
+
+# from un0.database.base import Base
 from un0.database.management.db_manager import DBManager
 import un0.authorization.models
 

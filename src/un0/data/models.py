@@ -36,10 +36,10 @@ from un0.errors import (
     ModelConfigError,
     ModelRelationConfigError,
 )
-from un0.database.base import Base, get_db
+# from un0.database.base import Base, get_db
 
 
-meta_data = Base.metadata
+metadata = Base.metadata
 
 _Unset = PydanticUndefined
 
@@ -372,12 +372,12 @@ class Un0Obj(BaseModel):
             cls.path_objs = path_objs
             cls.model_base = model_base
 
-            # Ensure the table exists in meta_data.tables
-            if table_name in meta_data.tables:
-                cls.db_table = meta_data.tables.get(table_name)
+            # Ensure the table exists in metadata.tables
+            if table_name in metadata.tables:
+                cls.db_table = metadata.tables.get(table_name)
             else:
                 raise Un0BaseModelTableError(
-                    f"Table {table_name} does not exist in the sqlalchemy meta_data.",
+                    f"Table {table_name} does not exist in the sqlalchemy metadata.",
                     "TABLE_NOT_FOUND_IN_TABLE_COLLECTION",
                 )
 

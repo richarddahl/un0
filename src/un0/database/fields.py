@@ -4,6 +4,9 @@
 
 from typing import Any
 
+from dataclasses import field
+from pydantic.dataclasses import dataclass
+
 from sqlalchemy import (
     Table,
     ForeignKey,
@@ -12,8 +15,17 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
 )
-from pydantic.dataclasses import dataclass
-from dataclasses import field
+from sqlalchemy.dialects.postgresql import TEXT, TEXT
+from un0.database.enums import ColumnPermission
+from un0.database.sql_emitters import (
+    SQLEmitter,
+    SuperUserInsertSQL,
+    SuperUserUpdateSQL,
+    AdminInsertSQL,
+    AdminUpdateSQL,
+    OwnerInsertSQL,
+    OwnerUpdateSQL,
+)
 
 
 @dataclass
@@ -153,6 +165,40 @@ class IX:
 
 @dataclass
 class FieldDefinition:
+    """
+    Represents the definition of a database field with various attributes.
+
+    Attributes:
+        data_type (Any): The data type of the field.
+        fnct (Any | None): A function or callable associated with the field, if any.
+        required (bool): Indicates if the field is required. Defaults to False.
+        primary_key (bool): Indicates if the field is a primary key. Defaults to False.
+        index (bool): Indicates if the field should be indexed. Defaults to False.
+        unique (bool): Indicates if the field should have a unique constraint. Defaults to False.
+        nullable (bool | None): Indicates if the field can be nullable. Defaults to None.
+        constraints (list[CK | UQ]): A list of constraints applied to the field. Defaults to an empty list.
+        foreign_key (FK | None): A foreign key constraint associated with the field, if any.
+        default (Any): The default value of the field.
+        server_default (Any): The default value set by the server.
+        server_ondelete (Any): The action to take on delete, set by the server.
+        server_onupdate (Any): The action to take on update, set by the server.
+        autoincrement (bool | str): Indicates if the field should auto-increment. Defaults to False.
+        comment (str): A comment or description of the field. Defaults to an empty string.
+        column_security (str | None): Security settings for the column, if any.
+        include_in_masks (list[str]): A list of masks to include the field in. Defaults to ["insert", "update", "select", "list"].
+        exclude_from_masks (list[str]): A list of masks to exclude the field from. Defaults to an empty list.
+        editable (bool): Indicates if the field is editable. Defaults to True.
+
+        NOTE: Based on how sqlalchemy works:
+            if unique is True AND index is False:
+                a UniqueConstraint will be added to the constraints list
+            if unique is True AND index is True:
+                The index will be created as a unique index and no UniqueConstraint will be added
+
+    Methods:
+        create_column(name: str) -> Column:
+    """
+
     data_type: Any
     fnct: Any | None = None
     required: bool = False
@@ -168,23 +214,26 @@ class FieldDefinition:
     server_onupdate: Any = None
     autoincrement: bool | str = False
     comment: str = ""
-    column_security: str | None = None
+    select_permission: ColumnPermission = ColumnPermission.PUBLIC
+    insert_permission: ColumnPermission = ColumnPermission.PUBLIC
+    update_permission: ColumnPermission = ColumnPermission.PUBLIC
 
     include_in_masks: list[str] = field(
         default_factory=lambda: ["insert", "update", "select", "list"]
     )
-    exclude_in_masks: list[str] = field(default_factory=list)
+    exclude_from_masks: list[str] = field(default_factory=list)
     editable: bool = True
 
     def create_column(self, name: str) -> Column:
         """
-        Creates a SQLAlchemy Column object with the specified attributes.
+        Creates a SQLAlchemy Column object with the specified properties.
 
         Args:
             name (str): The name of the column.
 
         Returns:
-            Column: A SQLAlchemy Column object configured with the specified attributes.
+            Column: A SQLAlchemy Column object configured with the specified properties.
+
         """
         args = [name, self.data_type]
         if self.fnct is not None:
@@ -208,6 +257,19 @@ class FieldDefinition:
             kwargs.update({"autoincrement": self.autoincrement})
         if self.server_onupdate:
             kwargs.update({"server_onupdate": self.server_onupdate})
-        if name == "email":
-            print(kwargs)
+
+        if self.insert_permission == ColumnPermission.SUPERUSER:
+            self.sql_emitters.append(SuperUserInsertSQL)
+        elif self.insert_permission == ColumnPermission.ADMIN:
+            self.sql_emitters.append(AdminInsertSQL)
+        elif self.insert_permission == ColumnPermission.OWNER:
+            self.sql_emitters.append(OwnerInsertSQL)
+
+        if self.update_permission == ColumnPermission.SUPERUSER:
+            self.sql_emitters.append(SuperUserUpdateSQL)
+        elif self.update_permission == ColumnPermission.ADMIN:
+            self.sql_emitters.append(AdminUpdateSQL)
+        elif self.update_permission == ColumnPermission.OWNER:
+            self.sql_emitters.append(OwnerUpdateSQL)
+
         return Column(*args, **kwargs)

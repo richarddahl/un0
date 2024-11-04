@@ -103,7 +103,7 @@ class FilterFieldCreator:
 
     def set_lookups(self, value_type: str):
         if value_type in [
-            FilterValue.VARCHAR,
+            FilterValue.TEXT,
             FilterValue.ENUM,
             FilterValue.JSON,
             FilterValue.TEXT,

@@ -18,7 +18,7 @@ from uno.db_definition import UnoDB  # type: ignore
 import uno.audit.models  # type: ignore
 import uno.auth.models  # type: ignore
 from uno.enumerations import FieldType  # type: ignore
-from uno.database import meta_data  # type: ignore
+from uno.database import metadata  # type: ignore
 
 from config import settings  # type: ignore
 
@@ -114,7 +114,7 @@ def test_authuser_configuration(user_model_class):
         ),
     }
     assert user_model_class.non_db_field_configs == {
-        "password": UnoAdditionalFieldConfig(field_type=FieldType.VARCHAR)
+        "password": UnoAdditionalFieldConfig(field_type=FieldType.TEXT)
     }
     assert user_model_class.mask_configs.get("login_mask").include_fields == [
         "email",

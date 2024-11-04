@@ -4,24 +4,22 @@
 import enum
 
 
-class ColumnSecurity(str, enum.Enum):
+class ColumnPermission(str, enum.Enum):
     """
-    Enumeration class representing the security levels for UnoModel columns.
+    Enumeration class representing the security levels for Model FieldDefinitions.
 
     Attributes:
         PUBLIC (str): The column is publicly accessible (in accordance with row-level security enforcement).
         PRIVATE (str): The column is accessible only to the owner, the tenant admin (if used), and superusers.
         ADMIN (str): The column is accessible only to the tenant admin (if used) and superusers.
         SECRET (str): The column is accessible only to superusers.
-        SYSTEM (str): The column is accessible only to the system.
 
     """
 
     PUBLIC = "public"
-    PRIVATE = "private"
+    OWNER = "owner"
     ADMIN = "admin"
     SUPERUSER = "superuser"
-    SYSTEM = "system"
 
 
 class SelectResultType(str, enum.Enum):

@@ -28,7 +28,7 @@ from un0.filters.enums import (  # type: ignore
     Match,
     Lookup,
 )
-# from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255, decimal  # type: ignore
+# from un0.db.base import Base, BaseFieldMixin, RBACFieldMixin, str_26, str_255, decimal  # type: ignore
 # from un0.rltd.tables import RelatedObject, TableType
 
 
@@ -187,7 +187,7 @@ class FilterKey(Base):
     )
 
 
-class FilterValue(Base, BaseMixin, RBACMixin):
+class FilterValue(Base, BaseFieldMixin, RBACFieldMixin):
     __tablename__ = "filtervalue"
     __table_args__ = (
         UniqueConstraint(
@@ -307,7 +307,7 @@ class FilterValue(Base, BaseMixin, RBACMixin):
     """
 
 
-class Query(Base, BaseMixin, RBACMixin):
+class Query(Base, BaseFieldMixin, RBACFieldMixin):
     __tablename__ = "query"
     __table_args__ = (
         {
@@ -378,7 +378,7 @@ class Query(Base, BaseMixin, RBACMixin):
     """
 
 
-class QueryFilterValue(Base, BaseMixin):
+class QueryFilterValue(Base, BaseFieldMixin):
     __tablename__ = "query_filtervalue"
     __table_args__ = (
         Index("ix_query_id__filtervalue_id", "query_id", "filtervalue_id"),
@@ -412,7 +412,7 @@ class QueryFilterValue(Base, BaseMixin):
     """
 
 
-class QuerySubquery(Base, BaseMixin):
+class QuerySubquery(Base, BaseFieldMixin):
     __tablename__ = "query_subquery"
     __table_args__ = (
         Index("ix_query_id__subquery_id", "query_id", "subquery_id"),

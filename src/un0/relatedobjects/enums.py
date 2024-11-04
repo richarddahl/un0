@@ -53,7 +53,7 @@ class GraphType(str, enum.Enum):
         TEXT (str): Represents a text field type.
         TIME (str): Represents a time field type.
         TIMESTAMP (str): Represents a timestamp field type.
-        VARCHAR (str): Represents a variable-length character field type.
+        TEXT (str): Represents a variable-length character field type.
 
     """
 
@@ -68,7 +68,7 @@ class GraphType(str, enum.Enum):
     TEXT = "str"
     TIME = "time"
     TIMESTAMP = "datetime"
-    VARCHAR = "str"
+    TEXT = "str"
 
 
 class Lookup(str, enum.Enum):

@@ -17,11 +17,11 @@ from sqlalchemy.dialects.postgresql import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from un0.communications.enums import MessageImportance
-# from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
+# from un0.db.base import Base, BaseFieldMixin, RBACFieldMixin, str_26, str_255  # type: ignore
 # from un0.rltd.tables import RelatedObject, TableType
 
 
-class Message(Base, BaseMixin, RBACMixin):
+class Message(Base, BaseFieldMixin, RBACFieldMixin):
     __tablename__ = "message"
     __table_args__ = {
         "schema_name": "un0",
@@ -130,7 +130,7 @@ class MessageCopiedTo(Base):
     # Relationships
 
 
-class Attachment(Base, BaseMixin):
+class Attachment(Base, BaseFieldMixin):
     __tablename__ = "attachment"
     __table_args__ = {
         "schema_name": "un0",

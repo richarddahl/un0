@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import inspect, Inspector, Column
 from sqlalchemy.dialects.postgresql import (
     ENUM,
-    VARCHAR,
+    TEXT,
     BOOLEAN,
     TIMESTAMP,
     BIGINT,
@@ -27,63 +27,23 @@ from un0.authorization.models import (
     UserGroupRole,
 )
 from un0.authorization.enums import TenantType
-
 from un0.config import settings  # type: ignore
 
-
-# NOT A FIXTURE as fixtures are not expected to be called directly
-def db_column(db_inspector, table_name: str, col_name: str) -> Column | None:
-    for col in db_inspector.get_columns(table_name, schema="auth"):
-        if col.get("name") == col_name:
-            return col
-    return None
-
-
-def print_indices(db_inspector: Inspector, table_name: str, schema: str) -> None:
-    objs = db_inspector.get_indexes(table_name, schema=schema)
-    print(f"Indices for {table_name}")
-    for ob in objs:
-        print(ob)
-    print("")
-
-
-def print_pk_constraint(db_inspector: Inspector, table_name: str, schema: str) -> None:
-    objs = db_inspector.get_pk_constraint(table_name, schema=schema)
-    print(f"Primary Key Constraint for {table_name}")
-    for k, v in objs.items():
-        print(k, v)
-    print("")
-
-
-def print_foreign_keys(db_inspector: Inspector, table_name: str, schema: str) -> None:
-    objs = db_inspector.get_foreign_keys(table_name, schema=schema)
-    print(f"Foreign Keys for {table_name}")
-    for ob in objs:
-        print(ob)
-    print("")
-
-
-def print_uq_constraints(db_inspector: Inspector, table_name: str, schema: str) -> None:
-    objs = db_inspector.get_unique_constraints(table_name, schema=schema)
-    print(f"Unique Constraints for {table_name}")
-    for ob in objs:
-        print(ob)
-    print("")
-
-
-def print_ck_constraints(db_inspector: Inspector, table_name: str, schema: str) -> None:
-    objs = db_inspector.get_check_constraints(table_name, schema=schema)
-    print(f"Check Constraints for {table_name}")
-    for ob in objs:
-        print(ob)
-    print("")
+from tests.conftest import (
+    print_indices,
+    print_pk_constraint,
+    print_foreign_keys,
+    print_uq_constraints,
+    print_ck_constraints,
+    db_column,
+)
 
 
 class TestUserStructure:
     # user Table Tests
     schema = "un0"
 
-    def test_user_structure(self, db_connection):
+    def test_user_indices(self, db_connection):
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_indexes("user", schema="un0") == [
@@ -138,6 +98,10 @@ class TestUserStructure:
             },
         ]
 
+
+"""
+    def test_user_primary_key_constraint(self, db_connection):
+        db_inspector = inspect(db_connection)
         # print_pk_constraint(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_pk_constraint("user", schema=self.schema) == {
             "constrained_columns": ["id"],
@@ -145,6 +109,8 @@ class TestUserStructure:
             "comment": None,
         }
 
+    def test_user_foreign_keys(self, db_connection):
+        db_inspector = inspect(db_connection)
         # print_foreign_keys(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_foreign_keys("user", schema=self.schema) == [
             {
@@ -203,62 +169,63 @@ class TestUserStructure:
             },
         ]
 
-        print_uq_constraints(db_inspector, "user", schema=self.schema)
-        # assert db_inspector.get_unique_constraints("user", schema=self.schema) == [
-        #    {"column_names": ["email"], "name": "user_email_key", "comment": None},
-        #    {"column_names": ["handle"], "name": "user_handle_key", "comment": None},
+    def test_user_unique_constraints(self, db_connection):
+        db_inspector = inspect(db_connection)
+        # print_uq_constraints(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_unique_constraints("user", schema=self.schema) == []
+
+    def test_user_check_constraints(self, db_connection):
+        db_inspector = inspect(db_connection)
+        print_ck_constraints(db_inspector, "user", schema=self.schema)
+        # assert db_inspector.get_check_constraints("user", schema=self.schema) == [
+        #    {
+        #        "name": "ck_user_ck_user_is_superuser",
+        #        "sqltext": "is_superuser = false AND default_group_id IS NOT NULL OR is_superuser = true AND default_group_id IS NULL AND is_superuser = false AND is_tenant_admin = false OR is_superuser = true AND is_tenant_admin = false OR is_superuser = false AND is_tenant_admin = true",
+        #        "comment": None,
+        #    }
         # ]
 
+    def test_user_id_column(self, db_connection):
+        db_inspector = inspect(db_connection)
+        column = db_column(db_inspector, "user", "id", schema=self.schema)
+        assert column is not None
+        assert column.get("nullable") is False
+        assert column.get("default") == "generate_ulid()"
+        # print(column.type)
+        print(column.get("type"))
+        # assert isinstance(column.get("type"), TEXT)
+        # assert column.get("type").length == 26
 
-"""
-
-        #print_ck_constraints(db_inspector, "user", schema=self.schema)
-        assert db_inspector.get_check_constraints("user", schema=self.schema) == []
-        
-
-
-
-
-@pytest.mark.asyncio
-async def test_user_id(db_inspector):
-    column = db_column(db_inspector, "user", "id")
-    assert column is not None
-    assert column.get("nullable") is False
-    assert column.get("default") == "audit.create_meta_record()"
-    assert isinstance(column.get("type"), VARCHAR)
-    assert column.get("type").length == 26
-
-
-@pytest.mark.asyncio
-async def test_user_email(db_inspector):
-    column = db_column(db_inspector, "user", "email")
-    assert column is not None
-    assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
-    assert column.get("type").length == 255
+    def test_user_email(self, db_connection):
+        db_inspector = inspect(db_connection)
+        column = db_column(db_inspector, "user", "email", schema=self.schema)
+        print(column)
+        assert column is not None
+        assert column.get("nullable") is False
+        # assert isinstance(column.get("type"), TEXT)
+        # assert column.get("type").length == 128
 
 
-@pytest.mark.asyncio
-async def test_user_full_name(db_inspector):
+ def test_user_full_name(db_inspector):
     column = db_column(db_inspector, "user", "full_name")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 255
 
 
-@pytest.mark.asyncio
-async def test_user_handle(db_inspector):
+
+ def test_user_handle(db_inspector):
     column = db_column(db_inspector, "user", "handle")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 255
 
 
 # hashed_password Table Tests
-@pytest.mark.asyncio
-async def test_hashed_password_structure(db_inspector):
+
+ def test_hashed_password_structure(db_inspector):
     assert [
         "id",
         "hashed_password",
@@ -289,26 +256,26 @@ async def test_hashed_password_structure(db_inspector):
     assert db_inspector.get_unique_constraints("hashed_password", schema="auth") == []
 
 
-@pytest.mark.asyncio
-async def test_hashed_password_id(db_inspector):
+
+ def test_hashed_password_id(db_inspector):
     column = db_column(db_inspector, "hashed_password", "id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_hashed_password_hashed_password(db_inspector):
+
+ def test_hashed_password_hashed_password(db_inspector):
     column = db_column(db_inspector, "hashed_password", "hashed_password")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 128
 
 
-@pytest.mark.asyncio
-async def test_hashed_password_is_active(db_inspector):
+
+ def test_hashed_password_is_active(db_inspector):
     column = db_column(db_inspector, "hashed_password", "is_active")
     assert column is not None
     assert column.get("nullable") is False
@@ -316,8 +283,8 @@ async def test_hashed_password_is_active(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_hashed_password_created_at(db_inspector):
+
+ def test_hashed_password_created_at(db_inspector):
     column = db_column(db_inspector, "hashed_password", "created_at")
     assert column is not None
     assert column.get("nullable") is False
@@ -325,8 +292,8 @@ async def test_hashed_password_created_at(db_inspector):
     assert isinstance(column.get("type"), TIMESTAMP)
 
 
-@pytest.mark.asyncio
-async def test_hashed_password_modified_at(db_inspector):
+
+ def test_hashed_password_modified_at(db_inspector):
     column = db_column(db_inspector, "hashed_password", "modified_at")
     assert column is not None
     assert column.get("nullable") is False
@@ -335,8 +302,8 @@ async def test_hashed_password_modified_at(db_inspector):
 
 
 # user_admin Table Tests
-@pytest.mark.asyncio
-async def test_user_admin_structure(db_inspector):
+
+ def test_user_admin_structure(db_inspector):
     assert [
         "id",
         "is_superuser",
@@ -387,8 +354,8 @@ async def test_user_admin_structure(db_inspector):
     assert db_inspector.get_unique_constraints("user_admin", schema="auth") == []
 
 
-@pytest.mark.asyncio
-async def test_user_is_superuser(db_inspector):
+
+ def test_user_is_superuser(db_inspector):
     column = db_column(db_inspector, "user_admin", "is_superuser")
     assert column is not None
     assert column.get("default") == "false"
@@ -396,8 +363,8 @@ async def test_user_is_superuser(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_user_is_customer_admin(db_inspector):
+
+ def test_user_is_customer_admin(db_inspector):
     column = db_column(db_inspector, "user_admin", "is_customer_admin")
     assert column is not None
     assert column.get("default") == "false"
@@ -405,8 +372,8 @@ async def test_user_is_customer_admin(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_user_is_verified(db_inspector):
+
+ def test_user_is_verified(db_inspector):
     column = db_column(db_inspector, "user_admin", "is_verified")
     assert column is not None
     assert column.get("default") == "false"
@@ -414,8 +381,8 @@ async def test_user_is_verified(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_user_is_locked(db_inspector):
+
+ def test_user_is_locked(db_inspector):
     column = db_column(db_inspector, "user_admin", "is_locked")
     assert column is not None
     assert column.get("default") == "false"
@@ -423,8 +390,8 @@ async def test_user_is_locked(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_user_is_suspended(db_inspector):
+
+ def test_user_is_suspended(db_inspector):
     column = db_column(db_inspector, "user_admin", "is_suspended")
     assert column is not None
     assert column.get("default") == "false"
@@ -432,8 +399,8 @@ async def test_user_is_suspended(db_inspector):
     assert isinstance(column.get("type"), BOOLEAN)
 
 
-@pytest.mark.asyncio
-async def test_user_suspension_expiration(db_inspector):
+
+ def test_user_suspension_expiration(db_inspector):
     column = db_column(db_inspector, "user_admin", "suspension_expiration")
     assert column is not None
     assert column.get("default") is None
@@ -441,18 +408,18 @@ async def test_user_suspension_expiration(db_inspector):
     assert isinstance(column.get("type"), TIMESTAMP)
 
 
-@pytest.mark.asyncio
-async def test_user_customer_id(db_inspector):
+
+ def test_user_customer_id(db_inspector):
     column = db_column(db_inspector, "user_admin", "customer_id")
     assert column is not None
     assert column.get("nullable") is True
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
 # customer Table Tests
-@pytest.mark.asyncio
-async def test_customer_structure(db_inspector):
+
+ def test_customer_structure(db_inspector):
     assert [
         "id",
         "name",
@@ -489,27 +456,27 @@ async def test_customer_structure(db_inspector):
     ]
 
 
-@pytest.mark.asyncio
-async def test_customer_id(db_inspector):
+
+ def test_customer_id(db_inspector):
     column = db_column(db_inspector, "customer", "id")
     assert column is not None
     assert column.get("nullable") is False
     assert column.get("default") == "audit.create_meta_record()"
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_customer_name(db_inspector):
+
+ def test_customer_name(db_inspector):
     column = db_column(db_inspector, "customer", "name")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 255
 
 
-@pytest.mark.asyncio
-async def test_customer_customer_type(db_inspector):
+
+ def test_customer_customer_type(db_inspector):
     column = db_column(db_inspector, "customer", "customer_type")
     assert column is not None
     assert column.get("nullable") is False
@@ -518,8 +485,8 @@ async def test_customer_customer_type(db_inspector):
 
 
 # group Table Tests
-@pytest.mark.asyncio
-async def test_group_structure(db_inspector):
+
+ def test_group_structure(db_inspector):
     assert [
         "id",
         "parent_id",
@@ -595,37 +562,37 @@ async def test_group_structure(db_inspector):
     ]
 
 
-@pytest.mark.asyncio
-async def test_group_id(db_inspector):
+
+ def test_group_id(db_inspector):
     column = db_column(db_inspector, "group", "id")
     assert column is not None
     assert column.get("nullable") is False
     assert column.get("default") == "audit.create_meta_record()"
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_group_name(db_inspector):
+
+ def test_group_name(db_inspector):
     column = db_column(db_inspector, "group", "name")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 255
 
 
-@pytest.mark.asyncio
-async def test_group_parent_id(db_inspector):
+
+ def test_group_parent_id(db_inspector):
     column = db_column(db_inspector, "group", "parent_id")
     assert column is not None
     assert column.get("nullable") is True
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
 # group_permission Table Tests
-@pytest.mark.asyncio
-async def test_group_permission_structure(db_inspector):
+
+ def test_group_permission_structure(db_inspector):
     assert [
         "id",
         "group_id",
@@ -690,25 +657,25 @@ async def test_group_permission_structure(db_inspector):
     ]
 
 
-@pytest.mark.asyncio
-async def test_group_permission_id(db_inspector):
+
+ def test_group_permission_id(db_inspector):
     column = db_column(db_inspector, "group_permission", "id")
     assert column is not None
     assert column.get("nullable") is False
     assert isinstance(column.get("type"), BIGINT)
 
 
-@pytest.mark.asyncio
-async def test_group_permission_group_id(db_inspector):
+
+ def test_group_permission_group_id(db_inspector):
     column = db_column(db_inspector, "group_permission", "group_id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_group_permission_permission(db_inspector):
+
+ def test_group_permission_permission(db_inspector):
     column = db_column(db_inspector, "group_permission", "permissions")
     assert column is not None
     assert column.get("nullable") is False
@@ -717,8 +684,8 @@ async def test_group_permission_permission(db_inspector):
 
 
 # role Table Tests
-@pytest.mark.asyncio
-async def test_role_structure(db_inspector):
+
+ def test_role_structure(db_inspector):
     assert [
         "id",
         "customer_id",
@@ -777,36 +744,36 @@ async def test_role_structure(db_inspector):
     ]
 
 
-@pytest.mark.asyncio
-async def test_role_id(db_inspector):
+
+ def test_role_id(db_inspector):
     column = db_column(db_inspector, "role", "id")
     assert column is not None
     assert column.get("nullable") is False
     assert column.get("default") == "audit.create_meta_record()"
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_role_group_id(db_inspector):
+
+ def test_role_group_id(db_inspector):
     column = db_column(db_inspector, "role", "customer_id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_role_name(db_inspector):
+
+ def test_role_name(db_inspector):
     column = db_column(db_inspector, "role", "name")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 255
 
 
-@pytest.mark.asyncio
-async def test_role_description(db_inspector):
+
+ def test_role_description(db_inspector):
     column = db_column(db_inspector, "role", "description")
     assert column is not None
     assert column.get("nullable") is True
@@ -814,8 +781,8 @@ async def test_role_description(db_inspector):
 
 
 # role__group_permission Table Tests
-@pytest.mark.asyncio
-async def test_role__group_permission_structure(db_inspector):
+
+ def test_role__group_permission_structure(db_inspector):
     assert [
         "role_id",
         "group_permission_id",
@@ -863,17 +830,17 @@ async def test_role__group_permission_structure(db_inspector):
     )
 
 
-@pytest.mark.asyncio
-async def test_role__group_permission_role_id(db_inspector):
+
+ def test_role__group_permission_role_id(db_inspector):
     column = db_column(db_inspector, "role__group_permission", "role_id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_role__group_permission_group_id(db_inspector):
+
+ def test_role__group_permission_group_id(db_inspector):
     column = db_column(db_inspector, "role__group_permission", "group_permission_id")
     assert column is not None
     assert column.get("nullable") is False
@@ -881,8 +848,8 @@ async def test_role__group_permission_group_id(db_inspector):
 
 
 # user__role Table Tests
-@pytest.mark.asyncio
-async def test_user__role_structure(db_inspector):
+
+ def test_user__role_structure(db_inspector):
     assert [
         "user_id",
         "role_id",
@@ -925,21 +892,21 @@ async def test_user__role_structure(db_inspector):
     assert db_inspector.get_unique_constraints("user__role", schema="auth") == []
 
 
-@pytest.mark.asyncio
-async def test_user__role_user_id(db_inspector):
+
+ def test_user__role_user_id(db_inspector):
     column = db_column(db_inspector, "user__role", "user_id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 
-@pytest.mark.asyncio
-async def test_user__role_group_id(db_inspector):
+
+ def test_user__role_group_id(db_inspector):
     column = db_column(db_inspector, "user__role", "role_id")
     assert column is not None
     assert column.get("nullable") is False
-    assert isinstance(column.get("type"), VARCHAR)
+    assert isinstance(column.get("type"), TEXT)
     assert column.get("type").length == 26
 
 """

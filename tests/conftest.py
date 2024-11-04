@@ -10,12 +10,13 @@ Each test module has its own conftest.py file that containts the fixtures for th
 import textwrap
 import pytest
 
-from sqlalchemy import func, select, delete, text, create_engine
+from sqlalchemy import func, select, delete, text, create_engine, Inspector, Column
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from un0.database.management.db_manager import DBManager
-from un0.database.models import Base
+
+# from un0.database.models import Base
 from un0.authorization.models import Tenant, Group, User
 from un0.authorization.enums import TenantType
 from un0.config import settings
@@ -32,7 +33,7 @@ RETURNS VOID
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    current_role VARCHAR;
+    current_role TEXT;
 BEGIN
     /*
     Function used to raise an exception to show the current role of the session
@@ -70,12 +71,12 @@ $$;
 
 CREATE_TEST_MOCK_AUTHORIZE_USER_FUNCTION = """
 CREATE OR REPLACE FUNCTION un0.mock_authorize_user(
-    id VARCHAR,
-    email VARCHAR,
-    is_superuser VARCHAR,
-    is_tenant_admin VARCHAR,
-    tenant_id VARCHAR,
-    role_name VARCHAR DEFAULT 'reader'
+    id TEXT,
+    email TEXT,
+    is_superuser TEXT,
+    is_tenant_admin TEXT,
+    tenant_id TEXT,
+    role_name TEXT DEFAULT 'reader'
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -87,7 +88,7 @@ BEGIN
     */
 
     --Set the session variables
-    PERFORM set_config('rls_var.id', id, true);
+    PERFORM set_config('rls_var.user_id', id, true);
     PERFORM set_config('rls_var.email', email, true);
     PERFORM set_config('rls_var.is_superuser', is_superuser, true);
     PERFORM set_config('rls_var.is_tenant_admin', is_tenant_admin, true);
@@ -103,12 +104,12 @@ $$;
 def create_mock_role_function():
     return textwrap.dedent(
         f"""
-        CREATE OR REPLACE FUNCTION un0.mock_role(role_name VARCHAR)
+        CREATE OR REPLACE FUNCTION un0.mock_role(role_name TEXT)
         RETURNS VOID
         LANGUAGE plpgsql
         AS $$
         DECLARE
-            full_role_name VARCHAR:= '{settings.DB_NAME}_' || role_name;
+            full_role_name TEXT:= '{settings.DB_NAME}_' || role_name;
         BEGIN
             /*
             Function used to set the role of the current session to
@@ -134,6 +135,7 @@ def create_mock_role_function():
 #############################
 
 
+# NOT FIXTUREs as fixtures are not expected to be called directly
 def mock_rls_vars(
     id: str,
     email: str = settings.SUPERUSER_EMAIL,
@@ -143,6 +145,55 @@ def mock_rls_vars(
     role_name: str = "reader",
 ):
     return (id, email, is_superuser, is_tenant_admin, tenant_id, role_name)
+
+
+def db_column(
+    db_inspector, table_name: str, col_name: str, schema: str = settings.DB_SCHEMA
+) -> Column | None:
+    for col in db_inspector.get_columns(table_name, schema=schema):
+        if col.get("name") == col_name:
+            return col
+    return None
+
+
+def print_indices(db_inspector: Inspector, table_name: str, schema: str) -> None:
+    objs = db_inspector.get_indexes(table_name, schema=schema)
+    print(f"Indices for {table_name}")
+    for ob in objs:
+        print(ob)
+    print("")
+
+
+def print_pk_constraint(db_inspector: Inspector, table_name: str, schema: str) -> None:
+    objs = db_inspector.get_pk_constraint(table_name, schema=schema)
+    print(f"Primary Key Constraint for {table_name}")
+    for k, v in objs.items():
+        print(k, v)
+    print("")
+
+
+def print_foreign_keys(db_inspector: Inspector, table_name: str, schema: str) -> None:
+    objs = db_inspector.get_foreign_keys(table_name, schema=schema)
+    print(f"Foreign Keys for {table_name}")
+    for ob in objs:
+        print(ob)
+    print("")
+
+
+def print_uq_constraints(db_inspector: Inspector, table_name: str, schema: str) -> None:
+    objs = db_inspector.get_unique_constraints(table_name, schema=schema)
+    print(f"Unique Constraints for {table_name}")
+    for ob in objs:
+        print(ob)
+    print("")
+
+
+def print_ck_constraints(db_inspector: Inspector, table_name: str, schema: str) -> None:
+    objs = db_inspector.get_check_constraints(table_name, schema=schema)
+    print(f"Check Constraints for {table_name}")
+    for ob in objs:
+        print(ob)
+    print("")
 
 
 ############
@@ -161,7 +212,7 @@ def async_engine():
 
 
 @pytest.fixture(scope="session")
-def db_connection(engine):
+def db_connection(engine, superuser_id):
     """Returns an sqlalchemy session, and after the test tears down everything properly."""
     connection = engine.connect()
     # begin the nested transaction
@@ -179,7 +230,7 @@ def async_engine():
     return create_async_engine(settings.DB_URL)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def superuser_id():
     """Creates the database and a superuser and returns the superuser id."""
     db = DBManager()

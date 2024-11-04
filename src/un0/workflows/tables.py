@@ -26,7 +26,7 @@ from un0.workflows.enums import (  # type: ignore
     WorkflowDBEvent,
     WorkflowTrigger,
 )
-# from un0.db.base import Base, BaseMixin, RBACMixin, str_26, str_255  # type: ignore
+# from un0.db.base import Base, BaseFieldMixin, RBACFieldMixin, str_26, str_255  # type: ignore
 # from un0.rltd.tables import RelatedObject, TableType
 # from un0.fltr.tables import Query
 
@@ -137,7 +137,7 @@ class Workflow(Base):
     # Relationships
 
 
-class WorkflowEvent(Base, BaseMixin, RBACMixin):
+class WorkflowEvent(Base, BaseFieldMixin, RBACFieldMixin):
     __tablename__ = "workflowevent"
     __table_args__ = {
         "schema_name": "un0",
@@ -170,7 +170,7 @@ class WorkflowEvent(Base, BaseMixin, RBACMixin):
     # Relationships
 
 
-class WorkflowRecord(Base, BaseMixin, RBACMixin):
+class WorkflowRecord(Base, BaseFieldMixin, RBACFieldMixin):
     __tablename__ = "workflowrecord"
     __table_args__ = {
         "schema_name": "un0",

@@ -27,11 +27,11 @@ from un0.authorization.enums import TenantType
 from un0.database.enums import (
     SQLOperation,
 )
-# from un0.db.base import Base, BaseMixin, str_26, str_255  # type: ignore
+# from un0.db.base import Base, BaseFieldMixin, str_26, str_255  # type: ignore
 # from un0.rltd.tables import TableType
 
 
-class Tenant(Base, BaseMixin):
+class Tenant(Base, BaseFieldMixin):
     """
     Represents organizations using the application
 
@@ -300,7 +300,7 @@ class TablePermission(Base):
         return f"<TablePermission {self.table_type} - {self.actions}>"
 
 
-class Role(Base, BaseMixin):
+class Role(Base, BaseFieldMixin):
     """
     Role Model
 
@@ -404,7 +404,7 @@ class RoleTablePermission(Base):
         return f"<RoleTablePermission {self.role_id} - {self.tablepermission_id}>"
 
 
-class Group(Base, BaseMixin):
+class Group(Base, BaseFieldMixin):
     """
     Group model representing application end-user groups.
 

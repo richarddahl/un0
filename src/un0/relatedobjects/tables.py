@@ -7,7 +7,7 @@ import textwrap
 from sqlalchemy import UniqueConstraint, ForeignKey, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 
-from un0.database.base import Base, str_26, str_255
+# from un0.database.base import Base, str_26, str_255
 
 
 class TableType(Base):

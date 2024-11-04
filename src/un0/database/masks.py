@@ -9,7 +9,7 @@ from typing import Type
 from pydantic import BaseModel, model_validator, field_validator, computed_field
 from pydantic.dataclasses import dataclass
 
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter
 from un0.database.enums import MaskType, SQLOperation
 from un0.config import settings
 

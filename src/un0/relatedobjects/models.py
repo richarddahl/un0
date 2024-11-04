@@ -4,17 +4,14 @@
 
 from typing import Optional
 
-from sqlalchemy import Identity, Integer
+from sqlalchemy import Integer, Identity
+from sqlalchemy.dialects.postgresql import TEXT, VARCHAR
 
 from pydantic import computed_field
 
 from un0.database.fields import FK, UQ, FieldDefinition
 from un0.database.models import Model
-from un0.database.pg_types import str_26, str_255
-from un0.database.sql.model_sql_emitters import (
-    BaseTableSQLEmitter,
-    DefaultAuditSQLEmitter,
-)
+from un0.relatedobjects.sql_emitters import RelatedObjectIDFnctnSQL
 
 
 class TableType(
@@ -54,10 +51,6 @@ class TableType(
             name="uq_tabletype_db_schema_name",
         )
     ]
-    sql_emitters = [
-        BaseTableSQLEmitter,
-        DefaultAuditSQLEmitter,
-    ]
     field_definitions = {
         "id": FieldDefinition(
             data_type=Integer,
@@ -67,13 +60,13 @@ class TableType(
             doc="Primary Key",
         ),
         "db_schema": FieldDefinition(
-            data_type=str_255,
+            data_type=TEXT,
             nullable=False,
             index=True,
             doc="Name of the tables schema_name",
         ),
         "name": FieldDefinition(
-            data_type=str_255,
+            data_type=TEXT,
             nullable=False,
             index=True,
             doc="Name of the table",
@@ -111,10 +104,10 @@ class RelatedObject(
         obj() -> Model: Fetches the object from the database to which the related_object refers.
     """
 
-    sql_emitters = [BaseTableSQLEmitter]
+    sql_emitters = [RelatedObjectIDFnctnSQL]
     field_definitions = {
         "id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             primary_key=True,
             index=True,
             doc="Primary Key",

@@ -8,7 +8,7 @@ import textwrap
 
 from sqlalchemy import text, create_engine, Engine
 
-from un0.database.sql.db_management_sql import (
+from un0.database.management.sql_emitters import (
     DropDatabaseEmitter,
     DropRolesEmitter,
     CreateRolesEmitter,
@@ -20,7 +20,8 @@ from un0.database.sql.db_management_sql import (
     TablePrivilegeEmitter,
 )
 from un0.database.models import Model
-from un0.database.base import Base
+
+from un0.database.base import metadata
 from un0.config import settings
 
 
@@ -89,7 +90,10 @@ class DBManager:
         eng = self.engine(db_role=f"{settings.DB_NAME}_login")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for model in Model.registry.values():
-                conn.execute(text(model.emit_sql()))
+                print(f"Creating the {model.__name__} table\n")
+                # print(f"sql_emitters: {model.sql_emitters}")
+                # print("")
+                conn.execute(text(model().emit_sql()))
                 conn.commit()
             conn.close()
         eng.dispose()
@@ -329,7 +333,7 @@ class DBManager:
 
             # Create the tables
             print("Creating the database tables\n")
-            Base.metadata.create_all(bind=conn)
+            metadata.create_all(bind=conn)
 
             print("Setting the table privileges\n")
             conn.execute(text(TablePrivilegeEmitter().emit_sql()))

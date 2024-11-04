@@ -11,7 +11,7 @@ from sqlalchemy import (
     Identity,
     Integer,
 )
-from sqlalchemy.dialects.postgresql import BOOLEAN, ENUM, ARRAY
+from sqlalchemy.dialects.postgresql import BOOLEAN, ENUM, ARRAY, TEXT, VARCHAR
 
 from un0.database.fields import (
     FK,
@@ -21,37 +21,21 @@ from un0.database.fields import (
     FieldDefinition,
 )
 from un0.database.models import Model
-from un0.database.mixins import (
-    NameMixin,
-    TenantMixin,
-    NameDescriptionMixin,
-    AuthMixin,
-    DefaultRLSMixin,
-)
-from un0.database.pg_types import (
-    str_26,
-    str_128,
-    str_255,
-)
-from un0.authorization.enums import TenantType
-from un0.database.enums import (
-    SQLOperation,
-)
-from un0.database.sql.model_sql_emitters import (
-    DefaultAuditSQLEmitter,
-    HistoryAuditSQLEmitter,
-    ValidateGroupInsertSQLEmitter,
-    TablePermissionSQLEmitter,
-)
-from un0.database.sql.rls_sql_emitters import (
-    DefaultRLSSQLEmitter,
-    UserRLSSQLEmitter,
-    TenantRLSSQLEmitter,
-    AdminRLSSQLEmitter,
-    SuperuserRLSSQLEmitter,
-    PublicReadSuperuserWriteRLSSQLEmitter,
-)
+from un0.database.mixins import NameMixin, NameDescriptionMixin
+from un0.database.enums import SQLOperation
+from un0.database.sql_emitters import EnableDefaultAuditSQL
 from un0.relatedobjects.models import TableType
+from un0.relatedobjects.sql_emitters import SetRelatedObjectIDSQL
+from un0.authorization.enums import TenantType
+from un0.authorization.mixins import TenantMixin, AuthMixin
+from un0.authorization.sql_emitters import (
+    CreatedModifiedFnctnSQL,
+    SetDefaultTenantSQL,
+)
+from un0.authorization.rls_sql_emitters import (
+    RLSSQL,
+    TenantRLSSQL,
+)
 
 
 class Tenant(
@@ -64,18 +48,18 @@ class Tenant(
     """The Tenant model."""
 
     # name: str <- NameMixin
-    # id: str <- AuthMixin
-    # related_object: RelatedObject <- AuthMixin
-    # active: bool <- AuthMixin
-    # created_at: datetime <- AuthMixin
-    # created_by: User <- AuthMixin
-    # modified_at: datetime <- AuthMixin
-    # modified_by: User <- AuthMixin
-    # is_deleted: bool <- AuthMixin
-    # deleted_at: datetime <- AuthMixin
-    # deleted_by: User <- AuthMixin
+    # id: str <- AuthFieldMixin
+    # related_object: RelatedObject <- AuthFieldMixin
+    # active: bool <- AuthFieldMixin
+    # created_at: datetime <- AuthFieldMixin
+    # created_by: User <- AuthFieldMixin
+    # modified_at: datetime <- AuthFieldMixin
+    # modified_by: User <- AuthFieldMixin
+    # is_deleted: bool <- AuthFieldMixin
+    # deleted_at: datetime <- AuthFieldMixin
+    # deleted_by: User <- AuthFieldMixin
 
-    sql_emitters = [DefaultAuditSQLEmitter, TenantRLSSQLEmitter]
+    # sql_emitters = [EnableDefaultAuditSQL, TenantRLSSQL]
     constraints = [UQ(columns=["name"], name="uq_tenant_name")]
     field_definitions = {
         "tenant_type": FieldDefinition(
@@ -91,7 +75,7 @@ class Tenant(
             doc="The type of Tenant: One of Individual, Business, Corporate, or Enterprise",
         )
     }
-    tenant_type: TenantType
+    tenant_type: Optional[TenantType] = None
 
     def __str__(self) -> str:
         return f"{self.name} ({self.tenant_type})"
@@ -121,7 +105,7 @@ class User(
 
     SQL Emitters:
         DefaultAuditSQLEmitter: Emitter for default audit SQL.
-        UserRLSSQLEmitter: Emitter for user RLS SQL.
+        UserRLSSQL: Emitter for user RLS SQL.
 
     Field Definitions:
         email: Field definition for the email attribute.
@@ -135,7 +119,12 @@ class User(
         __str__: Returns the handle of the user as the string representation.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter, UserRLSSQLEmitter]
+    sql_emitters = [
+        # CreatedModifiedFnctnSQL,
+        EnableDefaultAuditSQL,
+        SetRelatedObjectIDSQL,
+        # UserRLSSQL,
+    ]
     constraints = [
         CK(
             expression=textwrap.dedent(
@@ -152,21 +141,21 @@ class User(
     ]
     field_definitions = {
         "email": FieldDefinition(
-            data_type=str_128,
+            data_type=TEXT,
             unique=True,
             index=True,
             nullable=False,
         ),
         "handle": FieldDefinition(
-            data_type=str_128,
+            data_type=TEXT,
             nullable=False,
         ),
         "full_name": FieldDefinition(
-            data_type=str_255,
+            data_type=TEXT,
             nullable=False,
         ),
         "default_group_id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             foreign_key=FK(
                 target="un0.group.id",
                 ondelete="CASCADE",
@@ -187,24 +176,24 @@ class User(
         ),
     }
 
-    # tenant_id: str <- TenantMixin
-    # tenant: Tenant <- TenantMixin
-    # id: str <- AuthMixin
-    # related_object: RelatedObject <- AuthMixin
-    # active: bool <- AuthMixin
-    # created_at: datetime <- AuthMixin
-    # created_by: User <- AuthMixin
-    # modified_at: datetime <- AuthMixin
-    # modified_by: User <- AuthMixin
-    # is_deleted: bool <- AuthMixin
-    # deleted_at: datetime <- AuthMixin
-    # deleted_by: User <- AuthMixin
+    # tenant_id: str <- TenantFieldMixin
+    # tenant: Tenant <- TenantFieldMixin
+    # id: str <- AuthFieldMixin
+    # related_object: RelatedObject <- AuthFieldMixin
+    # active: bool <- AuthFieldMixin
+    # created_at: datetime <- AuthFieldMixin
+    # created_by: User <- AuthFieldMixin
+    # modified_at: datetime <- AuthFieldMixin
+    # modified_by: User <- AuthFieldMixin
+    # is_deleted: bool <- AuthFieldMixin
+    # deleted_at: datetime <- AuthFieldMixin
+    # deleted_by: User <- AuthFieldMixin
 
-    email: str
-    handle: str
-    full_name: str
+    email: Optional[str] = None
+    handle: Optional[str] = None
+    full_name: Optional[str] = None
     default_group_id: Optional[str] = None
-    default_group: Optional[Type["Group"]]
+    default_group: Optional[Type["Group"]] = None
     is_superuser: bool = False
     is_tenant_admin: bool = False
     owns: Optional[list[Type[Model]]] = None
@@ -232,7 +221,7 @@ class TablePermission(
     Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter, PublicReadSuperuserWriteRLSSQLEmitter]
+    sql_emitters = []
     constraints = [
         UQ(columns=["table_type_id", "actions"], name="uq_tabletype_actions")
     ]
@@ -267,9 +256,9 @@ class TablePermission(
         ),
     }
 
-    table_type_id: int
-    table_type: TableType
-    actions: SQLOperation
+    table_type_id: Optional[str] = None
+    table_type: Optional[TableType] = None
+    actions: Optional[list[SQLOperation]] = SQLOperation.SELECT
 
     def __str__(self) -> str:
         return f"{self.table_type} - {self.actions}"
@@ -278,7 +267,9 @@ class TablePermission(
 class Role(
     Model,
     NameDescriptionMixin,
-    DefaultRLSMixin,
+    AuthMixin,
+    TenantMixin,
+    # DefaultRLSFieldMixin,
     schema_name="un0",
     table_name="role",
 ):
@@ -287,24 +278,24 @@ class Role(
     Roles enable the assignment of group permissions by functionality, department, etc., to users.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter, AdminRLSSQLEmitter]
+    # sql_emitters = [AuditModelSQLEmitter, AdminRLSSQL]
     indices = [IX(name="ix_role_tenant_id_name", columns=["tenant_id", "name"])]
     constraints = [UQ(columns=["tenant_id", "name"], name="uq_role_tenant_name")]
 
     # name: str <- NameDescriptionMixin
     # description: str <- NameDescriptionMixin
-    # id: str <- DefaultRLSMixin
-    # related_object: RelatedObject <- DefaultRLSMixin
-    # active: bool <- DefaultRLSMixin
-    # created_at: datetime <- DefaultRLSMixin
-    # created_by: User <- DefaultRLSMixin
-    # modified_at: datetime <- DefaultRLSMixin
-    # modified_by: User <- DefaultRLSMixin
-    # is_deleted: bool <- DefaultRLSMixin
-    # deleted_at: datetime <- DefaultRLSMixin
-    # deleted_by: User <- DefaultRLSMixin
-    # tenant_id: str <- DefaultRLSMixin
-    # tenant: Tenant <- DefaultRLSMixin
+    # id: str <- DefaultRLSFieldMixin
+    # related_object: RelatedObject <- DefaultRLSFieldMixin
+    # active: bool <- DefaultRLSFieldMixin
+    # created_at: datetime <- DefaultRLSFieldMixin
+    # created_by: User <- DefaultRLSFieldMixin
+    # modified_at: datetime <- DefaultRLSFieldMixin
+    # modified_by: User <- DefaultRLSFieldMixin
+    # is_deleted: bool <- DefaultRLSFieldMixin
+    # deleted_at: datetime <- DefaultRLSFieldMixin
+    # deleted_by: User <- DefaultRLSFieldMixin
+    # tenant_id: str <- DefaultRLSFieldMixin
+    # tenant: Tenant <- DefaultRLSFieldMixin
 
 
 class RoleTablePermission(
@@ -317,10 +308,10 @@ class RoleTablePermission(
     Created by end user group admins.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter]
+    sql_emitters = [EnableDefaultAuditSQL]
     field_definitions = {
         "role_id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             foreign_key=FK(
                 target="un0.role.id",
                 ondelete="CASCADE",
@@ -339,10 +330,10 @@ class RoleTablePermission(
         ),
     }
 
-    role_id: str
-    role: Role
-    table_permission_id: str
-    table_permission: TablePermission
+    role_id: Optional[str] = None
+    role: Optional[Role] = None
+    table_permission_id: Optional[str] = None
+    table_permission: Optional[TablePermission] = None
 
     def __str__(self) -> str:
         return f"{self.role} - {self.table_permission}"
@@ -350,7 +341,7 @@ class RoleTablePermission(
 
 class Group(
     Model,
-    NameMixin,
+    NameDescriptionMixin,
     TenantMixin,
     AuthMixin,
     schema_name="un0",
@@ -361,23 +352,23 @@ class Group(
     Groups enable the assignment of roles to users.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter, ValidateGroupInsertSQLEmitter]
+    # sql_emitters = [AuditModelSQLEmitter, ValidateGroupInsertSQLEmitter]
     indices = [IX(name="ix_group_name_tenant", columns=["name", "tenant_id"])]
     constraints = [UQ(columns=["name", "tenant_id"], name="uq_group_name_tenant")]
 
     # name: str <- NameMixin
-    # tenant_id: str <- TenantMixin
-    # tenant: Tenant <- TenantMixin
-    # id: str <- AuthMixin
-    # related_object: RelatedObject <- AuthMixin
-    # active: bool <- AuthMixin
-    # created_at: datetime <- AuthMixin
-    # created_by: User <- AuthMixin
-    # modified_at: datetime <- AuthMixin
-    # modified_by: User <- AuthMixin
-    # is_deleted: bool <- AuthMixin
-    # deleted_at: datetime <- AuthMixin
-    # deleted_by: User <- AuthMixin
+    # tenant_id: str <- TenantFieldMixin
+    # tenant: Tenant <- TenantFieldMixin
+    # id: str <- AuthFieldMixin
+    # related_object: RelatedObject <- AuthFieldMixin
+    # active: bool <- AuthFieldMixin
+    # created_at: datetime <- AuthFieldMixin
+    # created_by: User <- AuthFieldMixin
+    # modified_at: datetime <- AuthFieldMixin
+    # modified_by: User <- AuthFieldMixin
+    # is_deleted: bool <- AuthFieldMixin
+    # deleted_at: datetime <- AuthFieldMixin
+    # deleted_by: User <- AuthFieldMixin
 
 
 class UserGroupRole(
@@ -390,10 +381,10 @@ class UserGroupRole(
     Created by end user group admins.
     """
 
-    sql_emitters = [DefaultAuditSQLEmitter]
+    sql_emitters = [EnableDefaultAuditSQL]
     field_definitions = {
         "user_id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             foreign_key=FK(
                 target="un0.user.id",
                 ondelete="CASCADE",
@@ -402,7 +393,7 @@ class UserGroupRole(
             to_edge="HAS_USER",
         ),
         "group_id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             primary_key=True,
             foreign_key=FK(
                 target="un0.group.id",
@@ -412,7 +403,7 @@ class UserGroupRole(
             to_edge="HAS_GROUP",
         ),
         "role_id": FieldDefinition(
-            data_type=str_26,
+            data_type=VARCHAR(26),
             primary_key=True,
             foreign_key=FK(
                 target="un0.role.id",
@@ -423,12 +414,12 @@ class UserGroupRole(
         ),
     }
 
-    user_id: str
-    user: User
-    group_id: str
-    group: Group
-    role_id: str
-    role: Role
+    user_id: Optional[str] = None
+    user: Optional[User] = None
+    group_id: Optional[str] = None
+    group: Optional[Group] = None
+    role_id: Optional[str] = None
+    role: Optional[Role] = None
 
     def __str__(self) -> str:
         return f"{self.user} - {self.group} - {self.role}"

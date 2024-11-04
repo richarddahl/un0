@@ -4,7 +4,7 @@
 
 import textwrap
 
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter
 from un0.config import settings
 
 

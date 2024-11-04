@@ -581,7 +581,7 @@ class TestUser:
         assert select_model.__annotations__.get("is_active") == bool
         assert select_model.__annotations__.get("is_deleted") == bool
         assert select_model.__annotations__.get("created_at") == datetime.datetime
-        assert select_model.__annotations__.get("owner_id") == str | None
+        assert select_model.__annotations__.get("owned_by_id") == str | None
         assert select_model.__annotations__.get("modified_at") == datetime.datetime
         assert select_model.__annotations__.get("modified_by_id") == str | None
         assert (
@@ -607,7 +607,7 @@ class TestUser:
         assert insert_model.__annotations__.get("is_active") is None
         assert insert_model.__annotations__.get("is_deleted") is None
         assert insert_model.__annotations__.get("created_at") is None
-        assert insert_model.__annotations__.get("owner_id") is None
+        assert insert_model.__annotations__.get("owned_by_id") is None
         assert insert_model.__annotations__.get("modified_at") is None
         assert insert_model.__annotations__.get("modified_by_id") is None
         assert insert_model.__annotations__.get("deleted_at") is None
@@ -631,7 +631,7 @@ class TestUser:
         assert update_model.__annotations__.get("is_active") == bool
         assert update_model.__annotations__.get("is_deleted") == bool
         assert update_model.__annotations__.get("created_at") is None
-        assert update_model.__annotations__.get("owner_id") == str | None
+        assert update_model.__annotations__.get("owned_by_id") == str | None
         assert update_model.__annotations__.get("modified_at") is None
         assert update_model.__annotations__.get("modified_by_id") is None
         assert update_model.__annotations__.get("deleted_at") is None
@@ -654,7 +654,7 @@ class TestUser:
         assert list_model.__annotations__.get("is_active") is None
         assert list_model.__annotations__.get("is_deleted") is None
         assert list_model.__annotations__.get("created_at") is None
-        assert list_model.__annotations__.get("owner_id") is None
+        assert list_model.__annotations__.get("owned_by_id") is None
         assert list_model.__annotations__.get("modified_at") is None
         assert list_model.__annotations__.get("modified_by_id") is None
         assert list_model.__annotations__.get("deleted_at") is None
@@ -741,7 +741,7 @@ async def get_user(user_id: str):
         "is_active": True,
         "is_deleted": False,
         "created_at": datetime.datetime.now(),
-        "owner_id": None,
+        "owned_by_id": None,
         "modified_at": datetime.datetime.now(),
         "modified_by_id": None,
         "deleted_at": None,

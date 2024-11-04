@@ -2,32 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-import datetime
-
-from enum import Enum
 from typing import AsyncIterator
 
 from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase, registry
 from sqlalchemy.ext.asyncio import (
-    AsyncAttrs,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.dialects.postgresql import (
-    BIGINT,
-    TIMESTAMP,
-    DATE,
-    TIME,
-    VARCHAR,
-    BOOLEAN,
-    ENUM,
-    NUMERIC,
-    ARRAY,
-)
-
-from un0.database.pg_types import str_26, str_64, str_128, str_255, decimal
 from un0.config import settings
 
 
@@ -41,7 +23,7 @@ POSTGRES_INDEXES_NAMING_CONVENTION = {
 }
 
 # Creates the metadata object, used to define the database tables
-meta_data = MetaData(
+metadata = MetaData(
     naming_convention=POSTGRES_INDEXES_NAMING_CONVENTION,
     schema=settings.DB_NAME,
 )
@@ -64,6 +46,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+'''
 class Base(AsyncAttrs, DeclarativeBase):
     """
     Base class for SQLAlchemy models with asynchronous attributes and custom type annotations.
@@ -77,14 +60,14 @@ class Base(AsyncAttrs, DeclarativeBase):
         datetime.datetime: TIMESTAMP(timezone=True)
         datetime.date: DATE
         datetime.time: TIME
-        str: VARCHAR
+        str: TEXT
         Enum: ENUM
         bool: BOOLEAN
         list: ARRAY
-        str_26: VARCHAR(26)
-        str_64: VARCHAR(64)
-        str_128: VARCHAR(128)
-        str_255: VARCHAR(255)
+        str_26: TEXT
+        str_64: TEXT
+        str_128: TEXT
+        str_255: TEXT
         decimal: NUMERIC
     """
 
@@ -95,16 +78,17 @@ class Base(AsyncAttrs, DeclarativeBase):
                 datetime.datetime: TIMESTAMP(timezone=True),
                 datetime.date: DATE,
                 datetime.time: TIME,
-                str: VARCHAR,
+                str: TEXT,
                 Enum: ENUM,
                 bool: BOOLEAN,
                 list: ARRAY,
-                str_26: VARCHAR(26),
-                str_64: VARCHAR(64),
-                str_128: VARCHAR(128),
-                str_255: VARCHAR(255),
+                str_26: TEXT,
+                str_64: TEXT,
+                str_128: TEXT,
+                str_255: TEXT,
                 decimal: NUMERIC,
             }
         )
     )
-    metadata = meta_data
+    metadata = metadata
+'''

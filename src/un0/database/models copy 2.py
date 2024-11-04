@@ -4,6 +4,7 @@
 
 
 from typing import Type, ClassVar
+
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass, Field
 
@@ -27,31 +28,7 @@ class RelatedModel:
     models: list[Type["Model"]] = Field(default_factory=list)
 
 
-@dataclass
-class FieldMixin:
-    """
-    FieldMixin class provides a base mixin for database models with common attributes and methods.
-
-    Attributes:
-        field_definitions (ClassVar[dict[str, FieldDefinition]]): A dictionary mapping field names to their definitions.
-        indices (ClassVar[list[IX]]): A list of index definitions.
-        constraints (ClassVar[list[CK | UQ]]): A list of constraint definitions.
-        sql_emitters (ClassVar[list[SQLEmitter]]): A list of SQL emitters.
-
-    Methods:
-        emit_sql() -> str: Emits the SQL representation of the model.
-    """
-
-    field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
-    indices: ClassVar[list[IX]] = []
-    constraints: ClassVar[list[CK | UQ]] = []
-    sql_emitters: ClassVar[list[SQLEmitter]] = []
-
-    def emit_sql(self) -> str:
-        return super().emit_sql()
-
-
-class Model(BaseModel, FieldMixin):
+class Model(BaseModel):
     table: ClassVar[Table]
 
     registry: ClassVar[dict[str, "Model"]] = {}

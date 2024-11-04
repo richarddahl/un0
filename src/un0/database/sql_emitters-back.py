@@ -24,233 +24,24 @@ from un0.filters.enums import (
     numeric_lookups,
     string_lookups,
 )
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter
 from un0.config import settings
 
 
 @dataclass
-class BaseTableSQLEmitter(SQLEmitter):
-    def emit_sql(self) -> str:
-        """
-        Generates a SQL command to change the owner of a table and set privileges.
-
-        The generated SQL command will:
-        - Change the owner of the table to the admin user of the database.
-        - Grant SELECT privileges to the reader and writer roles.
-        - Grant INSERT, UPDATE, and DELETE privileges to the writer role.
-
-        Returns:
-            str: A formatted SQL command string.
-        """
-        return textwrap.dedent(
-            f"""
-            SET ROLE {settings.DB_NAME}_admin;
-            ALTER TABLE {self.schema_name}.{self.table_name} OWNER TO {settings.DB_NAME}_admin;
-            GRANT SELECT ON {self.schema_name}.{self.table_name} TO
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
-            GRANT INSERT, UPDATE, DELETE ON {self.schema_name}.{self.table_name} TO
-                {settings.DB_NAME}_writer;
-            """
-        )
-
-
-@dataclass
-class RelatedObjectSQLEmitter(SQLEmitter):
-    def emit_sql(self) -> str:
-        return f"{self.emit_create_table_type_record_sql()}\n{self.emit_create_related_object_sql()}"
-
-    def emit_create_table_type_record_sql(self) -> str:
-        """
-        Emits the SQL statement to insert a record into the `un0.table_type` table.
-
-        This method creates a SQL INSERT statement that adds a new record to the
-        `un0.table_type` table with the schema_name and name provided by the instance's
-        `schema_name` and `table_name` attributes.
-
-        Returns:
-            str: A formatted SQL INSERT statement as a string.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Create the table_type record
-            SET ROLE {settings.DB_NAME}_admin;
-            INSERT INTO un0.table_type (db_schema, name)
-            VALUES ('{self.schema_name}', '{self.table_name}')
-            ON CONFLICT DO NOTHING;
-
-            -- Change the table default for id
-            ALTER TABLE {self.schema_name}.{self.table_name}
-            ALTER COLUMN id SET DEFAULT un0.generate_ulid();
-            """
-        )
-
-    def emit_create_related_object_sql(self) -> str:
-        function_string = """
-            DECLARE
-                rel_obj_id VARCHAR(26);
-                table_type_id INT;
-            BEGIN
-                /*
-                Function used to insert a record into the related_object table, when a record is inserted
-                into a table that has a PK that is a FK to the related_object table.
-                */
-                SELECT id
-                    FROM un0.table_type
-                    WHERE db_schema = TG_TABLE_SCHEMA AND name = TG_TABLE_NAME
-                    INTO table_type_id;
-
-                INSERT INTO un0.related_object (id, table_type_id)
-                VALUES (NEW.id, table_type_id)
-                ON CONFLICT DO NOTHING;
-                RETURN NEW;
-            END;
-            """
-
-        return self.create_sql_function(
-            "insert_related_object",
-            function_string,
-            timing="BEFORE",
-            operation="INSERT",
-            include_trigger=True,
-            db_function=True,
-        )
-
-
-@dataclass
-class DefaultAuditSQLEmitter(SQLEmitter):
-    """
-    A class that generates SQL statements to enable auditing for a specified table.
-
-    Methods
-    -------
-    emit_sql() -> str
-        Generates and returns the SQL statement to enable auditing for the table.
-    """
-
-    def emit_sql(self) -> str:
-        """
-        Generates and returns a SQL string to enable auditing for a specific table.
-
-        Returns:
-            str: A SQL string that enables auditing for the table specified by
-                 `self.schema_name` and `self.table_name`.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Enable auditing for the table
-            SELECT audit.enable_tracking('{self.schema_name}.{self.table_name}'::regclass);
-            """
-        )
-
-
-@dataclass
-class HistoryAuditSQLEmitter(SQLEmitter):
-    """
-    HistoryAuditSQLEmitter is a specialized SQLEmitter that generates SQL statements for creating
-    a history table, along with the associated function and trigger for auditing purposes.
-
-    Methods:
-        emit_sql() -> str:
-
-        emit_create_history_table_sql() -> str:
-            The history table will be created in the 'audit' schema_name and will have the same
-            structure as the original table, but without any data. Additionally, it will
-            have an auto-incrementing primary key column and two indexes: one on the primary
-            key and another on the combination of 'id' and 'modified_at' columns.
-
-        emit_create_history_function_and_trigger_sql() -> str:
-            Generates the SQL statement for creating a function and trigger to insert
-            records into the history table whenever an insert or update operation occurs
-            on the original table.
-    """
-
-    def emit_sql(self) -> str:
-        """
-        Generates and returns the SQL statements for creating a history table and
-        the associated function and trigger.
-
-        Returns:
-            str: A string containing the SQL statements.
-        """
-        return textwrap.dedent(
-            f"{self.emit_create_history_table_sql()}\n{self.emit_create_history_function_and_trigger_sql()}"
-        )
-
-    def emit_create_history_table_sql(self) -> str:
-        """
-        Creates a SQL statement to generate a history table for auditing purposes.
-
-        The history table will be created in the 'audit' schema_name and will have the same structure
-        as the original table, but without any data. Additionally, it will have an auto-incrementing
-        primary key column and two indexes: one on the primary key and another on the combination
-        of 'id' and 'modified_at' columns.
-
-        Returns:
-            str: A SQL statement to create the history table.
-        """
-        return textwrap.dedent(
-            f"""
-            SET ROLE {settings.DB_NAME}_admin;
-            CREATE TABLE audit.{self.schema_name}_{self.table_name}
-            AS (SELECT * FROM {self.schema_name}.{self.table_name})
-            WITH NO DATA;
-
-            ALTER TABLE audit.{self.schema_name}_{self.table_name}
-            ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
-
-            CREATE INDEX {self.schema_name}_{self.table_name}_pk_idx
-            ON audit.{self.schema_name}_{self.table_name} (pk);
-
-            CREATE INDEX {self.schema_name}_{self.table_name}_id_modified_at_idx
-            ON audit.{self.schema_name}_{self.table_name} (id, modified_at);
-            """
-        )
-
-    def emit_create_history_function_and_trigger_sql(self) -> str:
-        """
-        Generates SQL code to create a history function and trigger for a specified table.
-
-        The function and trigger are designed to insert a record into an audit table
-        whenever a new record is inserted or an existing record is updated in the target table.
-        The function is created with SECURITY DEFINER to ensure it runs with the necessary permissions.
-
-        Returns:
-            str: The SQL code to create the history function and trigger.
-        """
-        function_string = f"""
-            INSERT INTO audit.{self.schema_name}_{self.table_name}
-            SELECT *
-            FROM {self.schema_name}.{self.table_name}
-            WHERE id = NEW.id;
-            RETURN NEW;
-            """
-
-        return self.create_sql_function(
-            "history",
-            function_string,
-            timing="AFTER",
-            operation="INSERT OR UPDATE",
-            include_trigger=True,
-            db_function=False,
-            security_definer="SECURITY DEFINER",
-        )
-
-
-@dataclass
-class CreatedModifiedSQLEmitter(SQLEmitter):
+class CreatedModifiedMixinSQLEmitter(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = """
             DECLARE
-                user_id VARCHAR(26) := current_setting('rls_var.id', true);
+                user_id TEXT := current_setting('rls_var.user_id', true);
                 estimate INT;
             BEGIN
                 /* 
-                Function used to set the owner_id and modified_by_id fields
+                Function used to set the owned_by_id and modified_by_id fields
                 of a table to the user_id of the user making the change. 
                 */
 
-                SELECT current_setting('rls_var.id', true) INTO user_id;
+                SELECT current_setting('rls_var.user_id', true) INTO user_id;
 
                 IF user_id IS NULL THEN
                     /*
@@ -270,7 +61,7 @@ class CreatedModifiedSQLEmitter(SQLEmitter):
                 END IF;
 
                 IF TG_OP = 'INSERT' THEN
-                    NEW.owner_id = user_id;
+                    NEW.owned_by_id = user_id;
                     NEW.modified_by_id = user_id;
                     NEW.created_at := TIMESTAMPZ();
                 END IF;
@@ -295,11 +86,11 @@ class CreatedModifiedSQLEmitter(SQLEmitter):
 
 
 @dataclass
-class SoftDeleteSQLEmitter(SQLEmitter):
+class SoftDeleteMixinSQLEmitter(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = """
             DECLARE
-                user_id VARCHAR(26);
+                user_id TEXT;
             BEGIN
                 /* 
                 Function used to validate that a record can be deleted.
@@ -308,7 +99,7 @@ class SoftDeleteSQLEmitter(SQLEmitter):
                 otherwise Sets the is_deleted field to true and the deleted_by_id field to the user_id
                 */
 
-                SELECT current_setting('rls_var.id', true) into user_id;
+                SELECT current_setting('rls_var.user_id', true) into user_id;
 
                 IF user_id IS NULL THEN
                     RAISE EXCEPTION 'user_id is NULL';

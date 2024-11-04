@@ -20,7 +20,7 @@ from un0.filters.enums import (
     numeric_lookups,
     string_lookups,
 )
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter
 
 
 class GraphSQLEmitter(BaseModel, SQLEmitter):

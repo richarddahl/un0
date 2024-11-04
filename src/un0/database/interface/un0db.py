@@ -17,7 +17,7 @@ from uno.enumerations import (
     Include,
     Lookup,
 )  # type: ignore
-from uno.database import meta_data, engine, async_engine  # type: ignore
+from uno.database import metadata, engine, async_engine  # type: ignore
 from config import settings  # type: ignore
 
 
@@ -45,7 +45,7 @@ class UnoDB:
             Exception: If the specified table does not exist in the database.
         """
         self.table_name = table_name
-        self.db_tables = meta_data.tables
+        self.db_tables = metadata.tables
         self.engine = engine
         self.async_engine = async_engine
         self.pk_fields = []

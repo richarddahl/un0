@@ -21,7 +21,7 @@ from un0.filters.enums import (  # type: ignore
     numeric_lookups,
     string_lookups,
 )
-from un0.database.enums import ColumnSecurity
+from un0.database.enums import ColumnPermission
 from un0.config import settings
 
 
@@ -161,7 +161,7 @@ class TableManager(BaseModel):
         - Setting the role to the database admin.
         - Changing the table owner and setting privileges.
         - Creating a table type record.
-        - Optionally creating triggers for setting owner and modified timestamps, and validating deletes if the table has an "owner_id" column.
+        - Optionally creating triggers for setting owner and modified timestamps, and validating deletes if the table has an "owned_by_id" column.
         - Enabling auditing based on the table's audit type:
             - "basic": Enables default auditing.
             - "history": Creates a history table and trigger for auditing changes.
@@ -177,7 +177,7 @@ class TableManager(BaseModel):
             f"\n{self.create_tabletype_record()}"
         )
 
-        if "owner_id" in self.table.columns:
+        if "owned_by_id" in self.table.columns:
             sql += f"\n{textwrap.dedent(self.create_set_owner_and_modified_trigger())}"
             sql += f"\n{textwrap.dedent(self.create_validate_delete_trigger())}"
 

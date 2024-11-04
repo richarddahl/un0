@@ -5,7 +5,7 @@ import pytest
 
 from sqlalchemy import inspect, text, insert, update, Column  # type: ignore
 
-from un0.database.base import meta_data
+from un0.database.base import metadata
 from un0.authorization.enums import TenantType
 from un0.config import settings  # type: ignore
 

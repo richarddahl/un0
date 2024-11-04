@@ -8,12 +8,12 @@ from typing import Callable
 
 from pydantic.dataclasses import dataclass
 
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter
 from un0.config import settings
 
 
 @dataclass
-class RLSSQLEmitter(SQLEmitter):
+class RLSSQL(SQLEmitter):
     insert_policy: Callable | str = "RETURN true"
     select_policy: Callable | str = "RETURN true"
     delete_policy: Callable | str = "RETURN true"
@@ -59,7 +59,7 @@ class RLSSQLEmitter(SQLEmitter):
                 LANGUAGE plpgsql
             AS $$
             DECLARE
-                user_id VARCHAR(26);
+                user_id TEXT;
             BEGIN
                 user_id := current_setting('s_var.id', true);
                 RETURN QUERY
@@ -108,7 +108,7 @@ class RLSSQLEmitter(SQLEmitter):
     def emit_create_authorize_user_function_sql(self) -> str:
         return textwrap.dedent(
             f"""
-            CREATE OR REPLACE FUNCTION un0.authorize_user(token TEXT, role_name VARCHAR DEFAULT 'reader')
+            CREATE OR REPLACE FUNCTION un0.authorize_user(token TEXT, role_name TEXT DEFAULT 'reader')
             /*
             Function to verify a JWT token and set the session variables necessary for enforcing RLS
             Ensures that:
@@ -139,18 +139,18 @@ class RLSSQLEmitter(SQLEmitter):
                 token_header JSONB;
                 token_payload JSONB;
                 token_valid BOOLEAN;
-                sub VARCHAR;
+                sub TEXT;
                 expiration INT;
-                user_email VARCHAR; 
-                user_id VARCHAR(26);
-                user_is_superuser VARCHAR(5);
-                user_is_tenant_admin VARCHAR(5);
-                user_tenant_id VARCHAR(26);
+                user_email TEXT; 
+                user_id TEXT;
+                user_is_superuser TEXT;
+                user_is_tenant_admin TEXT;
+                user_tenant_id TEXT;
                 user_is_active BOOLEAN;
                 user_is_deleted BOOLEAN;
-                token_secret VARCHAR;
-                full_role_name VARCHAR:= '{settings.DB_NAME}_' || role_name;
-                admin_role_name VARCHAR:= '{settings.DB_NAME}_' || 'admin';
+                token_secret TEXT;
+                full_role_name TEXT:= '{settings.DB_NAME}_' || role_name;
+                admin_role_name TEXT:= '{settings.DB_NAME}_' || 'admin';
             BEGIN
                 -- Set the role to the admin role to read from the token_secret table
                 EXECUTE 'SET ROLE ' || admin_role_name;
@@ -211,7 +211,7 @@ class RLSSQLEmitter(SQLEmitter):
 
                     -- Set the session variables used for RLS
                     PERFORM set_config('rls_var.email', user_email, true);
-                    PERFORM set_config('rls_var.id', user_id, true);
+                    PERFORM set_config('rls_var.user_id', user_id, true);
                     PERFORM set_config('rls_var.is_superuser', user_is_superuser, true);
                     PERFORM set_config('rls_var.is_tenant_admin', user_is_tenant_admin, true);
                     PERFORM set_config('rls_var.tenant_id', user_tenant_id, true);
@@ -242,9 +242,9 @@ def user_select_policy_sql(schema_name, table_name):
         CREATE POLICY user_select_policy
         ON {schema_name}.{table_name} FOR SELECT
         USING (
-            email = current_setting('rls_var.email', true)::VARCHAR OR
+            email = current_setting('rls_var.email', true)::TEXT OR
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
-            tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+            tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
         );
         """
     )
@@ -263,10 +263,10 @@ def user_insert_policy_sql(schema_name, table_name) -> str:
         ON {schema_name}.{table_name} FOR INSERT
         WITH CHECK (
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
-            email = current_setting('rls_var.user_email', true)::VARCHAR(26) OR
+            email = current_setting('rls_var.user_email', true)::TEXT OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -284,9 +284,9 @@ def user_update_policy_sql(schema_name, table_name) -> str:
         CREATE POLICY user_update_policy
         ON {schema_name}.{table_name} FOR UPDATE
         USING (
-            email = current_setting('rls_var.email', true)::VARCHAR OR
+            email = current_setting('rls_var.email', true)::TEXT OR
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
-            tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+            tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
         );
         """
     )
@@ -306,12 +306,12 @@ def user_delete_policy_sql(schema_name, table_name) -> str:
         USING (
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
-                email = current_setting('rls_var.user_email', true)::VARCHAR(26) AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26) 
+                email = current_setting('rls_var.user_email', true)::TEXT AND
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT 
             ) OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN = true AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             ) 
         );
         """
@@ -319,7 +319,7 @@ def user_delete_policy_sql(schema_name, table_name) -> str:
 
 
 @dataclass
-class UserRLSSQLEmitter(RLSSQLEmitter):
+class UserRLSSQL(RLSSQL):
     select_policy: Callable = user_select_policy_sql
     insert_policy: Callable = user_insert_policy_sql
     update_policy: Callable = user_update_policy_sql
@@ -338,7 +338,7 @@ def tenant_select_policy_sql(schema_name, table_name):
         ON {schema_name}.{table_name} FOR SELECT
         USING (
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
-            id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+            id = current_setting('rls_var.tenant_id', true)::TEXT
         );
         """
     )
@@ -374,7 +374,7 @@ def tenant_update_policy_sql(schema_name, table_name) -> str:
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -396,7 +396,7 @@ def tenant_delete_policy_sql(schema_name, table_name) -> str:
 
 
 @dataclass
-class TenantRLSSQLEmitter(RLSSQLEmitter):
+class TenantRLSSQL(RLSSQL):
     select_policy: Callable = tenant_select_policy_sql
     insert_policy: Callable = tenant_insert_policy_sql
     update_policy: Callable = tenant_update_policy_sql
@@ -417,7 +417,7 @@ def admin_select_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -438,7 +438,7 @@ def admin_insert_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -459,7 +459,7 @@ def admin_update_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -480,7 +480,7 @@ def admin_delete_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             )
         );
         """
@@ -488,7 +488,7 @@ def admin_delete_policy_sql(schema_name, table_name):
 
 
 @dataclass
-class AdminRLSSQLEmitter(RLSSQLEmitter):
+class AdminRLSSQL(RLSSQL):
     select_policy: Callable = admin_select_policy_sql
     insert_policy: Callable = admin_insert_policy_sql
     update_policy: Callable = admin_update_policy_sql
@@ -510,11 +510,11 @@ def default_select_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             ) OR
             (
-                owned_by_id = current_setting('rls_var.id', true)::VARCHAR OR
-                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'SELECT')::VARCHAR[])
+                owned_by_id = current_setting('rls_var.user_id', true)::TEXT OR
+                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'SELECT')::TEXT[])
             )
         );
         """
@@ -536,11 +536,11 @@ def default_insert_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             ) OR
             (
-                owned_by_id = current_setting('rls_var.id', true)::VARCHAR OR
-                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'INSERT')::VARCHAR[])
+                owned_by_id = current_setting('rls_var.user_id', true)::TEXT OR
+                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'INSERT')::TEXT[])
             )
         );
         """
@@ -562,11 +562,11 @@ def default_update_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             ) OR
             (
-                owned_by_id = current_setting('rls_var.id', true)::VARCHAR OR
-                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'UPDATE')::VARCHAR[])
+                owned_by_id = current_setting('rls_var.user_id', true)::TEXT OR
+                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'UPDATE')::TEXT[])
             )
         );
         """
@@ -588,11 +588,11 @@ def default_delete_policy_sql(schema_name, table_name):
             current_setting('rls_var.is_superuser', true)::BOOLEAN OR
             (
                 current_setting('rls_var.is_tenant_admin', true)::BOOLEAN AND
-                tenant_id = current_setting('rls_var.tenant_id', true)::VARCHAR(26)
+                tenant_id = current_setting('rls_var.tenant_id', true)::TEXT
             ) OR
             (
-                owned_by_id = current_setting('rls_var.id', true)::VARCHAR OR
-                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'DELETE')::VARCHAR[])
+                owned_by_id = current_setting('rls_var.user_id', true)::TEXT OR
+                group_id IN (un0.permissible_groups('{schema_name}.{table_name}', 'DELETE')::TEXT[])
             )
         );
         """
@@ -600,7 +600,7 @@ def default_delete_policy_sql(schema_name, table_name):
 
 
 @dataclass
-class DefaultRLSSQLEmitter(RLSSQLEmitter):
+class DefaultRLSSQL(RLSSQL):
     select_policy: Callable = default_select_policy_sql
     insert_policy: Callable = default_insert_policy_sql
     update_policy: Callable = default_update_policy_sql
@@ -664,7 +664,7 @@ def superuser_delete_policy_sql(schema_name, table_name) -> str:
 
 
 @dataclass
-class SuperuserRLSSQLEmitter(RLSSQLEmitter):
+class SuperuserRLSSQL(RLSSQL):
     select_policy: Callable = superuser_select_policy_sql
     insert_policy: Callable = superuser_insert_policy_sql
     update_policy: Callable = superuser_update_policy_sql
@@ -686,7 +686,7 @@ def public_select_policy_sql(schema_name, table_name):
 
 
 @dataclass
-class PublicReadSuperuserWriteRLSSQLEmitter(RLSSQLEmitter):
+class PublicReadSuperuserWriteRLSSQL(RLSSQL):
     select_policy: Callable = public_select_policy_sql
     insert_policy: Callable = superuser_insert_policy_sql
     update_policy: Callable = superuser_update_policy_sql
