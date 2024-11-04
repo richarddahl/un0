@@ -12,12 +12,12 @@ from sqlalchemy import Table
 
 from un0.errors import ModelRegistryError
 from un0.utilities import convert_snake_to_title
-from un0.database.sql.sql_emitter import SQLEmitter
+from un0.database.sql_emitters import SQLEmitter, AlterGrantSQL, InsertTableTypeSQL
 from un0.database.fields import IX, CK, UQ, FieldDefinition
 from un0.database.masks import Mask, MaskDef
 from un0.database.enums import Cardinality, MaskType, SQLOperation
 from un0.database.routers import RouterDef, Router
-from un0.database.base import Base
+from un0.database.base import metadata
 from un0.config import settings
 
 
@@ -43,7 +43,7 @@ class Model(BaseModel):
     field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
     indices: ClassVar[list[IX]] = []
     constraints: ClassVar[list[CK | UQ]] = []
-    sql_emitters: ClassVar[list[Type[SQLEmitter]]] = []
+    sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = []
     related_models: ClassVar[dict[str, Type["RelatedModel"]]] = {}
     include_in_graph: ClassVar[bool] = True
 
@@ -129,10 +129,15 @@ class Model(BaseModel):
         """
 
         # This prevents the base class from being created and added to the registry
-        if isinstance(cls, Model):
+        if cls is Model:
             return
 
         # Set the class attributes
+        # Set the class attributes for table and schema names
+        if table_name is None:
+            raise ValueError("table_name cannot be None")
+        if schema_name is None:
+            raise ValueError("schema_name cannot be None")
         cls.table_name = table_name
         cls.schema_name = schema_name
         cls.table_name_plural = (
@@ -146,22 +151,19 @@ class Model(BaseModel):
             if verbose_name_plural is None
             else verbose_name_plural
         )
-
-        # This is here as we only want to create and add the class to the registry once
-        # The BaseClass registry is shared by all subclasses
-        # It's like a singleton, it exists in the base class and is shared by all subclasses
-        if cls.table_name not in cls.registry:
-            # Add the subclass to the table_name_registry
-            cls.registry.update({cls.table_name: cls})
-            # Add the subclass to the model_name_registry if it is not there (shouldn't be there, but just in case)
-            if cls.__name__ not in cls.class_name_map:
-                cls.class_name_map.update({cls.__name__: cls})
-            else:
-                raise ModelRegistryError(
-                    f"A class with the table name {cls.table_name} already exists.",
-                    "MODEL_NAME_EXISTS_IN_REGISTRY",
-                )
+        # Add the subclass to the model_name_registry if it is not there (shouldn't be there, but just in case)
+        if cls.__name__ not in cls.class_name_map:
+            cls.class_name_map.update({cls.__name__: cls})
         else:
+            raise ModelRegistryError(
+                f"A class with the table name {cls.table_name} already exists.",
+                "MODEL_NAME_EXISTS_IN_REGISTRY",
+            )
+        # Add the subclass to the table_name_registry
+        if cls.table_name not in cls.registry:
+            cls.registry.update({cls.table_name: cls})
+        else:
+            # Raise an error if a class with the same table name already exists in the registry
             raise ModelRegistryError(
                 f"A class with the table name {cls.table_name} already exists.",
                 "TABLE_NAME_EXISTS_IN_REGISTRY",
@@ -171,25 +173,33 @@ class Model(BaseModel):
         cls.update_field_definitions()
         cls.update_constraints()
         cls.update_indices()
-        cls.update_sql_emitters()
+
+        # Create and add columns to the SQLAlchemy table object
+        columns = []
+        # Add the columns to the table
+        for field_name, field_definition in cls.field_definitions.items():
+            columns.append(field_definition.create_column(name=field_name))
+
+        constraints = []
+        # Add the constraints to the table
+        for constraint in cls.constraints:
+            constraints.append(constraint.create_constraint())
 
         # Create the sqlalchemy table object
         table = Table(
             cls.table_name,
-            Base.metadata,
+            metadata,
             schema=cls.schema_name,
             comment=cls.table_comment,
+            *columns,
+            *constraints,
         )
-        # Add the columns to the table
-        for field_name, field_definition in cls.field_definitions.items():
-            table.append_column(field_definition.create_column(name=field_name))
-        # Add the constraints to the table
-        for constraint in cls.constraints:
-            table.append_constraint(constraint.create_constraint())
         # Add the indices to the table
+        # Indices are added to improve the performance of database operations
         for index in cls.indices:
             table.indexes.add(index.create_index(table))
-        # Set the table attribute on the class
+
+        # Set the table attribute on the class to the created SQLAlchemy table object
         cls.table = table
 
         cls.create_routers()
@@ -207,9 +217,7 @@ class Model(BaseModel):
         Returns:
             None
         """
-        for kls in cls.__class__.mro(cls):
-            if kls == cls:
-                continue
+        for kls in cls.mro():
             if hasattr(kls, "field_definitions"):
                 cls.field_definitions.update(kls.field_definitions)
 
@@ -227,11 +235,11 @@ class Model(BaseModel):
         Returns:
             None
         """
-        for kls in cls.__class__.mro(cls):
-            if kls == cls:
-                continue
+        for kls in cls.mro():
             if hasattr(kls, "constraints"):
-                cls.constraints.extend(kls.constraints)
+                for constraint in kls.constraints:
+                    if constraint not in cls.constraints:
+                        cls.constraints.append(kls.constraints)
 
     @classmethod
     def update_indices(cls) -> None:
@@ -246,23 +254,35 @@ class Model(BaseModel):
         Returns:
             None
         """
-        for kls in cls.__class__.mro(cls):
-            if kls == cls:
-                continue
+        for kls in cls.mro():
             if hasattr(kls, "indices"):
-                cls.indices.extend(kls.indices)
+                for index in kls.indices:
+                    if index not in cls.indices:
+                        cls.indices.append(index)
 
     @classmethod
     def update_sql_emitters(cls) -> None:
-        for kls in cls.__class__.mro(cls):
-            if kls == cls:
-                continue
+        """
+        Updates the SQL emitters of the class by extending the current class's
+        SQL emitters with those of its parent classes.
+
+        This method iterates through the method resolution order (MRO) of the
+        class and checks if each class in the hierarchy has a 'sql_emitters'
+        attribute. If it does, the SQL emitters of the current class are extended
+        with the SQL emitters of that class.
+
+        Returns:
+            None
+        """
+        for kls in cls.mro():
             if hasattr(kls, "sql_emitters"):
-                cls.sql_emitters.extend(kls.sql_emitters)
+                for sql_emitter in kls.sql_emitters:
+                    if sql_emitter not in cls.sql_emitters:
+                        cls.sql_emitters.append(sql_emitter)
 
     @classmethod
     def create_routers(cls) -> None:
-        for name, router_def in cls.router_defs.items():
+        for router_def in cls.router_defs.values():
             cls.routers.append(
                 Router(
                     table=cls.table,
@@ -283,19 +303,15 @@ class Model(BaseModel):
 
     @classmethod
     def emit_sql(cls) -> str:
-        """
-        Generates and returns the SQL statements emitted by all SQL emitters associated with the class.
-
-        Returns:
-            str: A string containing the concatenated SQL statements emitted by each SQL emitter.
-        """
-        sql = ""
-        for sql_emitter in cls.sql_emitters:
-            sql += sql_emitter(
-                table_name=cls.table_name,
-                schema_name=cls.schema_name,
-            ).emit_sql()
-        return sql
+        cls.update_sql_emitters()
+        return "\n".join(
+            [
+                sql_emitter(
+                    table_name=cls.table_name, schema_name=cls.schema_name
+                ).emit_sql()
+                for sql_emitter in cls.sql_emitters
+            ]
+        )
 
     def process_app_logic(self):
         pass
