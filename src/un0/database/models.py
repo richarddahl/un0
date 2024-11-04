@@ -1,9 +1,4 @@
-# SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
-#
-# SPDX-License-Identifier: MIT
-
-
-from typing import Type, ClassVar
+from un0.database.hello import hello
 
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass, Field
