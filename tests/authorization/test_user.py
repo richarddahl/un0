@@ -141,6 +141,84 @@ class TestUser:
         user = User(id="string", email="test@example.com")
         assert str(user) == "test@example.com"
     def test_user_indices(self, db_connection):
+        """Test the indices on the user table in the database."""
+        db_inspector = inspect(db_connection)
+        # print_indices(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_indexes("user", schema=self.schema) == [
+            {
+                "name": "ix_un0_user_default_group_id",
+                "unique": False,
+                "column_names": ["default_group_id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_deleted_by_id",
+                "unique": False,
+                "column_names": ["deleted_by_id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_email",
+                "unique": True,
+                "column_names": ["email"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_handle",
+                "unique": False,
+                "column_names": ["handle"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_id",
+                "unique": True,
+                "column_names": ["id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_modified_by_id",
+                "unique": False,
+                "column_names": ["modified_by_id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_owned_by_id",
+                "unique": False,
+                "column_names": ["owned_by_id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_tenant_id",
+                "unique": False,
+                "column_names": ["tenant_id"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+        ]
+
+    def test_user_id_column(self, db_connection):
+        db_inspector = inspect(db_connection)
+        column = db_column(db_inspector, "user", "id", schema=self.schema)
+        assert column is not None
+        assert column.get("nullable") is False
+        assert isinstance(column.get("type"), VARCHAR)
+        assert column.get("type").length == 26
+
+    def test_user_email_column(self, db_connection):
+        db_inspector = inspect(db_connection)
+        column = db_column(db_inspector, "user", "email", schema=self.schema)
+        assert column is not None
+        assert column.get("nullable") is False
+        assert isinstance(column.get("type"), TEXT)
+
+    # Add more column tests as needed
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_indexes("user", schema=self.schema) == [
