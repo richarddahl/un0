@@ -84,7 +84,62 @@ class TestUser:
         assert User.indices == []
         assert User.primary_keys == {"id"}
 
-    def test_user_indices(self, db_connection):
+    def test_user_primary_key(self, db_connection):
+        """Test the primary key constraint on the user table in the database."""
+        db_inspector = inspect(db_connection)
+        # print_pk_constraint(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_pk_constraint("user", schema=self.schema) == {
+            "constrained_columns": ["id"],
+            "name": "pk_user",
+            "comment": None,
+        }
+
+    def test_user_foreign_keys(self, db_connection):
+        """Test the foreign keys on the user table in the database."""
+        db_inspector = inspect(db_connection)
+        # print_foreign_keys(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_foreign_keys("user", schema=self.schema) == [
+            {
+                "name": "fk_user_default_group_id",
+                "constrained_columns": ["default_group_id"],
+                "referred_schema": "un0",
+                "referred_table": "group",
+                "referred_columns": ["id"],
+                "options": {"ondelete": "CASCADE"},
+                "comment": None,
+            },
+            # Add other foreign keys as needed
+        ]
+
+    def test_user_unique_constraints(self, db_connection):
+        """Test the unique constraints on the user table in the database."""
+        db_inspector = inspect(db_connection)
+        # print_uq_constraints(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_unique_constraints("user", schema=self.schema) == [
+            {
+                "name": "uq_user_email",
+                "column_names": ["email"],
+                "comment": None,
+            },
+            # Add other unique constraints as needed
+        ]
+
+    def test_user_check_constraints(self, db_connection):
+        """Test the check constraints on the user table in the database."""
+        db_inspector = inspect(db_connection)
+        # print_ck_constraints(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_check_constraints("user", schema=self.schema) == [
+            {
+                "name": "ck_user_is_superuser",
+                "sqltext": "\n(is_superuser = 'false' AND default_group_id IS NOT NULL) OR\n(is_superuser = 'true' AND default_group_id IS NULL) AND\n(is_superuser = 'false' AND is_tenant_admin = 'false') OR\n(is_superuser = 'true' AND is_tenant_admin = 'false') OR\n(is_superuser = 'false' AND is_tenant_admin = 'true')\n",
+            },
+            # Add other check constraints as needed
+        ]
+
+    def test_user_str_method(self):
+        """Test the __str__ method on the user table in the database."""
+        user = User(id="string", email="test@example.com")
+        assert str(user) == "test@example.com"
         """Test the indices on the user table in the database."""
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
