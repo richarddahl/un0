@@ -140,7 +140,7 @@ class TestUser:
         """Test the __str__ method on the user table in the database."""
         user = User(id="string", email="test@example.com")
         assert str(user) == "test@example.com"
-        """Test the indices on the user table in the database."""
+    def test_user_indices(self, db_connection):
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_indexes("user", schema=self.schema) == [
