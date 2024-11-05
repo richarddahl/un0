@@ -6,6 +6,7 @@ import pytest
 
 from sqlalchemy import inspect, Inspector, Column
 from sqlalchemy.dialects.postgresql import (
+    VARCHAR,
     ENUM,
     TEXT,
     BOOLEAN,
@@ -20,9 +21,9 @@ from un0.database.base import engine
 from un0.authorization.models import (
     Tenant,
     User,
-    TablePermission,
+    TableOperation,
     Role,
-    RoleTablePermission,
+    RoleTableOperation,
     Group,
     UserGroupRole,
 )
@@ -46,7 +47,7 @@ class TestUserStructure:
     def test_user_indices(self, db_connection):
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
-        assert db_inspector.get_indexes("user", schema="un0") == [
+        assert db_inspector.get_indexes("user", schema=self.schema) == [
             {
                 "name": "ix_un0_user_default_group_id",
                 "unique": False,
@@ -65,6 +66,13 @@ class TestUserStructure:
                 "name": "ix_un0_user_email",
                 "unique": True,
                 "column_names": ["email"],
+                "include_columns": [],
+                "dialect_options": {"postgresql_include": []},
+            },
+            {
+                "name": "ix_un0_user_handle",
+                "unique": False,
+                "column_names": ["handle"],
                 "include_columns": [],
                 "dialect_options": {"postgresql_include": []},
             },
@@ -98,8 +106,6 @@ class TestUserStructure:
             },
         ]
 
-
-"""
     def test_user_primary_key_constraint(self, db_connection):
         db_inspector = inspect(db_connection)
         # print_pk_constraint(db_inspector, "user", schema=self.schema)
@@ -176,35 +182,32 @@ class TestUserStructure:
 
     def test_user_check_constraints(self, db_connection):
         db_inspector = inspect(db_connection)
-        print_ck_constraints(db_inspector, "user", schema=self.schema)
-        # assert db_inspector.get_check_constraints("user", schema=self.schema) == [
-        #    {
-        #        "name": "ck_user_ck_user_is_superuser",
-        #        "sqltext": "is_superuser = false AND default_group_id IS NOT NULL OR is_superuser = true AND default_group_id IS NULL AND is_superuser = false AND is_tenant_admin = false OR is_superuser = true AND is_tenant_admin = false OR is_superuser = false AND is_tenant_admin = true",
-        #        "comment": None,
-        #    }
-        # ]
+        # print_ck_constraints(db_inspector, "user", schema=self.schema)
+        assert db_inspector.get_check_constraints("user", schema=self.schema) == [
+            {
+                "name": "ck_user_ck_user_is_superuser",
+                "sqltext": "is_superuser = false AND default_group_id IS NOT NULL OR is_superuser = true AND default_group_id IS NULL AND is_superuser = false AND is_tenant_admin = false OR is_superuser = true AND is_tenant_admin = false OR is_superuser = false AND is_tenant_admin = true",
+                "comment": None,
+            }
+        ]
 
     def test_user_id_column(self, db_connection):
         db_inspector = inspect(db_connection)
         column = db_column(db_inspector, "user", "id", schema=self.schema)
         assert column is not None
         assert column.get("nullable") is False
-        assert column.get("default") == "generate_ulid()"
-        # print(column.type)
-        print(column.get("type"))
-        # assert isinstance(column.get("type"), TEXT)
-        # assert column.get("type").length == 26
+        assert isinstance(column.get("type"), VARCHAR)
+        assert column.get("type").length == 26
 
     def test_user_email(self, db_connection):
         db_inspector = inspect(db_connection)
         column = db_column(db_inspector, "user", "email", schema=self.schema)
-        print(column)
         assert column is not None
         assert column.get("nullable") is False
-        # assert isinstance(column.get("type"), TEXT)
-        # assert column.get("type").length == 128
+        assert isinstance(column.get("type"), TEXT)
 
+
+"""
 
  def test_user_full_name(db_inspector):
     column = db_column(db_inspector, "user", "full_name")

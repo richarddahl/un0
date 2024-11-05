@@ -18,11 +18,11 @@ from un0.config import settings
 from un0.authorization.models import (
     User,
     Tenant,
-    #    TablePermission,
+    #    TableOperation,
     #    Group,
     #    Role,
     #    UserGroupRole,
-    #    RoleTablePermission,
+    #    RoleTableOperation,
 )
 
 # from un0.rltd.models import TableType, RelatedObject
