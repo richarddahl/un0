@@ -42,6 +42,9 @@ class TestTableType:
         assert InsertTableOperationFnctnTrggrSQL in TableType.sql_emitters
         assert TableType.primary_keys == {"id"}
 
+        table_type = TableType(db_schema="un0", name="table")
+        assert str(table_type) == "un0.table"
+
     def test_table_type_indices(self, db_connection):
         """Test the indices on the table_type table in the database."""
         db_inspector = inspect(db_connection)
@@ -111,10 +114,6 @@ class TestTableType:
         assert (
             db_inspector.get_check_constraints("table_type", schema=self.schema) == []
         )
-
-    def test_table_type_str_method(self):
-        table_type = TableType(db_schema="un0", name="table")
-        assert str(table_type) == "un0.table"
 
     def test_table_type_id_column(self, db_connection):
         db_inspector = inspect(db_connection)

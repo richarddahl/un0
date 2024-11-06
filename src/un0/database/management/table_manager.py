@@ -21,7 +21,7 @@ from un0.filters.enums import (  # type: ignore
     numeric_lookups,
     string_lookups,
 )
-from un0.database.enums import ColumnPermission
+from un0.database.enums import ColumnSecurity
 from un0.config import settings
 
 

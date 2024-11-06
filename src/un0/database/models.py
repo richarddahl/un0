@@ -11,12 +11,12 @@ from sqlalchemy import Table
 
 from un0.errors import ModelRegistryError
 from un0.utilities import convert_snake_to_title
-from un0.database.sql_emitters import SQLEmitter, AlterGrantSQL, InsertTableTypeSQL
 from un0.database.fields import IX, CK, UQ, FieldDefinition
 from un0.database.masks import Mask, MaskDef
 from un0.database.enums import Cardinality, MaskType, SQLOperation
 from un0.database.routers import RouterDef, Router
 from un0.database.base import metadata
+from un0.database.sql_emitters import SQLEmitter, InsertTableTypeSQL
 from un0.config import settings
 
 
@@ -66,7 +66,8 @@ class Model(BaseModel, FieldMixin):
     field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
     indices: ClassVar[list[IX]] = []
     constraints: ClassVar[list[CK | UQ]] = []
-    sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = []
+    primary_keys: ClassVar[set[str]] = set()
+    sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = [InsertTableTypeSQL]
     related_models: ClassVar[dict[str, Type["RelatedModel"]]] = {}
     include_in_graph: ClassVar[bool] = True
 
@@ -196,6 +197,7 @@ class Model(BaseModel, FieldMixin):
         cls.update_field_definitions()
         cls.update_constraints()
         cls.update_indices()
+        cls.update_sql_emitters()
 
         # Create and add columns to the SQLAlchemy table object
         columns = []
@@ -224,6 +226,7 @@ class Model(BaseModel, FieldMixin):
 
         # Set the table attribute on the class to the created SQLAlchemy table object
         cls.table = table
+        cls.primary_keys = {column.key for column in cls.table.primary_key.columns}
 
         cls.create_routers()
 
@@ -240,9 +243,11 @@ class Model(BaseModel, FieldMixin):
         Returns:
             None
         """
+        field_definitions = {}
         for kls in cls.mro():
             if hasattr(kls, "field_definitions"):
-                cls.field_definitions.update(kls.field_definitions)
+                field_definitions.update(kls.field_definitions)
+        cls.field_definitions = field_definitions
 
     @classmethod
     def update_constraints(cls) -> None:
@@ -297,11 +302,13 @@ class Model(BaseModel, FieldMixin):
         Returns:
             None
         """
+        sql_emitters = []
         for kls in cls.mro():
             if hasattr(kls, "sql_emitters"):
                 for sql_emitter in kls.sql_emitters:
-                    if sql_emitter not in cls.sql_emitters:
-                        cls.sql_emitters.append(sql_emitter)
+                    if sql_emitter not in sql_emitters:
+                        sql_emitters.append(sql_emitter)
+        cls.sql_emitters = sql_emitters
 
     @classmethod
     def create_routers(cls) -> None:
@@ -326,7 +333,6 @@ class Model(BaseModel, FieldMixin):
 
     @classmethod
     def emit_sql(cls) -> str:
-        cls.update_sql_emitters()
         return "\n".join(
             [
                 sql_emitter(

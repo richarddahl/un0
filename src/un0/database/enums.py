@@ -4,7 +4,7 @@
 import enum
 
 
-class ColumnPermission(str, enum.Enum):
+class ColumnSecurity(str, enum.Enum):
     """
     Enumeration class representing the security levels for Model FieldDefinitions.
 

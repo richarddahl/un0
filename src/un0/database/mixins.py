@@ -2,20 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-from typing import Optional, ClassVar
+from typing import Optional
 
-from sqlalchemy import Integer
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import BOOLEAN, TEXT
 
 from pydantic.dataclasses import dataclass
 
-from un0.database.sql_emitters import (
-    SQLEmitter,
-    SetDefaultActiveSQL,
-    InsertTableTypeSQL,
-)
-from un0.database.fields import FieldDefinition, IX, CK, UQ
+from un0.database.fields import FieldDefinition
 from un0.database.models import FieldMixin
+from un0.database.sql_emitters import SQLEmitter
 
 
 class NameMixin(FieldMixin):
@@ -62,21 +58,38 @@ class DescriptionMixin(FieldMixin):
     description: Optional[str] = None
 
 
-class NameDescriptionMixin(NameMixin, DescriptionMixin):
-    """
-    A mixin class that combines the functionality of NameMixin and DescriptionMixin.
+@dataclass
+class SoftDeleteSQL(SQLEmitter):
+    def emit_sql(self) -> str:
+        function_string = """
+            BEGIN
+                /* 
+                */
 
-    This mixin can be used to add both name and description fields to a model.
+                IF OLD.is_deleted IS TRUE THEN
+                    RETURN OLD;
+                ELSE
+                    EXECUTE format('
+                        UPDATE %I 
+                        SET is_deleted = true
+                        WHERE id = %L', TG_TABLE_NAME, OLD.id
+                    );
+                    RETURN NULL;
+                END IF;
+            END;
+            """
 
-    Inheritance:
-        NameMixin: A mixin that provides a name field.
-        DescriptionMixin: A mixin that provides a description field.
-    """
+        return self.create_sql_function(
+            "soft_delete",
+            function_string,
+            include_trigger=True,
+            operation="DELETE",
+            timing="BEFORE",
+            db_function=True,
+        )
 
-    pass
 
-
-class ActiveMixin(FieldMixin):
+class ActiveDeletedMixin(FieldMixin):
     """
     Mixin class that adds an 'is_active' field to a model.
 
@@ -90,17 +103,24 @@ class ActiveMixin(FieldMixin):
         is_active (bool): Indicates if the record is active. Defaults to True.
     """
 
-    """ """
-
-    sql_emitters = [SetDefaultActiveSQL]
+    sql_emitters = [SoftDeleteSQL]
     field_definitions = {
         "is_active": FieldDefinition(
             data_type=BOOLEAN,
+            server_default=text("true"),
             doc="Indicates if the record is active",
+            nullable=False,
+        ),
+        "is_deleted": FieldDefinition(
+            data_type=BOOLEAN,
+            server_default=text("false"),
+            nullable=False,
+            doc="Indicates if the record is deleted",
         ),
     }
 
     is_active: bool = True
+    is_deleted: bool = False
 
 
 class ImportMixin(FieldMixin):
@@ -116,7 +136,7 @@ class ImportMixin(FieldMixin):
 
     field_definitions = {
         "import_id": FieldDefinition(
-            data_type=Integer,
+            data_type=TEXT,
             doc="Primary Key of the original system of the record",
         ),
         "import_key": FieldDefinition(
@@ -125,11 +145,5 @@ class ImportMixin(FieldMixin):
         ),
     }
 
-    import_id: Optional[int] = None
+    import_id: Optional[str] = None
     import_key: Optional[str] = None
-
-
-class TableTypeMixin(FieldMixin):
-    """ """
-
-    sql_emitters = [InsertTableTypeSQL]

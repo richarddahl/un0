@@ -26,61 +26,12 @@ from un0.config import settings
 
 
 class DBManager:
-    """
-    A class used to manage database operations such as creating and dropping databases,
-    creating users, roles, schemas, extensions, tables, and authentication functions and triggers.
-
-    Methods
-    -------
-    create_db() -> None
-        Creates the database, roles, schemas, extensions, tables, and authentication functions and triggers.
-
-    drop_db() -> None
-        Drops the database and all roles associated with the application.
-
-    create_user_sql(email: str, handle: str, full_name: str, is_superuser: bool, is_tenant_admin: bool) -> str
-        Generates the SQL statement to create a user in the database.
-
-    create_user(email: str = settings.SUPERUSER_EMAIL, handle: str = settings.SUPERUSER_HANDLE, full_name: str = settings.SUPERUSER_FULL_NAME, is_superuser: bool = False, is_tenant_admin: bool = False) -> str
-        Creates a user in the database and returns the user ID.
-
-    engine(db_role: str, db_driver: str = settings.DB_DRIVER, db_password: str = settings.DB_USER_PW, db_host: str = settings.DB_HOST, db_name: str = settings.DB_NAME) -> Engine
-        Creates and returns a SQLAlchemy engine for the specified database role and connection parameters.
-
-    create_roles_and_db() -> None
-        Creates the roles and the database.
-
-    create_schemas_extensions_and_tables() -> None
-        Creates the schemas, extensions, tables, and sets privileges and search paths.
-
-    create_auth_functions_and_triggers() -> None
-        Creates the authentication functions and triggers in the database.
-    """
-
     def create_db(self) -> None:
-        """
-        Creates the database, including roles, schemas, extensions, tables,
-        authentication functions, and triggers. If the environment is set to
-        "test", redirects stdout to a StringIO object to suppress print statements
-        during testing.
-
-        Steps performed:
-        1. Creates roles and database.
-        2. Creates schemas, extensions, and tables.
-        3. Creates authentication functions and triggers.
-        4. Connects to the new database to create Graph functions and triggers.
-        5. Prints a confirmation message upon successful creation.
-
-        Resets stdout to its original state if it was redirected for testing.
-
-        Raises:
-            Any exceptions raised by the underlying database operations.
-        """
         # Redirect the stdout stream to a StringIO object when running tests
         # to prevent the print statements from being displayed in the test output.
-        # if settings.ENV == "test":
-        #    output_stream = io.StringIO()
-        #    sys.stdout = output_stream
+        if settings.ENV == "test":
+            output_stream = io.StringIO()
+            sys.stdout = output_stream
 
         self.create_roles_and_db()
         self.create_schemas_extensions_and_tables()
@@ -91,9 +42,7 @@ class DBManager:
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for model in Model.registry.values():
                 print(f"Creating the {model.__name__} table\n")
-                # print(f"sql_emitters: {model.sql_emitters}")
-                # print("")
-                conn.execute(text(model().emit_sql()))
+                conn.execute(text(model.emit_sql()))
                 conn.commit()
             conn.close()
         eng.dispose()

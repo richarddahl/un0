@@ -67,7 +67,7 @@ class RLSSQL(SQLEmitter):
                 FROM un0.group g
                 JOIN un0.user_group_role ugr ON ugr.group_id = g.id
                 JOIN un0.user u ON u.id = ugr.user_email
-                JOIN un0.tablepermission tp ON ugr.role_id = tp.id
+                JOIN un0.table_operation tp ON ugr.role_id = tp.id
                 WHERE u.id = session_user_id AND tp.is_active = TRUE;
             END $$;
             """

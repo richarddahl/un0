@@ -2,54 +2,36 @@
 #
 # SPDX-License-Identifier: MIT
 
+import textwrap
+
 import datetime
 
 from typing import Optional
 
-from sqlalchemy import text, String, TEXT
-from sqlalchemy.dialects.postgresql import TIMESTAMP, BOOLEAN, VARCHAR
+from sqlalchemy.dialects.postgresql import TIMESTAMP, VARCHAR
+
+from pydantic.dataclasses import dataclass
 
 from un0.database.models import Model
+from un0.database.sql_emitters import SQLEmitter
 from un0.database.fields import FieldDefinition, FK
-from un0.database.mixins import FieldMixin, ActiveMixin, TableTypeMixin, ImportMixin
-from un0.relatedobjects.mixins import RelatedObjectIdMixin
-from un0.authorization.sql_emitters import (
-    CreatedModifiedFnctnSQL,
-    CreatedModifiedTrggrSQL,
-    SoftDeleteFnctnSQL,
-    SoftDeleteTrggrSQL,
-    SetDefaultTenantSQL,
+from un0.database.mixins import (
+    FieldMixin,
+    ActiveDeletedMixin,
+    ImportMixin,
 )
+from un0.relatedobjects.mixins import RelatedObjectIdMixin
+from un0.authorization.sql_emitters import RecordFieldAuditSQL
 
 
-class CreatedModifiedMixin(FieldMixin):
-    """
-    FieldMixin class that adds created and modified timestamp fields, along with ownership information to a model.
-
-    Attributes:
-        created_at (Optional[datetime.datetime]): The timestamp when the record was created.
-        owned_by_id (Optional[str]): The ID of the user who owns the record.
-        owned_by (Optional[Model]): The user who owns the record.
-        modified_at (Optional[datetime.datetime]): The timestamp when the record was last modified.
-        modified_by_id (Optional[str]): The ID of the user who last modified the record.
-        modified_by (Optional[Model]): The user who last modified the record.
-
-    Field Definitions:
-        created_at: FieldDefinition for the creation timestamp.
-        owned_by_id: FieldDefinition for the ID of the owning user.
-        modified_at: FieldDefinition for the modification timestamp.
-        modified_by_id: FieldDefinition for the ID of the modifying user.
-
-    SQL Emitters:
-        sql_emitters: List of SQL emitters used for handling created and modified timestamps.
-    """
-
-    sql_emitters = [CreatedModifiedFnctnSQL, CreatedModifiedTrggrSQL]
+class RecordFieldAuditMixin(FieldMixin):
+    sql_emitters = [RecordFieldAuditSQL]
     field_definitions = {
         "created_at": FieldDefinition(
             data_type=TIMESTAMP(timezone=True),
             doc="Time the record was created",
             editable=False,
+            nullable=False,
         ),
         "owned_by_id": FieldDefinition(
             data_type=VARCHAR(26),
@@ -60,12 +42,14 @@ class CreatedModifiedMixin(FieldMixin):
                 from_edge="OWNS",
             ),
             index=True,
+            nullable=False,
             doc="User that owns the record",
         ),
         "modified_at": FieldDefinition(
             data_type=TIMESTAMP(timezone=True),
             doc="Time the record was modified_at",
             editable=False,
+            nullable=False,
         ),
         "modified_by_id": FieldDefinition(
             data_type=VARCHAR(26),
@@ -76,43 +60,8 @@ class CreatedModifiedMixin(FieldMixin):
                 from_edge="LAST_MODIFIED",
             ),
             index=True,
+            nullable=False,
             doc="User that last modified the record",
-        ),
-    }
-
-    created_at: Optional[datetime.datetime] = None
-    owned_by_id: Optional[str] = None
-    owned_by: Optional[Model] = None
-    modified_at: Optional[datetime.datetime] = None
-    modified_by_id: Optional[str] = None
-    modified_by: Optional[Model] = None
-
-
-class SoftDeleteMixin(FieldMixin):
-    """
-    SoftDeleteFieldMixin is a mixin class that adds soft delete functionality to a model.
-
-    Attributes:
-        sql_emitters (list): List of SQL emitters to handle SQL operations.
-        field_definitions (dict): Definitions of fields related to soft delete functionality.
-            - is_deleted (FieldDefinition): Boolean field indicating if the record is deleted.
-            - deleted_at (FieldDefinition): Timestamp field indicating when the record was deleted.
-            - deleted_by_id (FieldDefinition): String field representing the ID of the user who
-                deleted the record.
-
-        is_deleted (bool): Indicates if the record is deleted. Defaults to False.
-        deleted_at (Optional[datetime.datetime]): Time at which the record was deleted. Defaults to None.
-        deleted_by_id (Optional[str]): ID of the user who deleted the record. Defaults to None.
-        deleted_by (Optional[Model]): User model instance representing the user who deleted the record.
-            Defaults to None.
-    """
-
-    sql_emitters = [SoftDeleteFnctnSQL, SoftDeleteTrggrSQL]
-    field_definitions = {
-        "is_deleted": FieldDefinition(
-            data_type=BOOLEAN,
-            server_default=text("false"),
-            doc="Indicates if the record is deleted",
         ),
         "deleted_at": FieldDefinition(
             data_type=TIMESTAMP(timezone=True),
@@ -131,10 +80,43 @@ class SoftDeleteMixin(FieldMixin):
         ),
     }
 
-    is_deleted: bool = False
+    created_at: Optional[datetime.datetime] = None
+    owned_by_id: Optional[str] = None
+    owned_by: Optional[Model] = None
+    modified_at: Optional[datetime.datetime] = None
+    modified_by_id: Optional[str] = None
+    modified_by: Optional[Model] = None
     deleted_at: Optional[datetime.datetime] = None
     deleted_by_id: Optional[str] = None
     deleted_by: Optional[Model] = None
+
+
+@dataclass
+class DefaultTenantSQL(SQLEmitter):
+    def emit_sql(self) -> str:
+        function_string = textwrap.dedent(
+            """
+            DECLARE
+                tenant_id TEXT := current_setting('rls_var.tenant_id', true);
+            BEGIN
+                IF tenant_id IS NULL THEN
+                    RAISE EXCEPTION 'tenant_id is NULL';
+                END IF;
+
+                NEW.tenant_id := tenant_id;
+
+                RETURN NEW;
+            END;
+            """
+        )
+        return self.create_sql_function(
+            "set_tenant_id",
+            function_string,
+            timing="BEFORE",
+            operation="INSERT",
+            include_trigger=True,
+            db_function=False,
+        )
 
 
 class TenantMixin(FieldMixin):
@@ -149,7 +131,7 @@ class TenantMixin(FieldMixin):
         tenant (Model): The tenant model instance associated with the tenant_id.
     """
 
-    sql_emitters = [SetDefaultTenantSQL]
+    sql_emitters = [DefaultTenantSQL]
 
     field_definitions = {
         "tenant_id": FieldDefinition(
@@ -161,7 +143,7 @@ class TenantMixin(FieldMixin):
                 from_edge="HAS",
             ),
             index=True,
-            nullable=True,
+            nullable=False,
             doc="Tenant to which the record belongs",
         ),
     }
@@ -192,7 +174,7 @@ class GroupMixin(FieldMixin):
                 from_edge="HAS",
             ),
             index=True,
-            nullable=True,
+            nullable=False,
             doc="Group to which the record belongs",
         ),
     }
@@ -201,23 +183,19 @@ class GroupMixin(FieldMixin):
     group: Optional[Model] = None
 
 
-class AuthMixin(
-    TableTypeMixin,
+class AuthorizationMixin(
     RelatedObjectIdMixin,
-    ActiveMixin,
-    CreatedModifiedMixin,
-    SoftDeleteMixin,
+    ActiveDeletedMixin,
+    ImportMixin,
 ):
     pass
 
 
-# class DefaultRLSMixin(
-#    RelatedObjectIdMixin,
-#    GroupMixin,
-#    TenantMixin,
-#    ActiveMixin,
-#    CreatedModifiedMixin,
-#    SoftDeleteMixin,
-#    ImportMixin,
-# ):
-#    pass
+class RLSMixin(
+    RelatedObjectIdMixin,
+    ActiveDeletedMixin,
+    GroupMixin,
+    TenantMixin,
+    ImportMixin,
+):
+    pass

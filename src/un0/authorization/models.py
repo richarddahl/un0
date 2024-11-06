@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import datetime
 import textwrap
 
 from typing import Type, Optional
@@ -11,7 +12,16 @@ from sqlalchemy import (
     Identity,
     Integer,
 )
-from sqlalchemy.dialects.postgresql import BOOLEAN, ENUM, ARRAY, TEXT, VARCHAR
+from sqlalchemy.dialects.postgresql import (
+    BOOLEAN,
+    ENUM,
+    ARRAY,
+    TEXT,
+    VARCHAR,
+    TIMESTAMP,
+)
+
+from pydantic.dataclasses import dataclass
 
 from un0.database.fields import (
     FK,
@@ -21,17 +31,19 @@ from un0.database.fields import (
     FieldDefinition,
 )
 from un0.database.models import Model
-from un0.database.mixins import NameMixin, NameDescriptionMixin
+from un0.database.mixins import NameMixin, DescriptionMixin
 from un0.database.enums import SQLOperation
-from un0.database.sql_emitters import EnableDefaultAuditSQL
+from un0.database.sql_emitters import SQLEmitter, RecordVersionAuditSQL
 from un0.relatedobjects.models import TableType
-from un0.relatedobjects.sql_emitters import SetRelatedObjectIDSQL
+from un0.relatedobjects.mixins import RelatedObjectIdMixin
 from un0.authorization.enums import TenantType
-from un0.authorization.mixins import TenantMixin, AuthMixin
-from un0.authorization.sql_emitters import (
-    CreatedModifiedFnctnSQL,
-    SetDefaultTenantSQL,
+from un0.authorization.mixins import (
+    TenantMixin,
+    AuthorizationMixin,
+    ActiveDeletedMixin,
+    ImportMixin,
 )
+
 from un0.authorization.rls_sql_emitters import (
     RLSSQL,
     TenantRLSSQL,
@@ -41,7 +53,7 @@ from un0.authorization.rls_sql_emitters import (
 class Tenant(
     Model,
     NameMixin,
-    AuthMixin,
+    AuthorizationMixin,
     schema_name="un0",
     table_name="tenant",
 ):
@@ -59,7 +71,6 @@ class Tenant(
     # deleted_at: datetime <- AuthFieldMixin
     # deleted_by: User <- AuthFieldMixin
 
-    # sql_emitters = [EnableDefaultAuditSQL, TenantRLSSQL]
     constraints = [UQ(columns=["name"], name="uq_tenant_name")]
     field_definitions = {
         "tenant_type": FieldDefinition(
@@ -81,10 +92,70 @@ class Tenant(
         return f"{self.name} ({self.tenant_type})"
 
 
+@dataclass
+class UserRecordFieldAuditSQL(SQLEmitter):
+    """ """
+
+    def emit_sql(self) -> str:
+        function_string = """
+            DECLARE
+                user_id TEXT := current_setting('rls_var.user_id', true);
+                estimate INT4;
+            BEGIN
+                SELECT current_setting('rls_var.user_id', true) INTO user_id;
+
+                IF user_id IS NULL THEN
+                    /*
+                    This should only happen when the very first user is created
+                    and therefore a user_id cannot be set in the session variables
+                    */
+                    SELECT reltuples AS estimate FROM PG_CLASS WHERE relname = TG_TABLE_NAME INTO estimate;
+                    IF TG_TABLE_NAME = 'user' AND estimate < 1 THEN
+                        NEW.modified_at := NOW();
+
+                        IF TG_OP = 'INSERT' THEN
+                            NEW.created_at := NOW();
+                        END IF;
+
+                        IF TG_OP = 'DELETE' THEN
+                            NEW.deleted_at = NOW();
+                        END IF;
+                    ELSE
+                        RAISE EXCEPTION 'user_id is NULL';
+                    END IF;
+                END IF;
+
+                NEW.modified_at := NOW();
+                NEW.modified_by_id = user_id;
+
+                IF TG_OP = 'INSERT' THEN
+                    NEW.created_at := NOW();
+                    NEW.owned_by_id = user_id;
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN
+                    NEW.deleted_at = NOW();
+                    NEW.deleted_by_id = user_id;
+                END IF;
+                RETURN NEW;
+            END;
+            """
+
+        return self.create_sql_function(
+            "set_owner_and_modified",
+            function_string,
+            timing="BEFORE",
+            operation="INSERT OR UPDATE OR DELETE",
+            include_trigger=True,
+            db_function=False,
+        )
+
+
 class User(
     Model,
-    TenantMixin,
-    AuthMixin,
+    RelatedObjectIdMixin,
+    ActiveDeletedMixin,
+    ImportMixin,
     schema_name="un0",
     table_name="user",
 ):
@@ -119,12 +190,7 @@ class User(
         __str__: Returns the handle of the user as the string representation.
     """
 
-    sql_emitters = [
-        # CreatedModifiedFnctnSQL,
-        EnableDefaultAuditSQL,
-        SetRelatedObjectIDSQL,
-        # UserRLSSQL,
-    ]
+    sql_emitters = [UserRecordFieldAuditSQL]
     constraints = [
         CK(
             expression=textwrap.dedent(
@@ -137,7 +203,7 @@ class User(
                 """
             ),
             name="ck_user_is_superuser",
-        )
+        ),
     ]
     field_definitions = {
         "email": FieldDefinition(
@@ -149,6 +215,7 @@ class User(
         "handle": FieldDefinition(
             data_type=TEXT,
             nullable=False,
+            index=True,
         ),
         "full_name": FieldDefinition(
             data_type=TEXT,
@@ -169,10 +236,77 @@ class User(
         "is_superuser": FieldDefinition(
             data_type=BOOLEAN,
             server_default=text("false"),
+            nullable=False,
         ),
         "is_tenant_admin": FieldDefinition(
             data_type=BOOLEAN,
             server_default=text("false"),
+            nullable=False,
+        ),
+        "tenant_id": FieldDefinition(
+            data_type=VARCHAR(26),
+            foreign_key=FK(
+                target="un0.tenant.id",
+                ondelete="CASCADE",
+                to_edge="BELONGS_TO",
+                from_edge="HAS",
+            ),
+            index=True,
+            doc="Tenant to which the user belongs",
+        ),
+        "created_at": FieldDefinition(
+            data_type=TIMESTAMP(timezone=True),
+            doc="Time the user was created",
+            editable=False,
+            nullable=False,
+        ),
+        "owned_by_id": FieldDefinition(
+            data_type=VARCHAR(26),
+            foreign_key=FK(
+                target="un0.user.id",
+                ondelete="CASCADE",
+                to_edge="OWNED_BY",
+                from_edge="OWNS",
+            ),
+            index=True,
+            nullable=True,  # Must be true for the first user
+            doc="User that owns the user",
+        ),
+        "modified_at": FieldDefinition(
+            data_type=TIMESTAMP(timezone=True),
+            doc="Time the user was modified",
+            editable=False,
+            nullable=False,
+        ),
+        "modified_by_id": FieldDefinition(
+            data_type=VARCHAR(26),
+            foreign_key=FK(
+                target="un0.user.id",
+                ondelete="CASCADE",
+                to_edge="LAST_MODIFIED_BY",
+                from_edge="LAST_MODIFIED",
+            ),
+            index=True,
+            nullable=True,  # Must be true for the first user
+            doc="User that last modified the user",
+        ),
+        "deleted_at": FieldDefinition(
+            data_type=TIMESTAMP(timezone=True),
+            doc="Time the user was deleted",
+            editable=False,
+            nullable=True,
+        ),
+        "deleted_by_id": FieldDefinition(
+            data_type=VARCHAR(26),
+            foreign_key=FK(
+                target="un0.user.id",
+                ondelete="CASCADE",
+                to_edge="LAST_MODIFIED_BY",
+                from_edge="LAST_MODIFIED",
+            ),
+            index=True,
+            nullable=True,
+            doc="User that deleted the user",
         ),
     }
 
@@ -196,18 +330,26 @@ class User(
     default_group: Optional[Type["Group"]] = None
     is_superuser: bool = False
     is_tenant_admin: bool = False
+    tenant_id: Optional[str] = None
+    tenant: Optional[Model] = None
     owns: Optional[list[Type[Model]]] = None
     last_modified: Optional[list[Type[Model]]] = None
     deleted: Optional[list[Type[Model]]] = None
+    created_at: Optional[datetime.datetime] = None
+    owned_by_id: Optional[str] = None
+    owned_by: Optional[Model] = None
+    modified_at: Optional[datetime.datetime] = None
+    modified_by_id: Optional[str] = None
+    modified_by: Optional[Model] = None
 
     def __str__(self) -> str:
         return self.handle
 
 
-class TablePermission(
+class TableOperation(
     Model,
     schema_name="un0",
-    table_name="table_permission",
+    table_name="table_operation",
 ):
     """
     Permissions for each table.
@@ -221,9 +363,8 @@ class TablePermission(
     Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
     """
 
-    sql_emitters = []
     constraints = [
-        UQ(columns=["table_type_id", "actions"], name="uq_tabletype_actions")
+        UQ(columns=["table_type_id", "operations"], name="uq_tabletype_operations")
     ]
     field_definitions = {
         "id": FieldDefinition(
@@ -243,7 +384,7 @@ class TablePermission(
             ),
             index=True,
         ),
-        "actions": FieldDefinition(
+        "operations": FieldDefinition(
             data_type=ARRAY(
                 ENUM(
                     SQLOperation,
@@ -252,22 +393,24 @@ class TablePermission(
                     schema="un0",
                 )
             ),
-            doc="Actions that are permissible",
+            doc="Action that is permissible",
+            index=True,
         ),
     }
 
     table_type_id: Optional[str] = None
     table_type: Optional[TableType] = None
-    actions: Optional[list[SQLOperation]] = SQLOperation.SELECT
+    operation: Optional[list[SQLOperation]] = SQLOperation.SELECT
 
     def __str__(self) -> str:
-        return f"{self.table_type} - {self.actions}"
+        return f"{self.table_type} - {self.operation}"
 
 
 class Role(
     Model,
-    NameDescriptionMixin,
-    AuthMixin,
+    NameMixin,
+    DescriptionMixin,
+    AuthorizationMixin,
     TenantMixin,
     # DefaultRLSFieldMixin,
     schema_name="un0",
@@ -278,7 +421,6 @@ class Role(
     Roles enable the assignment of group permissions by functionality, department, etc., to users.
     """
 
-    # sql_emitters = [AuditModelSQLEmitter, AdminRLSSQL]
     indices = [IX(name="ix_role_tenant_id_name", columns=["tenant_id", "name"])]
     constraints = [UQ(columns=["tenant_id", "name"], name="uq_role_tenant_name")]
 
@@ -298,17 +440,17 @@ class Role(
     # tenant: Tenant <- DefaultRLSFieldMixin
 
 
-class RoleTablePermission(
+class RoleTableOperation(
     Model,
     schema_name="un0",
-    table_name="role_table_permission",
+    table_name="role_table_operation",
 ):
     """
-    Represents the permissions assigned to a role for a table.
+    Represents the operations permitted for a role/table combination.
     Created by end user group admins.
     """
 
-    sql_emitters = [EnableDefaultAuditSQL]
+    sql_emitters = [RecordVersionAuditSQL]
     field_definitions = {
         "role_id": FieldDefinition(
             data_type=VARCHAR(26),
@@ -316,34 +458,41 @@ class RoleTablePermission(
                 target="un0.role.id",
                 ondelete="CASCADE",
                 to_edge="HAS_ROLE",
+                from_edge="HAS_TABLE_OPERATION",
             ),
             index=True,
+            doc="The applicable role",
         ),
-        "table_permission_id": FieldDefinition(
+        "table_operation_id": FieldDefinition(
             data_type=Integer,
             foreign_key=FK(
-                target="un0.table_permission.id",
+                target="un0.table_operation.id",
                 ondelete="CASCADE",
-                to_edge="HAS_TABLE_PERMISSION",
+                to_edge="HAS_TABLE_OPERATION",
+                from_edge="HAS_ROLE",
             ),
+            primary_key=True,
             index=True,
+            doc="The applicable table operation",
         ),
     }
 
     role_id: Optional[str] = None
     role: Optional[Role] = None
-    table_permission_id: Optional[str] = None
-    table_permission: Optional[TablePermission] = None
+    table_type_id: Optional[str] = None
+    table_type: Optional[TableOperation] = None
+    table_operations: Optional[list[SQLOperation]] = [SQLOperation.SELECT]
 
     def __str__(self) -> str:
-        return f"{self.role} - {self.table_permission}"
+        return f"{self.role} - {self.table_operations}"
 
 
 class Group(
     Model,
-    NameDescriptionMixin,
+    NameMixin,
+    DescriptionMixin,
     TenantMixin,
-    AuthMixin,
+    AuthorizationMixin,
     schema_name="un0",
     table_name="group",
 ):
@@ -381,7 +530,7 @@ class UserGroupRole(
     Created by end user group admins.
     """
 
-    sql_emitters = [EnableDefaultAuditSQL]
+    sql_emitters = [RecordVersionAuditSQL]
     field_definitions = {
         "user_id": FieldDefinition(
             data_type=VARCHAR(26),

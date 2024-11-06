@@ -121,7 +121,7 @@ class PropertySqlEmitter(SQLEmitter):
 
         create_filter_field_sql() -> str:
             Generates and returns the SQL statement to create a filter field and its associated table type.
-            The SQL statement performs the following actions:
+            The SQL statement performs the following operation:
     """
 
     # accessor: str <- computed_field
@@ -165,7 +165,7 @@ class PropertySqlEmitter(SQLEmitter):
         """
         Generates the SQL statement to create a filter field and its associated table type.
 
-        This method constructs and returns a SQL statement that performs the following actions:
+        This method constructs and returns a SQL statement that performs the following operation:
         1. Inserts a new filter field into the `un0.filterfield` table with the specified attributes.
            - If a conflict occurs on the combination of `label` and `graph_type`, the insertion is ignored.
         2. Inserts a relationship between the filter field and a table type into the `un0.filterfield_tabletype` table.

@@ -76,7 +76,7 @@ class TestDBStructure:
             ("insert_related_object", None),
             ("set_owner_and_modified", None),
             ("set_token_secret", None),
-            ("validate_delete", None),
+            ("soft_delete", None),
         ]:
             fnct = db_connection.execute(
                 text(

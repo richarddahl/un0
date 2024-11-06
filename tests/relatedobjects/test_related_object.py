@@ -5,8 +5,7 @@
 from sqlalchemy import inspect, Integer
 from sqlalchemy.dialects.postgresql import VARCHAR
 
-from un0.relatedobjects.models import RelatedObject
-from un0.relatedobjects.sql_emitters import RelatedObjectIDFnctnSQL
+from un0.relatedobjects.models import RelatedObject, InsertRelatedObjectFnctnSQL
 
 from tests.conftest import (
     print_indices,
@@ -32,8 +31,11 @@ class TestRelatedObject:
         assert list(RelatedObject.field_definitions.keys()) == ["id", "table_type_id"]
         assert RelatedObject.constraints == []
         assert RelatedObject.indices == []
-        assert RelatedObjectIDFnctnSQL in RelatedObject.sql_emitters
+        assert InsertRelatedObjectFnctnSQL in RelatedObject.sql_emitters
         assert RelatedObject.primary_keys == {"id"}
+
+        related_object = RelatedObject(id="string", table_type_id=1)
+        assert str(related_object) == "1"
 
     def test_related_object_indices(self, db_connection):
         """Test the indices on the related_object table in the database."""
@@ -99,11 +101,6 @@ class TestRelatedObject:
             db_inspector.get_check_constraints("related_object", schema=self.schema)
             == []
         )
-
-    def test_related_object_str_method(self):
-        """Test the __str__ method on the related_object table in the database."""
-        related_object = RelatedObject(id="string", table_type_id=1)
-        assert str(related_object) == "1"
 
     def test_related_object_id_column(self, db_connection):
         db_inspector = inspect(db_connection)
