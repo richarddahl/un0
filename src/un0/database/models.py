@@ -2,8 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
-
 from typing import Type, ClassVar
+
 from pydantic import BaseModel
 from pydantic.dataclasses import dataclass, Field
 
@@ -11,12 +11,13 @@ from sqlalchemy import Table
 
 from un0.errors import ModelRegistryError
 from un0.utilities import convert_snake_to_title
+from un0.database.base import metadata
 from un0.database.fields import IX, CK, UQ, FieldDefinition
 from un0.database.masks import Mask, MaskDef
 from un0.database.enums import Cardinality, MaskType, SQLOperation
 from un0.database.routers import RouterDef, Router
-from un0.database.base import metadata
-from un0.database.sql_emitters import SQLEmitter, InsertTableTypeSQL
+from un0.database.graph import Vertex
+from un0.database.sql_emitters import SQLEmitter, InsertTableTypeSQL, AlterGrantSQL
 from un0.config import settings
 
 
@@ -42,7 +43,7 @@ class FieldMixin:
         emit_sql() -> str: Emits the SQL representation of the model.
     """
 
-    field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
+    field_definitions: ClassVar[dict[str, FieldDefinition]] = {}
     indices: ClassVar[list[IX]] = []
     constraints: ClassVar[list[CK | UQ]] = []
     sql_emitters: ClassVar[list[SQLEmitter]] = []
@@ -63,14 +64,21 @@ class Model(BaseModel, FieldMixin):
     verbose_name: ClassVar[str]
     verbose_name_plural: ClassVar[str]
     table_comment: ClassVar[str] = ""
-    field_definitions: ClassVar[dict[str, "FieldDefinition"]] = {}
+    field_definitions: ClassVar[dict[str, FieldDefinition]] = {}
     indices: ClassVar[list[IX]] = []
     constraints: ClassVar[list[CK | UQ]] = []
     primary_keys: ClassVar[set[str]] = set()
-    sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = [InsertTableTypeSQL]
-    related_models: ClassVar[dict[str, Type["RelatedModel"]]] = {}
-    include_in_graph: ClassVar[bool] = True
+    sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = [
+        AlterGrantSQL,
+        InsertTableTypeSQL,
+    ]
+    related_models: ClassVar[dict[str, Type[RelatedModel]]] = {}
 
+    # Graph related attributes
+    is_vertex: ClassVar[bool] = True
+    vertex: ClassVar[Vertex] = None
+
+    # Router related attributes
     routers: ClassVar[list[Router]] = []
     router_defs: ClassVar[dict[str, RouterDef]] = {
         "Insert": RouterDef(
@@ -227,6 +235,19 @@ class Model(BaseModel, FieldMixin):
         # Set the table attribute on the class to the created SQLAlchemy table object
         cls.table = table
         cls.primary_keys = {column.key for column in cls.table.primary_key.columns}
+        if cls.primary_keys.__len__() == 0:
+            raise ValueError("No primary keys defined for table")
+        elif cls.primary_keys.__len__() > 1 and cls.is_vertex:
+            raise ValueError(
+                f"Un0 does not support vertices with composite primary keys: {cls.table_name}"
+            )
+        elif cls.is_vertex:
+            cls.vertex = Vertex(
+                table_name=cls.table_name,
+                schema_name=cls.schema_name,
+                table=cls.table,
+                column_name=list(cls.primary_keys)[0],
+            )
 
         cls.create_routers()
 
@@ -333,7 +354,8 @@ class Model(BaseModel, FieldMixin):
 
     @classmethod
     def emit_sql(cls) -> str:
-        return "\n".join(
+        sql = cls.vertex.emit_sql() if cls.vertex else ""
+        sql += "\n".join(
             [
                 sql_emitter(
                     table_name=cls.table_name, schema_name=cls.schema_name
@@ -341,6 +363,7 @@ class Model(BaseModel, FieldMixin):
                 for sql_emitter in cls.sql_emitters
             ]
         )
+        return sql
 
     def process_app_logic(self):
         pass

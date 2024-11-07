@@ -15,7 +15,7 @@ from un0.config import settings
 
 
 @dataclass
-class ViewEmitter(SQLEmitter):
+class ViewSQL(SQLEmitter):
     def emit_sql(self, mask_name: str, field_list: list[str]) -> str:
         return textwrap.dedent(
             f"""
@@ -66,7 +66,7 @@ class Mask(BaseModel):
 
     @classmethod
     def create_view(cls) -> None:
-        cls.sql_emitters.append(ViewEmitter().emit_sql())
+        cls.sql_emitters.append(ViewSQL().emit_sql())
 
     @classmethod
     def emit_sql(cls) -> str:

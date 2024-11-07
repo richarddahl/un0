@@ -364,6 +364,7 @@ class FieldDefinition:
     select_permission: ColumnSecurity = ColumnSecurity.PUBLIC
     insert_permission: ColumnSecurity = ColumnSecurity.PUBLIC
     update_permission: ColumnSecurity = ColumnSecurity.PUBLIC
+    vertex_column: bool = False
 
     include_in_masks: list[str] = field(
         default_factory=lambda: ["insert", "update", "select", "list"]

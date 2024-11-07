@@ -86,6 +86,7 @@ class Tenant(
             doc="The type of Tenant: One of Individual, Business, Corporate, or Enterprise",
         )
     }
+
     tenant_type: Optional[TenantType] = None
 
     def __str__(self) -> str:
@@ -397,6 +398,7 @@ class TableOperation(
             index=True,
         ),
     }
+    is_vertex = True
 
     table_type_id: Optional[str] = None
     table_type: Optional[TableType] = None
@@ -461,6 +463,7 @@ class RoleTableOperation(
                 from_edge="HAS_TABLE_OPERATION",
             ),
             index=True,
+            primary_key=True,
             doc="The applicable role",
         ),
         "table_operation_id": FieldDefinition(
@@ -476,6 +479,7 @@ class RoleTableOperation(
             doc="The applicable table operation",
         ),
     }
+    is_vertex = False
 
     role_id: Optional[str] = None
     role: Optional[Role] = None
@@ -562,6 +566,7 @@ class UserGroupRole(
             to_edge="HAS_ROLE",
         ),
     }
+    is_vertex = False
 
     user_id: Optional[str] = None
     user: Optional[User] = None

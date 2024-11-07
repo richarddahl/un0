@@ -19,8 +19,7 @@ from un0.database.sql_emitters import SQLEmitter
 @dataclass
 class InsertRelatedObjectSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        function_string = textwrap.dedent(
-            """
+        function_string = """
             DECLARE
                 table_type_id INT;
                 related_object_id VARCHAR(26) := un0.generate_ulid();
@@ -40,7 +39,6 @@ class InsertRelatedObjectSQL(SQLEmitter):
                 RETURN NEW;
             END;
             """
-        )
 
         return self.create_sql_function(
             "insert_related_object",

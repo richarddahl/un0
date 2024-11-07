@@ -73,7 +73,7 @@ class FilterFieldModel(UN0Model):
     # @computed_field
     # def vertex(self) -> VertexSqlEmitter | None:
     #    if self.graph_type == GraphType.VERTEX:
-    #        return VertexSqlEmitter(
+    #        return VertexSqlSQL(
     #            table=self.table,
     #            column=self.table.primary_key.columns[0],
     #        )
@@ -82,7 +82,7 @@ class FilterFieldModel(UN0Model):
     #    @computed_field
     #    def edge(self) -> EdgeSqlEmitter | None:
     #        if self.graph_type == GraphType.EDGE:
-    #            return EdgeSqlEmitter(
+    #            return EdgeSqlSQL(
     #                table=self.table,
     #                from_column=self.from_column,
     #                to_column=self.to_column,
@@ -92,7 +92,7 @@ class FilterFieldModel(UN0Model):
     #    @computed_field
     #    def prop(self) -> PropertySqlEmitter | None:
     #        if self.graph_type == GraphType.PROPERTY:
-    #            return PropertySqlEmitter(table=self.table, column=self.from_column)
+    #            return PropertySqlSQL(table=self.table, column=self.from_column)
     #        return None
 
     @computed_field
@@ -232,7 +232,7 @@ class FilterSetSchema(BaseModel):
                     table=self.table,
                     to_column=fk.parent,
                     start_vertex=self,
-                    end_vertex=VertexSqlEmitter(
+                    end_vertex=VertexSqlSQL(
                         table=fk.column.table,
                         column=fk.parent,
                     ),

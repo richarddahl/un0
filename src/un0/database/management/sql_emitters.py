@@ -25,7 +25,7 @@ from un0.config import settings
 """
 
 
-class DropDatabaseEmitter(SQLEmitter):
+class DropDatabaseSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -35,7 +35,7 @@ class DropDatabaseEmitter(SQLEmitter):
         )
 
 
-class DropRolesEmitter(SQLEmitter):
+class DropRolesSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -49,7 +49,7 @@ class DropRolesEmitter(SQLEmitter):
         )
 
 
-class CreateRolesEmitter(SQLEmitter):
+class CreateRolesSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -91,7 +91,7 @@ class CreateRolesEmitter(SQLEmitter):
         )
 
 
-class CreateDatabaseEmitter(SQLEmitter):
+class CreateDatabaseSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -101,7 +101,7 @@ class CreateDatabaseEmitter(SQLEmitter):
         )
 
 
-class CreateSchemasAndExtensionsEmitter(SQLEmitter):
+class CreateSchemasAndExtensionsSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return "\n".join(
             [
@@ -163,7 +163,7 @@ class CreateSchemasAndExtensionsEmitter(SQLEmitter):
         )
 
 
-class PrivilegeAndSearchPathEmitter(SQLEmitter):
+class PrivilegeAndSearchPathSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return "\n".join(
             [
@@ -321,7 +321,7 @@ class PrivilegeAndSearchPathEmitter(SQLEmitter):
         )
 
 
-class TablePrivilegeEmitter(SQLEmitter):
+class TablePrivilegeSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""
@@ -360,7 +360,7 @@ class TablePrivilegeEmitter(SQLEmitter):
         )
 
 
-class PGULIDSQLEmitter(SQLEmitter):
+class PGULIDSQLSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             """
@@ -447,7 +447,7 @@ class PGULIDSQLEmitter(SQLEmitter):
         )
 
 
-class CreateTokenSecretEmitter(SQLEmitter):
+class CreateTokenSecretSQL(SQLEmitter):
     def emit_sql(self) -> str:
         return textwrap.dedent(
             f"""

@@ -8,6 +8,7 @@ from datetime import datetime, date, time
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic.dataclasses import dataclass
 
 from sqlalchemy import Table, Column
 
@@ -23,115 +24,25 @@ from un0.filters.enums import (
 from un0.database.sql_emitters import SQLEmitter
 
 
-class GraphSQLEmitter(BaseModel, SQLEmitter):
-    """ """
-
-    # vertex: VertexSqlEmitter <- computed_field
-    # edges: list[EdgeSqlEmitter] <- computed_field
-    # properties: list[PropertySqlEmitter] <- computed_field
-    create_vertex: bool = True
-
-    @computed_field
-    def vertex(self) -> bool:
-        """
-        Determines if the table is a vertex and returns a VertexSqlEmitter instance if true.
-
-        Returns:
-            VertexSqlEmitter: An instance of VertexSqlEmitter if the table is a vertex.
-            bool: False if the table is not a vertex.
-        """
-        if self.table.info.get("vertex", True) is not False:
-            return VertexSqlEmitter(
-                table=self.table, column=self.table.primary_key.columns[0]
-            )
-
-    @computed_field
-    def edges(self) -> list["EdgeSqlEmitter"] | None:
-        """
-        Generates a list of EdgeSqlEmitter objects representing the edges in the database schema_name.
-
-        This method iterates over the foreign keys of the table and their corresponding columns to create
-        EdgeSqlEmitter instances. Each EdgeSqlEmitter represents a relationship between two vertices (start and end)
-        in the schema_name.
-
-        Returns:
-            list[EdgeSqlEmitter] | None: A list of EdgeSqlEmitter objects if any edges are found, otherwise None.
-        """
-        edges = []
-        for fk in self.table.foreign_keys:
-            for column in self.table.columns:
-                if fk.parent.name == column.name:
-                    continue
-                for _fk in column.foreign_keys:
-                    edges.append(
-                        EdgeSqlEmitter(
-                            table=self.table,
-                            to_column=column,
-                            start_vertex=VertexSqlEmitter(
-                                table=self.table,
-                                column=fk.parent,
-                            ),
-                            end_vertex=VertexSqlEmitter(
-                                table=fk.column.table,
-                                column=fk.column,
-                            ),
-                        )
-                    )
-        return edges
-
-    @computed_field
-    def properties(self) -> list["PropertySqlEmitter"] | None:
-        """
-        Retrieves a list of PropertySqlEmitter objects for each column in the table.
-
-        Returns:
-            list[PropertySqlEmitter] | None: A list of PropertySqlEmitter objects representing
-            the properties of each column in the table, or None if there are no columns.
-        """
-        props = []
-        for column in self.table.columns:
-            props.append(PropertySqlEmitter(table=self.table, column=column))
-        return props
+@dataclass
+class FilterDefinition:
+    # accessor: str <- computed_field
+    # data_type: str <- computed_field
+    # lookups: Lookup <- computed_field
+    # label: str <- computed_field
+    filter_type: str
 
 
-class PropertySqlEmitter(SQLEmitter):
-    """
-    PropertySqlEmitter is a subclass of TableManager that represents the schema_name for a property in a database table.
-    It includes computed fields and methods to generate SQL statements for creating filter fields and their
-    associated table types.
-
-    Attributes:
-        column (Column): The column associated with the property schema_name.
-        model_config (dict): Configuration dictionary allowing arbitrary types.
-
-    Methods:
-        accessor() -> str:
-            Computes and returns the accessor name for the column.
-
-        data_type() -> str:
-            Computes and returns the data type for the column.
-
-        lookups() -> Lookup:
-            Computes and returns the appropriate lookup type for the column based on its foreign keys
-            and Python type.
-
-        label() -> str:
-            Computes and returns a human-readable label for the column by replacing underscores and
-            "_id" suffixes with spaces and capitalizing words.
-
-        create_filter_field_sql() -> str:
-            Generates and returns the SQL statement to create a filter field and its associated table type.
-            The SQL statement performs the following operation:
-    """
-
+@dataclass
+class Property:
     # accessor: str <- computed_field
     # data_type: str <- computed_field
     # lookups: Lookup <- computed_field
     # label: str <- computed_field
 
-    column: Column
+    # column: Column
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    # model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @computed_field
     def accessor(self) -> str:
@@ -210,7 +121,7 @@ class PropertySqlEmitter(SQLEmitter):
         )
 
 
-class VertexSqlEmitter(SQLEmitter):
+class Vertex(SQLEmitter):
     """
     VertexSqlEmitter is a subclass of TableManager that represents the schema_name for a vertex in a graph database.
     It includes various computed fields and methods to generate SQL statements for creating, updating,
@@ -273,7 +184,7 @@ class VertexSqlEmitter(SQLEmitter):
         return f"quote_nullable(NEW.{self.column.name}::{self.column.type})"
 
     @computed_field
-    def properties(self) -> list["PropertySqlEmitter"] | None:
+    def properties(self) -> list[Property] | None:
         """
         Generates a list of PropertySqlEmitter instances for each column in the table.
 
@@ -282,7 +193,7 @@ class VertexSqlEmitter(SQLEmitter):
         """
         props = []
         for column in self.table.columns:
-            props.append(PropertySqlEmitter(table=self.table, column=column))
+            props.append(Property(table=self.table, column=column))
         return props
 
     @computed_field
@@ -298,11 +209,11 @@ class VertexSqlEmitter(SQLEmitter):
         edges = []
         for fk in self.table.foreign_keys:
             edges.append(
-                EdgeSqlEmitter(
+                EdgeSqlSQL(
                     table=self.table,
                     to_column=fk.parent,
                     start_vertex=self,
-                    end_vertex=VertexSqlEmitter(
+                    end_vertex=Vertex(
                         table=fk.column.table,
                         column=fk.parent,
                     ),
@@ -545,7 +456,7 @@ class VertexSqlEmitter(SQLEmitter):
         )
 
 
-class EdgeSqlEmitter(SQLEmitter):
+class Edge(BaseModel):
     """
     EdgeSqlEmitter is a class that represents the schema_name for an edge in a graph database. It extends the TableManager class and includes additional attributes and methods specific to edges.
     Attributes:
@@ -580,8 +491,8 @@ class EdgeSqlEmitter(SQLEmitter):
 
     table: Table
     to_column: Column
-    start_vertex: VertexSqlEmitter
-    end_vertex: VertexSqlEmitter
+    start_vertex: Vertex
+    end_vertex: Vertex
     lookups: list[Lookup] = related_lookups
     in_vertex: bool = True
 
@@ -596,7 +507,7 @@ class EdgeSqlEmitter(SQLEmitter):
         return self.to_column.name
 
     @computed_field
-    def properties(self) -> list["PropertySqlEmitter"]:
+    def properties(self) -> list[Property]:
         """
         Retrieves a list of PropertySqlEmitter objects for the current table.
 
@@ -608,7 +519,7 @@ class EdgeSqlEmitter(SQLEmitter):
         if not self.in_vertex:
             for column in self.table.columns:
                 if not column.foreign_keys:
-                    props.append(PropertySqlEmitter(table=self.table, column=column))
+                    props.append(Property(table=self.table, column=column))
         return props
 
     # Functions to generate sql statements

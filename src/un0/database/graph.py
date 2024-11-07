@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
+
 import textwrap
+
+from typing import Optional
 
 from datetime import datetime, date, time
 from decimal import Decimal
@@ -11,379 +14,41 @@ from pydantic import BaseModel, ConfigDict, computed_field
 from sqlalchemy import Table, Column
 
 from un0.utilities import convert_snake_to_capital_word
-from un0.filters.enums import (  # type: ignore
+from un0.filters.enums import (
     GraphType,
     EdgeDirection,
-    Include,
-    Match,
     Lookup,
     related_lookups,
     numeric_lookups,
     string_lookups,
 )
-from un0.database.enums import ColumnSecurity
 from un0.config import settings
 
 
-class TableManager(BaseModel):
-    """
-    TableManager is a Pydantic model that represents the schema_name of a database table. It includes various computed fields and methods to generate SQL statements for configuring the table, enabling auditing, and creating triggers.
+class GraphModel(BaseModel):
+    table_name: Optional[str] = None
+    schema_name: Optional[str] = None
 
-    Attributes:
-        table (Table): The SQLAlchemy Table object representing the database table.
-        model_config (dict): Configuration for the Pydantic model, allowing arbitrary types.
-
-    Computed Fields:
-        schema_name (str): The schema_name of the table.
-        table_name (str): The name of the table.
-        schema_table_name (str): The full name of the table including schema_name.
-        rls_policy (str): The row-level security policy for the table.
-        graph (bool): Indicates if the table is part of a graph.
-        vertex (VertexSqlEmitter): The vertex schema_name if the table is a vertex.
-        edges (list[EdgeSqlEmitter] | None): The edges schema_name if the table has foreign keys.
-        properties (list[PropertySqlEmitter] | None): The properties schema_name for the table columns.
-
-    Methods:
-        configuration_sql() -> str: Generates SQL statements for configuring the table.
-        create_tabletype_record() -> str: Generates SQL to create a table type record.
-        enable_rls() -> str: Generates SQL to enable row-level security for the table.
-        create_set_owner_and_modified_trigger() -> str: Generates SQL to create a trigger for setting owner and modified fields.
-        create_history_table_trigger() -> str: Generates SQL to create a trigger for setting owner and modified fields.
-        create_validate_delete_trigger() -> str: Generates SQL to create a trigger for validating deletes.
-        change_table_owner_and_set_privileges() -> str: Generates SQL to change table owner and set privileges.
-        enable_auditing() -> str: Generates SQL to enable auditing for the table.
-        create_history_table() -> str: Generates SQL to create a history table for auditing.
-        create_history_table_trigger() -> str: Generates SQL to create a trigger for the history table.
-        create_sql_function(function_name: str, function_string: str, operation: str = "UPDATE", for_each: str = "ROW", include_trigger: bool = False) -> str: Creates a SQL function and optionally a trigger for a PostgreSQL database.
-    """
-
-    # table_name: str <- computed_field
-    # schema_name: str <- computed_field
-    # schema_table_name: str <- computed_field
-    # rls_policy: str <- computed_field
-    # in_graph: bool <- computed_field
-    # vertex: VertexSqlEmitter <- computed_field
-    # edges: EdgeSqlEmitter <- computed_field
-    # properties: PropertySqlEmitter <- computed_field
-
-    table: Table
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    @computed_field
-    def schema_name(self) -> str:
-        return self.table.schema_name
-
-    @computed_field
-    def table_name(self) -> str:
-        return self.table.name
-
-    @computed_field
-    def schema_table_name(self) -> str:
-        return f"{self.schema_name}.{self.table_name}"
-
-    @computed_field
-    def rls_policy(self) -> str:
-        return self.table.info.get("rls_policy", "UserGroup")
-
-    @computed_field
-    def graph(self) -> bool:
-        return self.table.info.get("in_graph", True)
-
-    @computed_field
-    def vertex(self) -> bool:
-        """
-        Determines if the table is a vertex and returns a VertexSqlEmitter instance if true.
-
-        Returns:
-            VertexSqlEmitter: An instance of VertexSqlEmitter if the table is a vertex.
-            bool: False if the table is not a vertex.
-        """
-        if self.table.info.get("vertex", True) is not False:
-            return VertexSqlEmitter(
-                table=self.table, column=self.table.primary_key.columns[0]
-            )
-
-    @computed_field
-    def edges(self) -> list["EdgeSqlEmitter"] | None:
-        """
-        Generates a list of EdgeSqlEmitter objects representing the edges in the database schema_name.
-
-        This method iterates over the foreign keys of the table and their corresponding columns to create
-        EdgeSqlEmitter instances. Each EdgeSqlEmitter represents a relationship between two vertices (start and end)
-        in the schema_name.
-
-        Returns:
-            list[EdgeSqlEmitter] | None: A list of EdgeSqlEmitter objects if any edges are found, otherwise None.
-        """
-        edges = []
-        for fk in self.table.foreign_keys:
-            for column in self.table.columns:
-                if fk.parent.name == column.name:
-                    continue
-                for _fk in column.foreign_keys:
-                    edges.append(
-                        EdgeSqlEmitter(
-                            table=self.table,
-                            to_column=column,
-                            start_vertex=VertexSqlEmitter(
-                                table=self.table,
-                                column=fk.parent,
-                            ),
-                            end_vertex=VertexSqlEmitter(
-                                table=fk.column.table,
-                                column=fk.column,
-                            ),
-                        )
-                    )
-        return edges
-
-    @computed_field
-    def properties(self) -> list["PropertySqlEmitter"] | None:
-        """
-        Retrieves a list of PropertySqlEmitter objects for each column in the table.
-
-        Returns:
-            list[PropertySqlEmitter] | None: A list of PropertySqlEmitter objects representing
-            the properties of each column in the table, or None if there are no columns.
-        """
-        props = []
-        for column in self.table.columns:
-            props.append(PropertySqlEmitter(table=self.table, column=column))
-        return props
-
-    # Functions to generate sql statements
-    def configuration_sql(self) -> str:
-        """
-        Generates the SQL configuration string for setting up the database table.
-
-        This method constructs a SQL string that includes:
-        - Setting the role to the database admin.
-        - Changing the table owner and setting privileges.
-        - Creating a table type record.
-        - Optionally creating triggers for setting owner and modified timestamps, and validating deletes if the table has an "owned_by_id" column.
-        - Enabling auditing based on the table's audit type:
-            - "basic": Enables default auditing.
-            - "history": Creates a history table and trigger for auditing changes.
-        - Creating vertex and edge triggers if applicable.
-        - Creating filter field SQL for properties.
-
-        Returns:
-            str: The complete SQL configuration string.
-        """
-        sql = textwrap.dedent(
-            f"SET ROLE {settings.DB_NAME}_admin;"
-            f"\n{self.change_table_owner_and_set_privileges()}"
-            f"\n{self.create_tabletype_record()}"
+    def create_sql_trigger(
+        self,
+        function_name: str,
+        timing: str = "BEFORE",
+        operation: str = "UPDATE",
+        for_each: str = "ROW",
+        db_function: bool = True,
+    ) -> str:
+        trigger_scope = (
+            f"{self.schema_name}."
+            if db_function
+            else f"{self.schema_name}.{self.table_name}_"
         )
-
-        if "owned_by_id" in self.table.columns:
-            sql += f"\n{textwrap.dedent(self.create_set_owner_and_modified_trigger())}"
-            sql += f"\n{textwrap.dedent(self.create_validate_delete_trigger())}"
-
-        # Enables auditing for the table if the audit_type is not set to None in the tables info dictionary.
-        # If the audit_type is set to "history", then the history table and trigger are created for the table
-        #    - A duplicate of the table is created as audit.[schema_name]_[table_name]
-        #    - The trigger is created to insert a duplicate record into the history table after insert or update
-        #    - A function is created to restore a record from the history table to the actual table
-        # If the audit_type is set to None, then no un0 auditing occurs.
-        # Otherwise, the audit trigger is created as a default:
-        #    - all changes will be audited in the audit.record_version table, using supabase_audit.
-        audit_type = self.table.info.get("audit", "basic")
-        if audit_type == "basic":
-            sql += f"\n{textwrap.dedent(self.enable_auditing())}"
-        elif audit_type == "history":
-            sql += f"\n{textwrap.dedent(self.create_history_table())}"
-            sql += f"\n{textwrap.dedent(self.create_history_table_trigger())}"
-
-        # Create the vertex and edge triggers
-        if self.vertex:
-            sql += f"\n{textwrap.dedent(self.vertex.create_sql())}"
-        else:
-            for edge in self.edges:
-                sql += f"\n{textwrap.dedent(edge.create_sql())}"
-        for prop in self.properties:
-            sql += f"\n{textwrap.dedent(prop.create_filter_field_sql())}"
-
-        # if self.table.info.get("rls_policy", None) is not None:
-        #    sql += f"\n{textwrap.dedent(self.enable_rls())}"
-        #
-        return sql
-
-    def create_tabletype_record(self) -> str:
-        """
-        Generates an SQL statement to insert a record into the `un0.table_type` table.
-
-        This method creates a SQL INSERT statement that adds a new record to the
-        `un0.table_type` table with the schema_name and name provided by the instance's
-        `schema_name` and `table_name` attributes.
-
-        Returns:
-            str: A formatted SQL INSERT statement as a string.
-        """
         return textwrap.dedent(
             f"""
-            -- Create the table_type record
-            INSERT INTO un0.table_type (schema_name, name)
-            VALUES ('{self.schema_name}', '{self.table_name}');
-            """
-        )
-
-    def enable_rls(self) -> str:
-        """
-        Generates SQL statements to enable and enforce Row Level Security (RLS)
-        on a specified table.
-
-        Returns:
-            str: A string containing the SQL statements to enable and force RLS
-                 for the table.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Enable RLS for the table
-            ALTER TABLE {self.schema_table_name} ENABLE ROW LEVEL SECURITY;
-            ALTER TABLE {self.schema_table_name} FORCE ROW LEVEL SECURITY;
-            """
-        )
-
-    def create_set_owner_and_modified_trigger(self) -> str:
-        """
-        Generates a SQL trigger creation statement for setting the owner and
-        modified timestamp on a specified table.
-
-        This method creates a trigger named 'set_owner_and_modified_trigger'
-        that will be executed before any INSERT or UPDATE operation on the
-        table specified by `self.schema_table_name`. The trigger will call
-        the function `un0.set_owner_and_modified()` to set the owner and
-        modified timestamp.
-
-        Returns:
-            str: A SQL statement for creating the trigger.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE TRIGGER set_owner_and_modified_trigger
-            BEFORE INSERT OR UPDATE ON {self.schema_table_name}
-            FOR EACH ROW
-            EXECUTE FUNCTION un0.set_owner_and_modified();
-            """
-        )
-
-    def create_validate_delete_trigger(self) -> str:
-        """
-        Generates a SQL trigger creation statement for validating deletions.
-
-        This method creates a SQL trigger named `validate_delete_trigger` that is
-        executed before a delete operation on the specified table. The trigger
-        calls the `un0.validate_delete()` function to perform validation.
-
-        Returns:
-            str: A SQL statement for creating the `validate_delete_trigger`.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE TRIGGER validate_delete_trigger 
-            BEFORE DELETE ON {self.schema_table_name}
-            FOR EACH ROW
-            EXECUTE FUNCTION un0.validate_delete();
-            """
-        )
-
-    def change_table_owner_and_set_privileges(self) -> str:
-        """
-        Generates a SQL command to change the owner of a table and set privileges.
-
-        The generated SQL command will:
-        - Change the owner of the table to the admin user of the database.
-        - Grant SELECT privileges to the reader and writer roles.
-        - Grant INSERT, UPDATE, and DELETE privileges to the writer role.
-
-        Returns:
-            str: A formatted SQL command string.
-        """
-        return textwrap.dedent(
-            f"""
-            ALTER TABLE {self.schema_table_name} OWNER TO {settings.DB_NAME}_admin;
-            GRANT SELECT ON {self.schema_table_name} TO
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
-            GRANT INSERT, UPDATE, DELETE ON {self.schema_table_name} TO
-                {settings.DB_NAME}_writer;
-            """
-        )
-
-    def enable_auditing(self) -> str:
-        """
-        Generates a SQL query to enable auditing for the specified table.
-
-        Returns:
-            str: A SQL query string that enables auditing for the table.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Enable auditing for the table
-            SELECT audit.enable_tracking('{self.schema_table_name}'::regclass);
-            """
-        )
-
-    def create_history_table(self) -> str:
-        """
-        Creates a SQL statement to generate a history table for auditing purposes.
-
-        The history table will be created in the 'audit' schema_name and will have the same structure
-        as the original table, but without any data. Additionally, it will have an auto-incrementing
-        primary key column and two indexes: one on the primary key and another on the combination
-        of 'id' and 'modified_at' columns.
-
-        Returns:
-            str: A SQL statement to create the history table.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE TABLE audit.{self.schema_name}_{self.table_name}
-            AS (SELECT * FROM {self.schema_name}.{self.table_name})
-            WITH NO DATA;
-
-            ALTER TABLE audit.{self.schema_name}_{self.table_name}
-            ADD COLUMN pk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
-
-            CREATE INDEX {self.schema_name}_{self.table_name}_pk_idx
-            ON audit.{self.schema_name}_{self.table_name} (pk);
-
-            CREATE INDEX {self.schema_name}_{self.table_name}_id_modified_at_idx
-            ON audit.{self.schema_name}_{self.table_name} (id, modified_at);
-            """
-        )
-
-    def create_history_table_trigger(self) -> str:
-        """
-        Generates a SQL trigger function and trigger for auditing changes to a table.
-
-        This method creates a PostgreSQL function and trigger that logs changes to a specified table
-        into an audit table. The function and trigger are created within the same schema_name as the target table.
-
-        Returns:
-            str: A string containing the SQL statements to create the audit function and trigger.
-        """
-        return textwrap.dedent(
-            f"""
-            CREATE OR REPLACE FUNCTION {self.schema_name}.{self.table_name}_audit()
-            RETURNS TRIGGER
-            LANGUAGE plpgsql
-            SECURITY DEFINER
-            AS $$
-            BEGIN
-                INSERT INTO audit.{self.schema_name}_{self.table_name}
-                SELECT *
-                FROM {self.schema_name}.{self.table_name}
-                WHERE id = NEW.id;
-                RETURN NEW;
-            END;
-            $$;
-
-            CREATE OR REPLACE TRIGGER {self.table_name}_audit_trigger
-            AFTER INSERT OR UPDATE ON {self.schema_name}.{self.table_name}
-            FOR EACH ROW EXECUTE FUNCTION {self.schema_name}.{self.table_name}_audit();
+            CREATE OR REPLACE TRIGGER {self.table_name}_{function_name}_trigger
+                {timing} {operation}
+                ON {self.schema_name}.{self.table_name}
+                FOR EACH {for_each}
+                EXECUTE FUNCTION {trigger_scope}{function_name}();
             """
         )
 
@@ -391,80 +56,51 @@ class TableManager(BaseModel):
         self,
         function_name: str,
         function_string: str,
+        function_args: str = "",
+        db_function: bool = True,
+        return_type: str = "TRIGGER",
+        volatile: str = "VOLATILE",
+        include_trigger: bool = False,
+        timing: str = "BEFORE",
         operation: str = "UPDATE",
         for_each: str = "ROW",
-        include_trigger: bool = False,
+        security_definer: str = "",
     ) -> str:
-        """
-        Creates a SQL function and optionally a trigger for a PostgreSQL database.
-
-        Args:
-            function_name (str): The name of the SQL function to create.
-            function_string (str): The body of the SQL function.
-            operation (str, optional): The operation that will fire the trigger (e.g., "UPDATE", "INSERT"). Defaults to "UPDATE".
-            for_each (str, optional): Specifies whether the trigger is for each row or statement. Defaults to "ROW".
-            include_trigger (bool, optional): Whether to include a trigger creation statement. Defaults to False.
-
-        Returns:
-            str: The SQL string to create the function and optionally the trigger.
-        """
+        if function_args and include_trigger is True:
+            raise ValueError(
+                "Function arguments cannot be used when creating a trigger function."
+            )
+        full_function_name = (
+            f"{self.schema_name}.{function_name}"
+            if db_function
+            else f"{self.schema_name}.{self.table_name}_{function_name}"
+        )
         fnct_string = textwrap.dedent(
-            f"CREATE OR REPLACE FUNCTION {self.schema_table_name}_{function_name}()\n"
-            "RETURNS TRIGGER\n"
-            "LANGUAGE plpgsql\n"
-            "VOLATILE\n"
-            "AS $BODY$\n"
-            "BEGIN\n"
-            f"  SET ROLE {settings.DB_NAME}_admin;\n"
-            f"  {function_string}\n"
-            "END;\n"
-            "$BODY$;\n"
+            f"""
+            SET ROLE {settings.DB_NAME}_admin;
+            CREATE OR REPLACE FUNCTION {full_function_name}({function_args})
+            RETURNS {return_type}
+            LANGUAGE plpgsql
+            {volatile}
+            {security_definer}
+            AS $$
+            {function_string}
+            $$;
+            """
         )
-        trggr_string = textwrap.dedent(
-            f"CREATE OR REPLACE TRIGGER {self.table_name}_{function_name}_trigger\n"
-            f"    AFTER {operation}\n"
-            f"    ON {self.schema_table_name}\n"
-            f"    FOR EACH {for_each}\n"
-            f"    EXECUTE FUNCTION {self.schema_table_name}_{function_name}();\n"
+        if not include_trigger:
+            return fnct_string
+        trggr_string = self.create_sql_trigger(
+            function_name,
+            timing=timing,
+            operation=operation,
+            for_each=for_each,
+            db_function=db_function,
         )
-        sql_str = (
-            f"{textwrap.dedent(fnct_string)}\n{textwrap.dedent(trggr_string)}"
-            if include_trigger
-            else fnct_string
-        )
-        return textwrap.dedent(sql_str)
+        return f"{textwrap.dedent(fnct_string)}\n{textwrap.dedent(trggr_string)}"
 
 
-class PropertySqlEmitter(TableManager):
-    """
-    PropertySqlEmitter is a subclass of TableManager that represents the schema_name for a property in a database table.
-    It includes computed fields and methods to generate SQL statements for creating filter fields and their
-    associated table types.
-
-    Attributes:
-        column (Column): The column associated with the property schema_name.
-        model_config (dict): Configuration dictionary allowing arbitrary types.
-
-    Methods:
-        accessor() -> str:
-            Computes and returns the accessor name for the column.
-
-        data_type() -> str:
-            Computes and returns the data type for the column.
-
-        lookups() -> Lookup:
-            Computes and returns the appropriate lookup type for the column based on its foreign keys
-            and Python type.
-
-        label() -> str:
-            Computes and returns a human-readable label for the column by replacing underscores and
-            "_id" suffixes with spaces and capitalizing words.
-
-        create_filter_field_sql() -> str:
-            Generates and returns the SQL statement to create a filter field and its associated table type.
-            The SQL statement performs the following actions:
-    """
-
+class Property(GraphModel):
     # accessor: str <- computed_field
     # data_type: str <- computed_field
     # lookups: Lookup <- computed_field
@@ -506,7 +142,7 @@ class PropertySqlEmitter(TableManager):
         """
         Generates the SQL statement to create a filter field and its associated table type.
 
-        This method constructs and returns a SQL statement that performs the following actions:
+        This method constructs and returns a SQL statement that performs the following operation:
         1. Inserts a new filter field into the `un0.filterfield` table with the specified attributes.
            - If a conflict occurs on the combination of `label` and `graph_type`, the insertion is ignored.
         2. Inserts a relationship between the filter field and a table type into the `un0.filterfield_tabletype` table.
@@ -551,38 +187,7 @@ class PropertySqlEmitter(TableManager):
         )
 
 
-class VertexSqlEmitter(TableManager):
-    """
-    VertexSqlEmitter is a subclass of TableManager that represents the schema_name for a vertex in a graph database.
-    It includes various computed fields and methods to generate SQL statements for creating, updating,
-    deleting, and truncating vertices and their associated edges and properties.
-
-    Attributes:
-        column (Column): The column associated with the vertex.
-        lookups (list[Lookup]): A list of related lookups.
-        table (Table): The table associated with the vertex.
-        model_config (dict): Configuration for the model, allowing arbitrary types.
-
-    Computed Fields:
-        label (str): The label of the vertex, derived from the table name.
-        accessor (str): The accessor for the vertex, derived from the table name.
-        data_type (str): A SQL expression string to cast a column to its specified type.
-        properties (list[PropertySqlEmitter] | None): A list of PropertySqlEmitter instances for each column in the table.
-        edges (list[EdgeSqlEmitter] | None): A list of EdgeSqlEmitter objects representing the foreign key relationships of the table.
-
-    Methods:
-        create_sql() -> str:
-        create_filter_field_sql() -> str:
-        create_label_sql() -> str:
-            Generates SQL code to create a vertex label and its corresponding index in the AgensGraph database.
-        create_insert_function_and_trigger_sql() -> str:
-            Generates SQL code to create a function and trigger for inserting a new vertex record.
-        create_update_function_and_trigger_sql() -> str:
-        create_delete_function_and_trigger_sql() -> str:
-            Generates SQL code for creating a function and trigger to delete a vertex record.
-        create_truncate_function_and_trigger_sql() -> str:
-    """
-
+class Vertex(GraphModel):
     # label: str <- computed_field
     # accessor: str <- computed_field
     # data_type: str <- computed_field
@@ -590,7 +195,7 @@ class VertexSqlEmitter(TableManager):
     # edges: list[EdgeSqlEmitter] | None <- computed_field
 
     table: Table
-    column: Column
+    column_name: str
     lookups: list[Lookup] = related_lookups
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -604,6 +209,10 @@ class VertexSqlEmitter(TableManager):
         return self.table.name
 
     @computed_field
+    def column(self) -> Column:
+        return self.table.columns[self.column_name]
+
+    @computed_field
     def data_type(self) -> str:
         """
         Generates a string representing a SQL expression to cast a column to its specified type.
@@ -614,7 +223,7 @@ class VertexSqlEmitter(TableManager):
         return f"quote_nullable(NEW.{self.column.name}::{self.column.type})"
 
     @computed_field
-    def properties(self) -> list["PropertySqlEmitter"] | None:
+    def properties(self) -> list[Property] | None:
         """
         Generates a list of PropertySqlEmitter instances for each column in the table.
 
@@ -623,11 +232,11 @@ class VertexSqlEmitter(TableManager):
         """
         props = []
         for column in self.table.columns:
-            props.append(PropertySqlEmitter(table=self.table, column=column))
+            props.append(Property(table=self.table, column=column))
         return props
 
     @computed_field
-    def edges(self) -> list["EdgeSqlEmitter"] | None:
+    def edges(self) -> list["Edge"] | None:
         """
         Generates a list of EdgeSqlEmitter objects representing the foreign key relationships
         of the table associated with this instance.
@@ -639,11 +248,11 @@ class VertexSqlEmitter(TableManager):
         edges = []
         for fk in self.table.foreign_keys:
             edges.append(
-                EdgeSqlEmitter(
+                Edge(
                     table=self.table,
                     to_column=fk.parent,
                     start_vertex=self,
-                    end_vertex=VertexSqlEmitter(
+                    end_vertex=Vertex(
                         table=fk.column.table,
                         column=fk.parent,
                     ),
@@ -653,7 +262,7 @@ class VertexSqlEmitter(TableManager):
 
     # Functions to generate sql statements
 
-    def create_sql(self) -> str:
+    def emit_sql(self) -> str:
         """
         Generates a complete SQL script by combining various SQL components.
 
@@ -731,15 +340,17 @@ class VertexSqlEmitter(TableManager):
             str: The SQL code to create the vertex label and index.
         """
         return textwrap.dedent(
-            f"\n-- Create the vertex label and index\n"
-            f"\nDO $$ \n"
-            f"BEGIN\n"
-            f"    IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label\n"
-            f"    WHERE name = '{self.label}') THEN\n"
-            f"        PERFORM ag_catalog.create_vlabel('graph', '{self.label}');\n"
-            f'        CREATE INDEX ON graph."{self.label}" (id);\n'
-            f"    END IF;\n"
-            f"END $$;\n"
+            f"""
+            -- Create the vertex label and index
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label
+                WHERE name = '{self.label}') THEN
+                    PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
+                    CREATE INDEX ON graph."{self.label}" (id);
+                END IF;
+            END $$;
+            """
         )
 
     def create_insert_function_and_trigger_sql(self) -> str:
@@ -767,23 +378,28 @@ class VertexSqlEmitter(TableManager):
             prop_val_str = ", " + ", ".join(
                 [prop.data_type for prop in self.properties]
             )
+
+        sql = f"""
+            -- Create the insert vertex function and trigger
+            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+                CREATE (v:{self.label} {{{prop_key_str}}})
+            $$) AS (a agtype);'{prop_val_str});
+            -- Create the edges for the vertex on insert
+            {edge_str}
+            RETURN NEW;
+            """
+
         sql = textwrap.dedent(
-            f"\n-- Create the insert vertex function and trigger\n"
-            f"\nEXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$\n"
-            f"    CREATE (v:{self.label} {{{prop_key_str}}})\n"
-            f"$$) AS (a agtype);'{prop_val_str});\n"
-            f"\n-- Create the edges for the vertex on insert\n"
-            f"{edge_str}\n"
-            f"RETURN NEW;\n"
-        )
-        return textwrap.dedent(
             self.create_sql_function(
                 "insert_vertex",
                 sql,
                 operation="INSERT",
                 include_trigger=True,
+                db_function=False,
             )
         )
+        print(sql)
+        return sql
 
     def create_update_function_and_trigger_sql(self) -> str:
         """
@@ -810,8 +426,7 @@ class VertexSqlEmitter(TableManager):
             prop_val_str = ", " + ", ".join(
                 [prop.data_type for prop in self.properties]
             )
-        sql = textwrap.dedent(
-            f"""
+        sql = f"""
             EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                 MATCH (v:{self.label} {{id: %s}})
                 {prop_key_str}
@@ -819,7 +434,7 @@ class VertexSqlEmitter(TableManager):
             {edge_str}
             RETURN NEW;
             """
-        )
+
         return textwrap.dedent(
             self.create_sql_function(
                 "update_vertex",
@@ -836,15 +451,14 @@ class VertexSqlEmitter(TableManager):
         Returns:
             str: The SQL code for creating the delete function and trigger.
         """
-        sql = textwrap.dedent(
-            f"""
+        sql = f"""
             EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                 MATCH (v:{self.label} {{id: %s}})
                 DETACH DELETE v
             $$) AS (a agtype);', quote_nullable(OLD.id));
             RETURN OLD;
             """
-        )
+
         return textwrap.dedent(
             self.create_sql_function(
                 "delete_vertex",
@@ -866,15 +480,14 @@ class VertexSqlEmitter(TableManager):
         Returns:
             str: The SQL string to create the function and trigger.
         """
-        sql = textwrap.dedent(
-            f"""
+        sql = f"""
             EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
                 MATCH (v:{self.label})
                 DETACH DELETE v
             $$) AS (a agtype);');
             RETURN OLD;
             """
-        )
+
         return textwrap.dedent(
             self.create_sql_function(
                 "truncate_vertex",
@@ -886,7 +499,7 @@ class VertexSqlEmitter(TableManager):
         )
 
 
-class EdgeSqlEmitter(TableManager):
+class Edge(GraphModel):
     """
     EdgeSqlEmitter is a class that represents the schema_name for an edge in a graph database. It extends the TableManager class and includes additional attributes and methods specific to edges.
     Attributes:
@@ -921,8 +534,8 @@ class EdgeSqlEmitter(TableManager):
 
     table: Table
     to_column: Column
-    start_vertex: VertexSqlEmitter
-    end_vertex: VertexSqlEmitter
+    start_vertex: Vertex
+    end_vertex: Vertex
     lookups: list[Lookup] = related_lookups
     in_vertex: bool = True
 
@@ -937,7 +550,7 @@ class EdgeSqlEmitter(TableManager):
         return self.to_column.name
 
     @computed_field
-    def properties(self) -> list["PropertySqlEmitter"]:
+    def properties(self) -> list[Property]:
         """
         Retrieves a list of PropertySqlEmitter objects for the current table.
 
@@ -949,7 +562,7 @@ class EdgeSqlEmitter(TableManager):
         if not self.in_vertex:
             for column in self.table.columns:
                 if not column.foreign_keys:
-                    props.append(PropertySqlEmitter(table=self.table, column=column))
+                    props.append(Property(table=self.table, column=column))
         return props
 
     # Functions to generate sql statements

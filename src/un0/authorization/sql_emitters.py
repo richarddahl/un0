@@ -125,7 +125,7 @@ class InsertTableOperationFnctnTrggrSQL(SQLEmitter):
         )
 
 
-class ValidateGroupInsertSQLEmitter(SQLEmitter):
+class ValidateGroupInsertSQLSQL(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = f"""
             DECLARE

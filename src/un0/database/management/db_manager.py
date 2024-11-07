@@ -9,15 +9,15 @@ import textwrap
 from sqlalchemy import text, create_engine, Engine
 
 from un0.database.management.sql_emitters import (
-    DropDatabaseEmitter,
-    DropRolesEmitter,
-    CreateRolesEmitter,
-    CreateDatabaseEmitter,
-    CreateSchemasAndExtensionsEmitter,
-    PrivilegeAndSearchPathEmitter,
-    PGULIDSQLEmitter,
-    CreateTokenSecretEmitter,
-    TablePrivilegeEmitter,
+    DropDatabaseSQL,
+    DropRolesSQL,
+    CreateRolesSQL,
+    CreateDatabaseSQL,
+    CreateSchemasAndExtensionsSQL,
+    PrivilegeAndSearchPathSQL,
+    PGULIDSQLSQL,
+    CreateTokenSecretSQL,
+    TablePrivilegeSQL,
 )
 from un0.database.models import Model
 
@@ -31,7 +31,7 @@ class DBManager:
         # to prevent the print statements from being displayed in the test output.
         if settings.ENV == "test":
             output_stream = io.StringIO()
-            sys.stdout = output_stream
+            # sys.stdout = output_stream
 
         self.create_roles_and_db()
         self.create_schemas_extensions_and_tables()
@@ -42,6 +42,8 @@ class DBManager:
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for model in Model.registry.values():
                 print(f"Creating the {model.__name__} table\n")
+                # if model.__name__ == "User":
+                # print(model.emit_sql())
                 conn.execute(text(model.emit_sql()))
                 conn.commit()
             conn.close()
@@ -85,9 +87,9 @@ class DBManager:
                 f"\nDropping the db: {settings.DB_NAME} and all the roles for the application\n"
             )
             # Drop the Database
-            conn.execute(text(DropDatabaseEmitter().emit_sql()))
+            conn.execute(text(DropDatabaseSQL().emit_sql()))
             print(f"Database dropped: {settings.DB_NAME} \n")
-            conn.execute(text(DropRolesEmitter().emit_sql()))
+            conn.execute(text(DropRolesSQL().emit_sql()))
             print(f"All Roles dropped for database: {settings.DB_NAME} \n")
             conn.close()
         eng.dispose()
@@ -201,7 +203,7 @@ class DBManager:
 
         This method establishes a connection to the PostgreSQL database using the provided
         engine configuration. It then executes SQL commands to create roles and a database
-        as specified by the `CreateRolesEmitter` and `CreateDatabaseEmitter` classes.
+        as specified by the `CreateRolesSQL` and `CreateDatabaseSQL` classes.
 
         Steps performed:
         1. Connects to the PostgreSQL database with the role 'postgres'.
@@ -223,8 +225,8 @@ class DBManager:
                 f"\nCreating the db: {settings.DB_NAME}, and roles, users, and app schema_name.\n"
             )
             print("Creating the roles and the database\n")
-            conn.execute(text(CreateRolesEmitter().emit_sql()))
-            conn.execute(text(CreateDatabaseEmitter().emit_sql()))
+            conn.execute(text(CreateRolesSQL().emit_sql()))
+            conn.execute(text(CreateDatabaseSQL().emit_sql()))
             conn.close()
         eng.dispose()
 
@@ -241,14 +243,16 @@ class DBManager:
         """
         # Connect to the new database as the postgres user
         print("Connect to new db")
-        print("Create schemas, fncts, and trgrs, and set privs and paths.\n")
+        print(
+            "Create schemas, functions, and triggers, then set privileges and paths.\n"
+        )
         eng = self.engine(db_role="postgres")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             print("Creating the schemas and extensions\n")
-            conn.execute(text(CreateSchemasAndExtensionsEmitter().emit_sql()))
+            conn.execute(text(CreateSchemasAndExtensionsSQL().emit_sql()))
 
             print("Configuring the privileges for the schemas and setting the paths\n")
-            conn.execute(text(PrivilegeAndSearchPathEmitter().emit_sql()))
+            conn.execute(text(PrivilegeAndSearchPathSQL().emit_sql()))
 
             conn.close()
         eng.dispose()
@@ -275,16 +279,16 @@ class DBManager:
         eng = self.engine(db_role=f"{settings.DB_NAME}_login")
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             print("Creating the token_secret table, function, and trigger\n")
-            conn.execute(text(CreateTokenSecretEmitter().emit_sql()))
+            conn.execute(text(CreateTokenSecretSQL().emit_sql()))
 
             print("Creating the pgulid function\n")
-            conn.execute(text(PGULIDSQLEmitter().emit_sql()))
+            conn.execute(text(PGULIDSQLSQL().emit_sql()))
 
             # Create the tables
             print("Creating the database tables\n")
             metadata.create_all(bind=conn)
 
             print("Setting the table privileges\n")
-            conn.execute(text(TablePrivilegeEmitter().emit_sql()))
+            conn.execute(text(TablePrivilegeSQL().emit_sql()))
             conn.close()
         eng.dispose()
