@@ -351,21 +351,26 @@ class Vertex(GraphModel):
         Returns:
             str: The SQL code to create the vertex label and index.
         """
-        return textwrap.dedent(
+        from psycopg2 import sql
+
+        query = sql.SQL(
             """
             DO $$
-            DECLARE
-                label_name TEXT := %s;
             BEGIN
-                SET ROLE %s_admin;
+                SET ROLE {db_name}_admin;
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = label_name) THEN
-                    PERFORM ag_catalog.create_vlabel('graph', label_name);
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', label_name);
+                WHERE name = {label_name}) THEN
+                    PERFORM ag_catalog.create_vlabel('graph', {label_name});
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', {label_name});
                 END IF;
             END $$;
-            """ % (self.label, settings.DB_NAME)
+            """
+        ).format(
+            db_name=sql.Identifier(settings.DB_NAME),
+            label_name=sql.Identifier(self.label)
         )
+
+        return query.as_string()
 
     def create_vertex_label_sql_old(self) -> str:
         """
