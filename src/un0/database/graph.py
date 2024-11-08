@@ -27,6 +27,9 @@ from un0.filters.enums import (
 from un0.config import settings
 
 
+ADMIN_ROLE = f"{settings.DB_NAME}_admin"
+
+
 class GraphModel(BaseModel):
     table_name: str
     schema_name: str
@@ -350,7 +353,7 @@ class Vertex(GraphModel):
             """
             DO $$
             BEGIN
-                SET ROLE {}_admin;
+                SET ROLE {};
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
                 WHERE name = {}) THEN
                     PERFORM ag_catalog.create_vlabel('graph', {});
@@ -359,12 +362,13 @@ class Vertex(GraphModel):
             END $$;
             """
         ).format(
-            Identifier(settings.DB_NAME),
+            Identifier(ADMIN_ROLE),
             Literal(self.label),
             Literal(self.label),
-            Identifier(self.label)
+            Literal(self.label),
         )
-        return query.as_string(conn)
+        print(query.as_string())
+        return query.as_string()
 
     def create_vertex_label_sql_new(self) -> str:
         query = """
