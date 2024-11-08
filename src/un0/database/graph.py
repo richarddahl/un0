@@ -345,7 +345,7 @@ class Vertex(GraphModel):
             """
         )
 
-    def create_vertex_label_sql(self) -> str:
+    def create_vertex_label_sql(self, conn) -> str:
         query = SQL(
             """
             DO $$
