@@ -345,27 +345,33 @@ class Vertex(GraphModel):
             """
         )
 
-    def create_vertex_label_sql(self, conn) -> str:
-        query = SQL(
-            """
+    def create_vertex_label_sql(self) -> str:
+        query = """
             DO $$
             BEGIN
-                SET ROLE %s_admin;
+                SET ROLE {}_admin;
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = %s) THEN
-                    PERFORM ag_catalog.create_vlabel('graph', %s);
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', %s);
+                WHERE name = '{}') THEN
+                    PERFORM ag_catalog.create_vlabel('graph', '{}');
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', '{}');
                 END IF;
             END $$;
-            """
-        ).format(
-            Identifier(settings.DB_NAME),
-            Literal(self.label),
-            Literal(self.label),
-            Identifier(self.label),
-        )
+            """.format(settings.DB_NAME, self.label, self.label, self.label)
+        return query
 
-        return query.as_string(conn)
+    def create_vertex_label_sql_new(self) -> str:
+        query = """
+            DO $$
+            BEGIN
+                SET ROLE {}_admin;
+                IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
+                WHERE name = '{}') THEN
+                    PERFORM ag_catalog.create_vlabel('graph', '{}');
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', '{}');
+                END IF;
+            END $$;
+            """.format(settings.DB_NAME, self.label, self.label, self.label)
+        return query
 
     def create_vertex_label_sql_old(self) -> str:
         """
