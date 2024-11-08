@@ -357,7 +357,7 @@ class Vertex(GraphModel):
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
                 WHERE name = {}) THEN
                     PERFORM ag_catalog.create_vlabel('graph', {});
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', {});
+                    EXECUTE format('CREATE INDEX ON graph.{} (id);');
                 END IF;
             END $$;
             """
@@ -367,7 +367,7 @@ class Vertex(GraphModel):
             Literal(self.label),
             Identifier(self.label),
         )
-        return query.as_string(conn)
+        return query.as_string()
 
     def create_vertex_label_sql_new(self) -> str:
         query = """
