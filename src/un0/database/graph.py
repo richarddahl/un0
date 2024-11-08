@@ -352,17 +352,19 @@ class Vertex(GraphModel):
             str: The SQL code to create the vertex label and index.
         """
         return textwrap.dedent(
-            f"""
+            """
             DO $$
+            DECLARE
+                label_name TEXT := %s;
             BEGIN
-                SET ROLE {settings.DB_NAME}_admin;
+                SET ROLE %s_admin;
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = '{self.label}') THEN
-                    PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
-                    CREATE INDEX ON graph."{self.label}" (id);
+                WHERE name = label_name) THEN
+                    PERFORM ag_catalog.create_vlabel('graph', label_name);
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', label_name);
                 END IF;
             END $$;
-            """
+            """ % (self.label, settings.DB_NAME)
         )
 
     def create_vertex_label_sql_old(self) -> str:
