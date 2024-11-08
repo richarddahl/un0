@@ -346,31 +346,31 @@ class Vertex(GraphModel):
         )
 
     def create_vertex_label_sql(self) -> str:
-        """
-        Generates SQL code to create a vertex label and its corresponding index
-        in the AgensGraph database if it does not already exist.
-
-        Returns:
-            str: The SQL code to create the vertex label and index.
-        """
-
         query = SQL(
             """
             DO $$
             BEGIN
-                SET ROLE %s_admin;
+                SET ROLE {}_admin;
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = %s) THEN
-                    PERFORM ag_catalog.create_vlabel('graph', %s);
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', %s);
+                WHERE name = {}) THEN
+                    PERFORM ag_catalog.create_vlabel('graph', {});
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', {});
                 END IF;
             END $$;
             """
         ).format(
-            Identifier(settings.DB_NAME),
-            Identifier(self.label),
-            Identifier(self.label),
-            Identifier(self.label),
+            Identifier(
+                settings.DB_NAME,
+            ),
+            Identifier(
+                self.label,
+            ),
+            Identifier(
+                self.label,
+            ),
+            Identifier(
+                self.label,
+            ),
         )
 
         return query.as_string()
