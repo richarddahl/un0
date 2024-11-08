@@ -26,8 +26,8 @@ from un0.config import settings
 
 
 class GraphModel(BaseModel):
-    table_name: Optional[str] = None
-    schema_name: Optional[str] = None
+    table_name: str
+    schema_name: str
 
     def create_sql_trigger(
         self,
@@ -64,7 +64,7 @@ class GraphModel(BaseModel):
         timing: str = "BEFORE",
         operation: str = "UPDATE",
         for_each: str = "ROW",
-        security_definer: str = "",
+        security_definer: str = "SECURITY DEFINER",
     ) -> str:
         if function_args and include_trigger is True:
             raise ValueError(
@@ -81,13 +81,13 @@ class GraphModel(BaseModel):
             CREATE OR REPLACE FUNCTION {full_function_name}({function_args})
             RETURNS {return_type}
             LANGUAGE plpgsql
-            {volatile}
-            {security_definer}
+            SECURITY DEFINER
             AS $$
             {function_string}
             $$;
             """
         )
+
         if not include_trigger:
             return fnct_string
         trggr_string = self.create_sql_trigger(
@@ -232,7 +232,14 @@ class Vertex(GraphModel):
         """
         props = []
         for column in self.table.columns:
-            props.append(Property(table=self.table, column=column))
+            props.append(
+                Property(
+                    schema_name=self.schema_name,
+                    table_name=self.table_name,
+                    table=self.table,
+                    column=column,
+                )
+            )
         return props
 
     @computed_field
@@ -249,12 +256,17 @@ class Vertex(GraphModel):
         for fk in self.table.foreign_keys:
             edges.append(
                 Edge(
+                    schema_name=self.schema_name,
+                    table_name=self.table_name,
                     table=self.table,
                     to_column=fk.parent,
                     start_vertex=self,
                     end_vertex=Vertex(
+                        schema_name=fk.column.table.schema,
+                        table_name=fk.column.table.name,
                         table=fk.column.table,
                         column=fk.parent,
+                        column_name=fk.column.name,
                     ),
                 )
             )
@@ -275,12 +287,12 @@ class Vertex(GraphModel):
         Returns:
             str: The complete SQL script as a single string.
         """
-        sql = self.create_label_sql()
-        sql += f"\n{self.create_insert_function_and_trigger_sql()}"
-        sql += f"\n{self.create_update_function_and_trigger_sql()}"
-        sql += f"\n{self.create_delete_function_and_trigger_sql()}"
-        sql += f"\n{self.create_truncate_function_and_trigger_sql()}"
-        sql += f"\n{self.create_filter_field_sql()}"
+        sql = self.create_vertex_label_sql()
+        sql += f"\n{self.insert_vertex_sql()}"
+        sql += f"\n{self.update_vertext_sql()}"
+        sql += f"\n{self.delete_vertext_sql()}"
+        sql += f"\n{self.truncate_vertext_sql()}"
+        # sql += f"\n{self.create_filter_field_sql()}"
         return textwrap.dedent(sql)
 
     def create_filter_field_sql(self) -> str:
@@ -331,7 +343,7 @@ class Vertex(GraphModel):
             """
         )
 
-    def create_label_sql(self) -> str:
+    def create_vertex_label_sql(self) -> str:
         """
         Generates SQL code to create a vertex label and its corresponding index
         in the AgensGraph database if it does not already exist.
@@ -341,10 +353,10 @@ class Vertex(GraphModel):
         """
         return textwrap.dedent(
             f"""
-            -- Create the vertex label and index
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label
+                SET ROLE {settings.DB_NAME}_admin;
+                IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
                 WHERE name = '{self.label}') THEN
                     PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
                     CREATE INDEX ON graph."{self.label}" (id);
@@ -353,7 +365,29 @@ class Vertex(GraphModel):
             """
         )
 
-    def create_insert_function_and_trigger_sql(self) -> str:
+    def create_vertex_label_sql_old(self) -> str:
+        """
+        Generates SQL code to create a vertex label and its corresponding index
+        in the AgensGraph database if it does not already exist.
+
+        Returns:
+            str: The SQL code to create the vertex label and index.
+        """
+        return textwrap.dedent(
+            f"""
+            DO $$
+            BEGIN
+                SET ROLE {settings.DB_NAME}_admin;
+                IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
+                WHERE name = '{self.label}') THEN
+                    PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
+                    CREATE INDEX ON graph."{self.label}" (id);
+                END IF;
+            END $$;
+            """
+        )
+
+    def insert_vertex_sql(self) -> str:
         """
         Generates SQL code to create a function and trigger for inserting a new vertex record
         when a new relational table record is inserted.
@@ -369,39 +403,34 @@ class Vertex(GraphModel):
         prop_val_str = ""
         edge_str = ""
         if self.edges:
-            edge_str = "\n".join(
-                [edge.create_insert_function_and_trigger_sql() for edge in self.edges]
-            )
+            edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
 
         if self.properties:
             prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", " + ", ".join(
-                [prop.data_type for prop in self.properties]
-            )
+            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
 
-        sql = f"""
-            -- Create the insert vertex function and trigger
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                CREATE (v:{self.label} {{{prop_key_str}}})
-            $$) AS (a agtype);'{prop_val_str});
-            -- Create the edges for the vertex on insert
-            {edge_str}
-            RETURN NEW;
+        function_string = f"""
+            DECLARE 
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                        CREATE (v:{self.label} {{{prop_key_str}}})
+                    $graph$) AS (a agtype);', {prop_val_str});
+            BEGIN
+                -- HERE
+                EXECUTE _sql;
+                --{edge_str}
+                RETURN NEW;
+            END;
             """
 
-        sql = textwrap.dedent(
-            self.create_sql_function(
-                "insert_vertex",
-                sql,
-                operation="INSERT",
-                include_trigger=True,
-                db_function=False,
-            )
+        return self.create_sql_function(
+            "insert_vertex",
+            function_string,
+            operation="INSERT",
+            include_trigger=True,
+            db_function=False,
         )
-        print(sql)
-        return sql
 
-    def create_update_function_and_trigger_sql(self) -> str:
+    def update_vertext_sql(self) -> str:
         """
         Generates SQL code for creating an update function and trigger for a vertex record.
 
@@ -416,9 +445,7 @@ class Vertex(GraphModel):
         prop_val_str = ""
         edge_str = ""
         if self.edges:
-            edge_str = "\n".join(
-                [edge.create_update_function_and_trigger_sql() for edge in self.edges]
-            )
+            edge_str = "\n".join([edge.update_edge_sql() for edge in self.edges])
         if self.properties:
             prop_key_str = "SET " + ", ".join(
                 f"v.{prop.accessor} = %s" for prop in self.properties
@@ -426,24 +453,28 @@ class Vertex(GraphModel):
             prop_val_str = ", " + ", ".join(
                 [prop.data_type for prop in self.properties]
             )
-        sql = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                MATCH (v:{self.label} {{id: %s}})
-                {prop_key_str}
-            $$) AS (a agtype);', quote_nullable(NEW.id){prop_val_str});
-            {edge_str}
-            RETURN NEW;
+        function_string = f"""
+            DECLARE
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                    MATCH (v:{self.label} {{id: %s}})
+                    {prop_key_str}
+                $graph$) AS (a agtype);', quote_nullable(NEW.id){prop_val_str});
+            BEGIN
+                EXECUTE _sql;
+                {edge_str}
+                RETURN NEW;
+            END;
             """
-
         return textwrap.dedent(
             self.create_sql_function(
                 "update_vertex",
-                sql,
+                function_string,
                 include_trigger=True,
+                db_function=False,
             )
         )
 
-    def create_delete_function_and_trigger_sql(self) -> str:
+    def delete_vertext_sql(self) -> str:
         """
         Generates SQL code for creating a function and trigger to delete a vertex record
         from a graph database when its corresponding relational table record is deleted.
@@ -451,24 +482,28 @@ class Vertex(GraphModel):
         Returns:
             str: The SQL code for creating the delete function and trigger.
         """
-        sql = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                MATCH (v:{self.label} {{id: %s}})
-                DETACH DELETE v
-            $$) AS (a agtype);', quote_nullable(OLD.id));
-            RETURN OLD;
+        function_string = f"""
+            DECLARE
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                    MATCH (v:{self.label} {{id: %s}})
+                    DETACH DELETE v
+                $graph$) AS (a agtype);', quote_nullable(OLD.id));
+            BEGIN
+                EXECUTE _sql;
+                RETURN OLD;
+            END;
             """
-
         return textwrap.dedent(
             self.create_sql_function(
                 "delete_vertex",
-                sql,
+                function_string,
                 operation="DELETE",
                 include_trigger=True,
+                db_function=False,
             )
         )
 
-    def create_truncate_function_and_trigger_sql(self) -> str:
+    def truncate_vertext_sql(self) -> str:
         """
         Generates SQL function and trigger for truncating a relation table.
 
@@ -480,54 +515,31 @@ class Vertex(GraphModel):
         Returns:
             str: The SQL string to create the function and trigger.
         """
-        sql = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                MATCH (v:{self.label})
-                DETACH DELETE v
-            $$) AS (a agtype);');
-            RETURN OLD;
+        function_string = f"""
+            DECLARE
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                    MATCH (v:{self.label})
+                    DETACH DELETE v
+                $graph$) AS (a agtype);');
+            BEGIN
+                EXECUTE _sql;
+                RETURN OLD;
+            END;
             """
 
         return textwrap.dedent(
             self.create_sql_function(
                 "truncate_vertex",
-                sql,
-                operation="truncate",
+                function_string,
+                operation="TRUNCATE",
                 for_each="STATEMENT",
                 include_trigger=True,
+                db_function=False,
             )
         )
 
 
 class Edge(GraphModel):
-    """
-    EdgeSqlEmitter is a class that represents the schema_name for an edge in a graph database. It extends the TableManager class and includes additional attributes and methods specific to edges.
-    Attributes:
-        table (Table): The table associated with the edge.
-        to_column (Column): The column representing the edge.
-        start_vertex (VertexSqlEmitter): The schema_name of the start vertex.
-        end_vertex (VertexSqlEmitter): The schema_name of the end vertex.
-        lookups (list[Lookup]): A list of related lookups.
-        in_vertex (bool): A flag indicating if the edge is in a vertex. Defaults to True.
-        model_config (dict): Configuration for the model, allowing arbitrary types.
-    Methods:
-        label() -> str:
-            Computes and returns the label for the edge.
-        accessor() -> str:
-            Computes and returns the accessor for the edge.
-        properties() -> list["PropertySqlEmitter"]:
-        create_sql() -> str:
-        create_filter_field_sql() -> str:
-            Returns the SQL to insert the edge as a filter field and creates the filterfield_tabletype records for the edge.
-        create_label_sql() -> str:
-        create_insert_function_and_trigger_sql() -> str:
-            Generates an SQL string to create a function and trigger for inserting a relationship between two vertices in a graph database.
-        create_update_function_and_trigger_sql() -> str:
-        create_delete_function_and_trigger_sql() -> str:
-        create_truncate_function_and_trigger_sql() -> str:
-            Generates the SQL command to create a function and trigger for truncating relationships in a graph database.
-    """
-
     # label: str <- computed_field
     # accessor: str <- computed_field
     # properties: list[PropertySqlEmitter] <- computed_field
@@ -568,47 +580,16 @@ class Edge(GraphModel):
     # Functions to generate sql statements
 
     def create_sql(self) -> str:
-        """
-        Generates the complete SQL string for creating various SQL functions and triggers.
-
-        This method constructs SQL statements for creating label SQL, insert, update, delete,
-        and truncate functions and their respective triggers. It also includes SQL for
-        filtering fields. The generated SQL is dedented before being returned.
-
-        Returns:
-            str: The complete SQL string for creating the necessary functions and triggers.
-        """
-        sql = self.create_label_sql()
-        sql += self.create_sql_function(
-            "insert_edge",
-            self.create_insert_function_and_trigger_sql(),
-            operation="INSERT",
-            for_each="ROW",
-            include_trigger=True,
+        return "\n".join(
+            [
+                self.create_label_sql(),
+                self.insert_edge_sql(),
+                self.update_edge_sql(),
+                self.delete_edge_sql(),
+                self.truncate_edge_sql(),
+                self.create_filter_field_sql(),
+            ]
         )
-        sql += self.create_sql_function(
-            "update_edge",
-            self.create_update_function_and_trigger_sql(),
-            operation="UPDATE",
-            for_each="ROW",
-            include_trigger=True,
-        )
-        sql += self.create_sql_function(
-            "delete_edge",
-            self.create_delete_function_and_trigger_sql(),
-            operation="DELETE",
-            for_each="ROW",
-            include_trigger=True,
-        )
-        sql += self.create_sql_function(
-            "truncate_edge",
-            self.create_truncate_function_and_trigger_sql(),
-            operation="TRUNCATE",
-            for_each="STATEMENT",
-            include_trigger=True,
-        )
-        sql += self.create_filter_field_sql()
-        return textwrap.dedent(sql)
 
     def create_filter_field_sql(self) -> str:
         """Returns the sql to insert the Edge as a filter field
@@ -676,15 +657,17 @@ class Edge(GraphModel):
             f"""
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label WHERE name = '{self.label}') THEN
-                    PERFORM ag_catalog.create_elabel('graph', '{self.label}');
-                    CREATE INDEX ON graph."{self.label}" (start_id, end_id);
+                SET ROLE {settings.DB_NAME}_admin;
+                IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_label
+                    WHERE name = '{self.label}') THEN
+                        PERFORM ag_catalog.create_elabel('graph', '{self.label}');
+                        CREATE INDEX ON graph."{self.label}" (start_id, end_id);
                 END IF;
             END $$;
             """
         )
 
-    def create_insert_function_and_trigger_sql(self) -> str:
+    def insert_edge_sql(self) -> str:
         """
         Generates an SQL string to create a function and trigger for inserting
         a relationship between two vertices in a graph database.
@@ -700,21 +683,33 @@ class Edge(GraphModel):
         prop_val_str = ""
         if self.properties:
             prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", " + ", ".join(
-                [prop.data_type for prop in self.properties]
-            )
-        sql = f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
-                MATCH (v:{self.start_vertex.label} {{id: %s}})
-                MATCH (w:{self.end_vertex.label} {{id: %s}})
-                CREATE (v)-[e:{self.label} {{{prop_key_str}}}] ->(w)
-            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type}{prop_val_str});
-            """
-        # if not self.in_vertex:
-        #    sql += "\nRETURN NEW;"
-        return textwrap.dedent(sql)
+            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
+        function_string = f"""
+            DECLARE
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                    MATCH (v:{self.start_vertex.label} {{id: %s}})
+                    MATCH (w:{self.end_vertex.label} {{id: %s}})
+                    CREATE (v)-[e:{self.label} {{{prop_key_str}}}]->(w)
+                $graph$) AS (a agtype);', quote_nullable(NEW.id), quote_nullable(NEW.id){prop_val_str});
 
-    def create_update_function_and_trigger_sql(self) -> str:
+            BEGIN
+                EXECUTE _sql;
+                RETURN NEW;
+            END;
+            """
+        return textwrap.dedent(function_string)
+
+        return textwrap.dedent(
+            self.create_sql_function(
+                "insert_edge",
+                function_string,
+                operation="INSERT",
+                include_trigger=True,
+                db_function=False,
+            )
+        )
+
+    def update_edge_sql(self) -> str:
         """
         Generates the SQL string for creating an update function and trigger in a graph database.
 
@@ -736,20 +731,29 @@ class Edge(GraphModel):
             prop_val_str = ", " + ", ".join(
                 [prop.data_type for prop in self.properties]
             )
-        return textwrap.dedent(
-            f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+        function_string = f"""
+            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $graph$
                 MATCH (v:{self.start_vertex.label} {{id: %s}})
                 MATCH (w:{self.end_vertex.label} {{id: %s}})
                 MATCH (v)-[o:{self.label}] ->(w)
                 DELETE o
                 CREATE (v)-[e:{self.label}] ->(w)
                 {prop_key_str}
-            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type}{prop_val_str});
+            $graph$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type}{prop_val_str});
             """
+        return textwrap.dedent(function_string)
+
+        return textwrap.dedent(
+            self.create_sql_function(
+                "update_edge",
+                function_string,
+                operation="UPDATE",
+                include_trigger=True,
+                db_function=False,
+            )
         )
 
-    def create_delete_function_and_trigger_sql(self) -> str:
+    def delete_edge_sql(self) -> str:
         """
         Generates the SQL string for creating a delete function and trigger.
 
@@ -760,18 +764,27 @@ class Edge(GraphModel):
         Returns:
             str: The formatted SQL string for deleting the specified relationship.
         """
-        return textwrap.dedent(
-            f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+        function_string = f"""
+            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $graph$
                 MATCH (v:{self.start_vertex.label} {{id: %s}})
                 MATCH (w:{self.end_vertex.label} {{id: %s}})
                 MATCH (v)-[o:{self.label}] ->(w)
                 DELETE o
-            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type});
+            $graph$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type});
             """
+        return textwrap.dedent(function_string)
+
+        return textwrap.dedent(
+            self.create_sql_function(
+                "delete_edge",
+                function_string,
+                operation="UPDATE",
+                include_trigger=True,
+                db_function=False,
+            )
         )
 
-    def create_truncate_function_and_trigger_sql(self) -> str:
+    def truncate_edge_sql(self) -> str:
         """
         Generates the SQL command to create a function and trigger for truncating
         relationships in a graph database.
@@ -784,13 +797,22 @@ class Edge(GraphModel):
         Returns:
             str: The formatted SQL command string.
         """
-        return textwrap.dedent(
-            f"""
-            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $$
+        function_string = f"""
+            EXECUTE FORMAT('SELECT * FROM cypher(''graph'', $graph$
                 MATCH (v:{self.start_vertex.label} {{id: %s}})
                 MATCH (w:{self.end_vertex.label} {{id: %s}})
                 MATCH (v)-[o:{self.label}] ->(w)
                 DELETE o
-            $$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type});
+            $graph$) AS (e agtype);', {self.start_vertex.data_type}, {self.end_vertex.data_type});
             """
+
+        return textwrap.dedent(
+            self.create_sql_function(
+                "truncate_edge",
+                function_string,
+                operation="UPDATE",
+                include_trigger=True,
+                for_each="STATEMENT",
+                db_function=False,
+            )
         )
