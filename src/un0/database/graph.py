@@ -350,27 +350,19 @@ class Vertex(GraphModel):
             """
             DO $$
             BEGIN
-                SET ROLE {}_admin;
+                SET ROLE %s_admin;
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = {}) THEN
-                    PERFORM ag_catalog.create_vlabel('graph', {});
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', {});
+                WHERE name = %s) THEN
+                    PERFORM ag_catalog.create_vlabel('graph', %s);
+                    EXECUTE format('CREATE INDEX ON graph.%I (id);', %s);
                 END IF;
             END $$;
             """
         ).format(
-            Identifier(
-                settings.DB_NAME,
-            ),
-            Identifier(
-                self.label,
-            ),
-            Identifier(
-                self.label,
-            ),
-            Identifier(
-                self.label,
-            ),
+            Identifier(settings.DB_NAME),
+            Identifier(self.label),
+            Identifier(self.label),
+            Identifier(self.label),
         )
 
         return query.as_string()
