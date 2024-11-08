@@ -365,10 +365,9 @@ class Vertex(GraphModel):
             Identifier(ADMIN_ROLE),
             Literal(self.label),
             Literal(self.label),
-            Literal(self.label),
+            Identifier(self.label),
         )
-        print(query.as_string())
-        return query.as_string()
+        return query.as_string(conn)
 
     def create_vertex_label_sql_new(self) -> str:
         query = """
