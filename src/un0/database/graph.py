@@ -365,7 +365,7 @@ class Vertex(GraphModel):
             Identifier(self.label),
         )
 
-        return query.as_string(conn)
+        return query.as_string()
 
     def create_vertex_label_sql_old(self) -> str:
         """
