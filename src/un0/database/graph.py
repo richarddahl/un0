@@ -4,6 +4,8 @@
 
 import textwrap
 
+from psycopg.sql import SQL, Identifier, Literal
+
 from typing import Optional
 
 from datetime import datetime, date, time
@@ -351,9 +353,8 @@ class Vertex(GraphModel):
         Returns:
             str: The SQL code to create the vertex label and index.
         """
-        from psycopg2 import sql
 
-        query = sql.SQL(
+        query = SQL(
             """
             DO $$
             BEGIN
@@ -366,8 +367,8 @@ class Vertex(GraphModel):
             END $$;
             """
         ).format(
-            db_name=sql.Identifier(settings.DB_NAME),
-            label_name=sql.Identifier(self.label)
+            db_name=Literal(settings.DB_NAME),
+            label_name=Identifier(self.label),
         )
 
         return query.as_string()
