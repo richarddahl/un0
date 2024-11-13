@@ -2,102 +2,138 @@
 #
 # SPDX-License-Identifier: MIT
 
-import textwrap
+from psycopg.sql import SQL, Identifier, Literal
 
 from un0.database.sql_emitters import SQLEmitter
 from un0.config import settings
 
 
-#################
-# SQL CONSTANTS #
-#################
-"""
-    NOTE - The use of f strings to provide the schema_name name and database name DOES NOT 
-    provide any protection against SQL injection. 
-    
-    You cannot paramaterize postgres DDL statements.
-    The names are defined in the .env file or are derived from the mapped classes.
-    They are not user input, and are only used to create or update the db during
-    developement, testing, and deployment.
+# SQL Literal and Identifier objects are used to create SQL strings
+# that are passed to the database for execution.
 
-    DON'T ALLOW UNTRUSTED USERS TO EDIT THE .env FILEs!
-    
-"""
+# SQL Literals
+LIT_ADMIN_ROLE = Literal(f"{settings.DB_NAME}_admin")
+LIT_WRITER_ROLE = Literal(f"{settings.DB_NAME}_writer")
+LIT_READER_ROLE = Literal(f"{settings.DB_NAME}_reader")
+LIT_LOGIN_ROLE = Literal(f"{settings.DB_NAME}_login")
+LIT_BASE_ROLE = Literal(f"{settings.DB_NAME}_base_role")
+
+# SQL Identifiers
+ADMIN_ROLE = Identifier(f"{settings.DB_NAME}_admin")
+WRITER_ROLE = Identifier(f"{settings.DB_NAME}_writer")
+READER_ROLE = Identifier(f"{settings.DB_NAME}_reader")
+LOGIN_ROLE = Identifier(f"{settings.DB_NAME}_login")
+BASE_ROLE = Identifier(f"{settings.DB_NAME}_base_role")
+DB_NAME = Identifier(settings.DB_NAME)
+DB_SCHEMA = Identifier(settings.DB_SCHEMA)
 
 
 class DropDatabaseSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Drop the database if it exists
-            DROP DATABASE IF EXISTS {settings.DB_NAME} WITH (FORCE);
+            DROP DATABASE IF EXISTS {} WITH (FORCE);
             """
+            )
+            .format(DB_NAME)
+            .as_string()
         )
 
 
 class DropRolesSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Drop the roles if they exist
-            DROP ROLE IF EXISTS {settings.DB_NAME}_admin;
-            DROP ROLE IF EXISTS {settings.DB_NAME}_writer;
-            DROP ROLE IF EXISTS {settings.DB_NAME}_reader;
-            DROP ROLE IF EXISTS {settings.DB_NAME}_login;
-            DROP ROLE IF EXISTS {settings.DB_NAME}_base_role;
+            DROP ROLE IF EXISTS {admin_role};
+            DROP ROLE IF EXISTS {writer_role};
+            DROP ROLE IF EXISTS {reader_role};
+            DROP ROLE IF EXISTS {login_role};
+            DROP ROLE IF EXISTS {base_role};
             """
+            )
+            .format(
+                admin_role=ADMIN_ROLE,
+                writer_role=WRITER_ROLE,
+                reader_role=READER_ROLE,
+                login_role=LOGIN_ROLE,
+                base_role=BASE_ROLE,
+            )
+            .as_string()
         )
 
 
 class CreateRolesSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             DO $$
             BEGIN
                 -- Create the base role with permissions that all other users will inherit
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{settings.DB_NAME}_base_role') THEN
-                    CREATE ROLE {settings.DB_NAME}_base_role NOINHERIT;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {lit_base_role}) THEN
+                    CREATE ROLE {base_role} NOINHERIT;
                 END IF;
 
                 -- Create the reader role
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{settings.DB_NAME}_reader') THEN
-                    CREATE ROLE {settings.DB_NAME}_reader INHERIT IN ROLE {settings.DB_NAME}_base_role;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {lit_reader_role}) THEN
+                    CREATE ROLE {reader_role} INHERIT IN ROLE {base_role};
                 END IF;
 
                 -- Create the writer role
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{settings.DB_NAME}_writer') THEN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {lit_writer_role}) THEN
 
-                    CREATE ROLE {settings.DB_NAME}_writer INHERIT IN ROLE {settings.DB_NAME}_base_role;
+                    CREATE ROLE {writer_role} INHERIT IN ROLE {base_role};
                 END IF;
 
                 -- Create the admin role
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{settings.DB_NAME}_admin') THEN
-                    CREATE ROLE {settings.DB_NAME}_admin INHERIT IN ROLE {settings.DB_NAME}_base_role;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {lit_admin_role}) THEN
+                    CREATE ROLE {admin_role} INHERIT IN ROLE {base_role};
                 END IF;
 
                 -- Create the authentication role
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{settings.DB_NAME}_login') THEN
-                    CREATE ROLE {settings.DB_NAME}_login NOINHERIT LOGIN PASSWORD '{settings.DB_USER_PW}' IN ROLE
-                        {settings.DB_NAME}_base_role;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = {lit_login_role}) THEN
+                    CREATE ROLE {login_role} NOINHERIT LOGIN PASSWORD {password} IN ROLE
+                        {base_role};
                 END IF;
 
                 -- Grant the reader, writer, and admin roles to the authentication role
                 -- Allows the login role to SET ROLE to any of the other roles
-                GRANT {settings.DB_NAME}_reader, {settings.DB_NAME}_writer, {settings.DB_NAME}_admin TO
-                    {settings.DB_NAME}_login;
+                GRANT {reader_role}, {writer_role}, {admin_role} TO {login_role};
             END $$;
             """
+            )
+            .format(
+                lit_base_role=LIT_BASE_ROLE,
+                base_role=BASE_ROLE,
+                lit_reader_role=LIT_READER_ROLE,
+                reader_role=READER_ROLE,
+                lit_writer_role=LIT_WRITER_ROLE,
+                writer_role=WRITER_ROLE,
+                lit_admin_role=LIT_ADMIN_ROLE,
+                admin_role=ADMIN_ROLE,
+                lit_login_role=LIT_LOGIN_ROLE,
+                login_role=LOGIN_ROLE,
+                password=settings.DB_USER_PW,
+            )
+            .as_string()
         )
 
 
 class CreateDatabaseSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Create the database
-            CREATE DATABASE {settings.DB_NAME} WITH OWNER = {settings.DB_NAME}_admin;
+            CREATE DATABASE {db_name} WITH OWNER = {admin};
             """
+            )
+            .format(db_name=DB_NAME, admin=ADMIN_ROLE)
+            .as_string()
         )
 
 
@@ -111,17 +147,25 @@ class CreateSchemasAndExtensionsSQL(SQLEmitter):
         )
 
     def emit_create_schemas_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Create the un0 schemas
-            CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {settings.DB_NAME}_admin;
-            CREATE SCHEMA IF NOT EXISTS {settings.DB_SCHEMA} AUTHORIZATION {settings.DB_NAME}_admin;
+            CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {admin_role};
+            CREATE SCHEMA IF NOT EXISTS {db_schema} AUTHORIZATION {admin_role};
             """
+            )
+            .format(
+                admin_role=ADMIN_ROLE,
+                db_schema=DB_SCHEMA,
+            )
+            .as_string()
         )
 
     def emit_create_extensions_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Create the extensions
             SET search_path TO un0;
 
@@ -147,19 +191,26 @@ class CreateSchemasAndExtensionsSQL(SQLEmitter):
 
             -- Configuring the age extension
             GRANT USAGE ON SCHEMA ag_catalog TO
-                {settings.DB_NAME}_admin,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
-            ALTER SCHEMA ag_catalog OWNER TO {settings.DB_NAME}_admin;
+                {admin_role},
+                {reader_role},
+                {writer_role};
+            ALTER SCHEMA ag_catalog OWNER TO {admin_role};
             SELECT * FROM ag_catalog.create_graph('graph');
-            ALTER TABLE ag_catalog.ag_graph OWNER TO {settings.DB_NAME}_admin;
-            ALTER TABLE ag_catalog.ag_label OWNER TO {settings.DB_NAME}_admin;
-            ALTER TABLE graph._ag_label_edge OWNER TO {settings.DB_NAME}_admin;
-            ALTER TABLE graph._ag_label_vertex OWNER TO {settings.DB_NAME}_admin;
-            ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {settings.DB_NAME}_admin;
-            ALTER SEQUENCE graph._ag_label_vertex_id_seq OWNER TO {settings.DB_NAME}_admin;
-            ALTER SEQUENCE graph._label_id_seq OWNER TO {settings.DB_NAME}_admin;
+            ALTER TABLE ag_catalog.ag_graph OWNER TO {admin_role};
+            ALTER TABLE ag_catalog.ag_label OWNER TO {admin_role};
+            ALTER TABLE graph._ag_label_edge OWNER TO {admin_role};
+            ALTER TABLE graph._ag_label_vertex OWNER TO {admin_role};
+            ALTER SEQUENCE graph._ag_label_edge_id_seq OWNER TO {admin_role};
+            ALTER SEQUENCE graph._ag_label_vertex_id_seq OWNER TO {admin_role};
+            ALTER SEQUENCE graph._label_id_seq OWNER TO {admin_role};
             """
+            )
+            .format(
+                admin_role=ADMIN_ROLE,
+                reader_role=READER_ROLE,
+                writer_role=WRITER_ROLE,
+            )
+            .as_string()
         )
 
 
@@ -174,112 +225,136 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
         )
 
     def emit_revoke_access_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Explicitly revoke all privileges on all schemas and tables
             REVOKE ALL ON SCHEMA
                 un0,
                 audit,
                 graph,
                 ag_catalog,
-                {settings.DB_SCHEMA} 
+                {db_schema} 
             FROM
                 public,
-                {settings.DB_NAME}_base_role,
-                {settings.DB_NAME}_login,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer,
-                {settings.DB_NAME}_admin;
+                {base_role},
+                {login_role},
+                {reader_role},
+                {writer_role},
+                {admin_role};
 
             REVOKE ALL ON ALL TABLES IN SCHEMA
                 un0,
                 audit,
                 graph,
                 ag_catalog,
-                {settings.DB_SCHEMA} 
+                {db_schema} 
             FROM
                 public,
-                {settings.DB_NAME}_base_role,
-                {settings.DB_NAME}_login,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer,
-                {settings.DB_NAME}_admin;
+                {base_role},
+                {login_role},
+                {reader_role},
+                {writer_role},
+                {admin_role};
 
-            REVOKE CONNECT ON DATABASE {settings.DB_NAME} FROM
+            REVOKE CONNECT ON DATABASE {db_name} FROM
                 public,
-                {settings.DB_NAME}_base_role,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer,
-                {settings.DB_NAME}_admin;
+                {base_role},
+                {reader_role},
+                {writer_role},
+                {admin_role};
             """
+            )
+            .format(
+                db_name=DB_NAME,
+                db_schema=DB_SCHEMA,
+                base_role=BASE_ROLE,
+                login_role=LOGIN_ROLE,
+                reader_role=READER_ROLE,
+                writer_role=WRITER_ROLE,
+                admin_role=ADMIN_ROLE,
+            )
+            .as_string()
         )
 
     def emit_set_search_paths_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Set the search paths for the roles
             ALTER ROLE
-                {settings.DB_NAME}_base_role
+                {base_role}
             SET search_path TO
                 ag_catalog,
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA};
+                {db_schema};
 
             ALTER ROLE
-                {settings.DB_NAME}_login
+                {login_role}
             SET search_path TO
                 ag_catalog,
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA};
+                {db_schema};
 
 
             ALTER ROLE
-                {settings.DB_NAME}_reader
+                {reader_role}
             SET search_path TO
                 ag_catalog,
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA};
+                {db_schema};
 
             ALTER ROLE
-                {settings.DB_NAME}_writer 
+                {writer_role}
             SET search_path TO
                 ag_catalog,
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA};
+                {db_schema};
 
             ALTER ROLE
-                {settings.DB_NAME}_admin
+                {admin_role}
             SET search_path TO
                 ag_catalog,
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA};
+                {db_schema};
             """
+            )
+            .format(
+                base_role=BASE_ROLE,
+                login_role=LOGIN_ROLE,
+                reader_role=READER_ROLE,
+                writer_role=WRITER_ROLE,
+                admin_role=ADMIN_ROLE,
+                db_schema=DB_SCHEMA,
+            )
+            .as_string()
         )
 
     def emit_grant_schema_privileges_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Grant ownership of the un0 schemas to the DB admin role
-            ALTER SCHEMA audit OWNER TO {settings.DB_NAME}_admin;
-            ALTER SCHEMA un0 OWNER TO {settings.DB_NAME}_admin;
-            ALTER SCHEMA graph OWNER TO {settings.DB_NAME}_admin;
-            ALTER SCHEMA ag_catalog OWNER TO {settings.DB_NAME}_admin;
+            ALTER SCHEMA audit OWNER TO {admin_role};
+            ALTER SCHEMA un0 OWNER TO {admin_role};
+            ALTER SCHEMA graph OWNER TO {admin_role};
+            ALTER SCHEMA ag_catalog OWNER TO {admin_role};
 
-            ALTER SCHEMA {settings.DB_SCHEMA} OWNER TO {settings.DB_NAME}_admin;
-            ALTER TABLE audit.record_version OWNER TO {settings.DB_NAME}_admin;
+            ALTER SCHEMA {db_schema} OWNER TO {admin_role};
+            ALTER TABLE audit.record_version OWNER TO {admin_role};
 
             -- Grant connect privileges to the DB login role
-            GRANT CONNECT ON DATABASE {settings.DB_NAME} TO {settings.DB_NAME}_login;
+            GRANT CONNECT ON DATABASE {db_name} TO {login_role};
 
             -- Grant usage privileges for users to created schemas
             GRANT USAGE ON SCHEMA
@@ -287,82 +362,101 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {settings.DB_SCHEMA}
+                {db_schema}
             TO
-                {settings.DB_NAME}_login,
-                {settings.DB_NAME}_admin,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
+                {login_role},
+                {admin_role},
+                {reader_role},
+                {writer_role};
 
             GRANT CREATE ON SCHEMA
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA}
+                {db_schema}
             TO
-                {settings.DB_NAME}_admin;
+                {admin_role};
 
             GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA
                 un0,
                 audit,
                 graph,
                 ag_catalog,
-                {settings.DB_SCHEMA}
+                {db_schema}
             TO
-                {settings.DB_NAME}_login,
-                {settings.DB_NAME}_admin,
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
+                {login_role},
+                {admin_role},
+                {reader_role},
+                {writer_role};
 
-            GRANT {settings.DB_NAME}_admin TO {settings.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
-            GRANT {settings.DB_NAME}_writer TO {settings.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
-            GRANT {settings.DB_NAME}_reader TO {settings.DB_NAME}_login WITH INHERIT FALSE, SET TRUE;
+            GRANT {admin_role} TO {login_role} WITH INHERIT FALSE, SET TRUE;
+            GRANT {writer_role} TO {login_role} WITH INHERIT FALSE, SET TRUE;
+            GRANT {reader_role} TO {login_role} WITH INHERIT FALSE, SET TRUE;
             """
+            )
+            .format(
+                db_name=DB_NAME,
+                db_schema=DB_SCHEMA,
+                admin_role=ADMIN_ROLE,
+                reader_role=READER_ROLE,
+                writer_role=WRITER_ROLE,
+                login_role=LOGIN_ROLE,
+            )
+            .as_string()
         )
 
 
 class TablePrivilegeSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
             -- Grant table privileges to the roles
-            SET ROLE {settings.DB_NAME}_admin;
+            SET ROLE {admin_role};
             GRANT SELECT ON ALL TABLES IN SCHEMA
                 un0,
                 audit,
                 graph,
                 ag_catalog,
-                {settings.DB_SCHEMA}
+                {db_schema}
             TO
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
+                {reader_role},
+                {writer_role};
 
             GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA
                 un0,
                 audit,
                 graph,
-                {settings.DB_SCHEMA} 
+                {db_schema} 
             TO
-                {settings.DB_NAME}_writer,
-                {settings.DB_NAME}_admin;
+                {writer_role},
+                {admin_role};
 
             REVOKE SELECT, INSERT, UPDATE (id) ON un0.user FROM 
-                {settings.DB_NAME}_reader,
-                {settings.DB_NAME}_writer;
+                {reader_role},
+                {writer_role};
 
             GRANT ALL ON ALL TABLES IN SCHEMA
                 audit,
                 graph,
                 ag_catalog
             TO
-                {settings.DB_NAME}_admin;
+                {admin_role};
             """
+            )
+            .format(
+                admin_role=ADMIN_ROLE,
+                reader_role=READER_ROLE,
+                writer_role=WRITER_ROLE,
+                db_schema=DB_SCHEMA,
+            )
+            .as_string()
         )
 
 
 class PGULIDSQLSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
+        return SQL(
             """
             -- pgulid is based on OK Log's Go implementation of the ULID spec
             --
@@ -444,16 +538,17 @@ class PGULIDSQLSQL(SQLEmitter):
             LANGUAGE plpgsql
             VOLATILE;
             """
-        )
+        ).as_string()
 
 
 class CreateTokenSecretSQL(SQLEmitter):
     def emit_sql(self) -> str:
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                """
 
-            /* creating the token_secret table in database: {settings.DB_NAME} */
-            SET ROLE {settings.DB_NAME}_admin;
+            /* creating the token_secret table in database: {db_name} */
+            SET ROLE {admin_role};
             CREATE TABLE un0.token_secret (
                 token_secret TEXT PRIMARY KEY
             );
@@ -480,18 +575,22 @@ class CreateTokenSecretSQL(SQLEmitter):
             FOR EACH ROW
             EXECUTE FUNCTION un0.set_token_secret();
             """
+            )
+            .format(admin_role=ADMIN_ROLE, db_name=DB_NAME)
+            .as_string()
         )
 
 
-CREATE_INSERT_GROUP_CONSTRAINT = f"""
-/* database: {settings.DB_NAME} */
-ALTER TABLE un0.group ADD CONSTRAINT ck_can_insert_group
-    CHECK (un0.can_insert_group(tenant_id) = true);
-"""
+CREATE_INSERT_GROUP_CONSTRAINT = SQL(
+    """
+    ALTER TABLE un0.group ADD CONSTRAINT ck_can_insert_group
+        CHECK (un0.can_insert_group(tenant_id) = true);
+    """
+).as_string()
 
 
-CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER = f"""
-/* database: {settings.DB_NAME} */
+CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER = SQL(
+    """
 CREATE OR REPLACE FUNCTION un0.insert_group_for_tenant()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -508,3 +607,4 @@ CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
     FOR EACH ROW
     EXECUTE FUNCTION un0.insert_group_for_tenant();
 """
+).as_string()
