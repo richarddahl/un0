@@ -402,11 +402,11 @@ class Vertex(GraphBase):
         function_string = textwrap.dedent(
             f"""
             DECLARE 
-                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                _sql TEXT := 'SELECT * FROM cypher(''graph'', $graph$
                         CREATE (v:{self.label} {{{prop_key_str}}})
-                    $graph$) AS (a agtype);', {prop_val_str});
+                    $graph$) AS (a agtype);';
             BEGIN
-                EXECUTE _sql;
+                EXECUTE _sql USING {prop_val_str};
                 -- {edge_str}
                 RETURN NEW;
             END;
