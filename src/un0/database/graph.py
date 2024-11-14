@@ -396,7 +396,9 @@ class Vertex(GraphBase):
             edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
 
         if self.properties:
-            prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
+            prop_key_str = ", ".join(
+                f"{prop.accessor}: %%s" for prop in self.properties
+            )
             prop_val_str = ", ".join([prop.data_type for prop in self.properties])
 
         function_string = textwrap.dedent(
