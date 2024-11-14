@@ -356,7 +356,7 @@ class Vertex(GraphBase):
             """
         )
 
-    def create_vertex_label_sql(self, conn) -> str:
+    def create_vertex_label_sql(self) -> str:
         query = SQL(
             """
             DO $$
