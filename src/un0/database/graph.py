@@ -4,9 +4,7 @@
 
 import textwrap
 
-from psycopg.sql import SQL, Identifier, Literal
-
-from typing import Optional
+from psycopg.sql import SQL, Identifier, Literal, Placeholder, quote
 
 from datetime import datetime, date, time
 from decimal import Decimal
@@ -30,7 +28,7 @@ from un0.config import settings
 ADMIN_ROLE = f"{settings.DB_NAME}_admin"
 
 
-class GraphModel(BaseModel):
+class GraphBase(BaseModel):
     table_name: str
     schema_name: str
 
@@ -47,14 +45,26 @@ class GraphModel(BaseModel):
             if db_function
             else f"{self.schema_name}.{self.table_name}_"
         )
-        return textwrap.dedent(
-            f"""
+        return (
+            SQL(
+                f"""
             CREATE OR REPLACE TRIGGER {self.table_name}_{function_name}_trigger
                 {timing} {operation}
                 ON {self.schema_name}.{self.table_name}
                 FOR EACH {for_each}
                 EXECUTE FUNCTION {trigger_scope}{function_name}();
             """
+            )
+            .format(
+                table_name=Identifier(self.table_name),
+                function_name=Identifier(function_name),
+                timing=Literal(timing),
+                operation=Literal(operation),
+                schema_name=Identifier(self.schema_name),
+                for_each=Literal(for_each),
+                trigger_scope=Identifier(trigger_scope),
+            )
+            .as_string()
         )
 
     def create_sql_function(
@@ -64,14 +74,13 @@ class GraphModel(BaseModel):
         function_args: str = "",
         db_function: bool = True,
         return_type: str = "TRIGGER",
-        volatile: str = "VOLATILE",
         include_trigger: bool = False,
         timing: str = "BEFORE",
         operation: str = "UPDATE",
         for_each: str = "ROW",
         security_definer: str = "SECURITY DEFINER",
     ) -> str:
-        if function_args and include_trigger is True:
+        if function_args and return_type == "TRIGGER":
             raise ValueError(
                 "Function arguments cannot be used when creating a trigger function."
             )
@@ -80,18 +89,16 @@ class GraphModel(BaseModel):
             if db_function
             else f"{self.schema_name}.{self.table_name}_{function_name}"
         )
-        fnct_string = textwrap.dedent(
+        fnct_string = SQL(
             f"""
-            SET ROLE {settings.DB_NAME}_admin;
             CREATE OR REPLACE FUNCTION {full_function_name}({function_args})
             RETURNS {return_type}
             LANGUAGE plpgsql
-            SECURITY DEFINER
             AS $$
             {function_string}
             $$;
             """
-        )
+        ).as_string()
 
         if not include_trigger:
             return fnct_string
@@ -105,7 +112,7 @@ class GraphModel(BaseModel):
         return f"{textwrap.dedent(fnct_string)}\n{textwrap.dedent(trggr_string)}"
 
 
-class Property(GraphModel):
+class Property(GraphBase):
     # accessor: str <- computed_field
     # data_type: str <- computed_field
     # lookups: Lookup <- computed_field
@@ -122,6 +129,7 @@ class Property(GraphModel):
     @computed_field
     def data_type(self) -> str:
         """Get the column type for a given column"""
+        # return Identifier(f"NEW.{self.accessor}")
         return f"quote_nullable(NEW.{self.accessor})"
 
     @computed_field
@@ -192,7 +200,7 @@ class Property(GraphModel):
         )
 
 
-class Vertex(GraphModel):
+class Vertex(GraphBase):
     # label: str <- computed_field
     # accessor: str <- computed_field
     # data_type: str <- computed_field
@@ -225,7 +233,7 @@ class Vertex(GraphModel):
         Returns:
             str: A SQL expression string in the format "quote_nullable(NEW.<column_name>::<column_type>)".
         """
-        return f"quote_nullable(NEW.{self.column.name}::{self.column.type})"
+        return quote(f"NEW.{self.column.name}::{self.column.type}")
 
     @computed_field
     def properties(self) -> list[Property] | None:
@@ -294,9 +302,9 @@ class Vertex(GraphModel):
         """
         sql = self.create_vertex_label_sql()
         sql += f"\n{self.insert_vertex_sql()}"
-        sql += f"\n{self.update_vertext_sql()}"
-        sql += f"\n{self.delete_vertext_sql()}"
-        sql += f"\n{self.truncate_vertext_sql()}"
+        # sql += f"\n{self.update_vertext_sql()}"
+        # sql += f"\n{self.delete_vertext_sql()}"
+        # sql += f"\n{self.truncate_vertext_sql()}"
         # sql += f"\n{self.create_filter_field_sql()}"
         return textwrap.dedent(sql)
 
@@ -357,7 +365,7 @@ class Vertex(GraphModel):
                 IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
                 WHERE name = {}) THEN
                     PERFORM ag_catalog.create_vlabel('graph', {});
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', {});
+                    EXECUTE format('CREATE INDEX ON graph.{} (id);');
                 END IF;
             END $$;
             """
@@ -367,43 +375,7 @@ class Vertex(GraphModel):
             Literal(self.label),
             Identifier(self.label),
         )
-        return query.as_string(conn)
-
-    def create_vertex_label_sql_new(self) -> str:
-        query = """
-            DO $$
-            BEGIN
-                SET ROLE {}_admin;
-                IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = '{}') THEN
-                    PERFORM ag_catalog.create_vlabel('graph', '{}');
-                    EXECUTE format('CREATE INDEX ON graph.%I (id);', '{}');
-                END IF;
-            END $$;
-            """.format(settings.DB_NAME, self.label, self.label, self.label)
-        return query
-
-    def create_vertex_label_sql_old(self) -> str:
-        """
-        Generates SQL code to create a vertex label and its corresponding index
-        in the AgensGraph database if it does not already exist.
-
-        Returns:
-            str: The SQL code to create the vertex label and index.
-        """
-        return textwrap.dedent(
-            f"""
-            DO $$
-            BEGIN
-                SET ROLE {settings.DB_NAME}_admin;
-                IF NOT EXISTS (SELECT * FROM ag_catalog.ag_label
-                WHERE name = '{self.label}') THEN
-                    PERFORM ag_catalog.create_vlabel('graph', '{self.label}');
-                    CREATE INDEX ON graph."{self.label}" (id);
-                END IF;
-            END $$;
-            """
-        )
+        return query.as_string()
 
     def insert_vertex_sql(self) -> str:
         """
@@ -427,18 +399,63 @@ class Vertex(GraphModel):
             prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
             prop_val_str = ", ".join([prop.data_type for prop in self.properties])
 
-        function_string = f"""
+        function_string = textwrap.dedent(
+            f"""
             DECLARE 
                 _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
                         CREATE (v:{self.label} {{{prop_key_str}}})
                     $graph$) AS (a agtype);', {prop_val_str});
             BEGIN
-                -- HERE
                 EXECUTE _sql;
-                --{edge_str}
+                -- {edge_str}
                 RETURN NEW;
             END;
             """
+        )
+
+        return self.create_sql_function(
+            "insert_vertex",
+            function_string,
+            operation="INSERT",
+            include_trigger=True,
+            db_function=False,
+        )
+
+    def insert_vertex_sql_old(self) -> str:
+        """
+        Generates SQL code to create a function and trigger for inserting a new vertex record
+        when a new relational table record is inserted.
+
+        The function constructs the SQL statements required to:
+        - Create a new vertex with the specified label and properties.
+        - Create edges for the vertex if any are defined.
+
+        Returns:
+            str: The generated SQL code for the insert function and trigger.
+        """
+        prop_key_str = ""
+        prop_val_str = ""
+        edge_str = ""
+        if self.edges:
+            edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
+
+        if self.properties:
+            prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
+            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
+
+        function_string = textwrap.dedent(
+            f"""
+            DECLARE 
+                _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
+                        CREATE (v:{self.label} {{{prop_key_str}}})
+                    $graph$) AS (a agtype);', {prop_val_str});
+            BEGIN
+                EXECUTE _sql;
+                -- {edge_str}
+                RETURN NEW;
+            END;
+            """
+        )
 
         return self.create_sql_function(
             "insert_vertex",
@@ -557,7 +574,7 @@ class Vertex(GraphModel):
         )
 
 
-class Edge(GraphModel):
+class Edge(GraphBase):
     # label: str <- computed_field
     # accessor: str <- computed_field
     # properties: list[PropertySqlEmitter] <- computed_field
