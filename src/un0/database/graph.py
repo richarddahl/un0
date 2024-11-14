@@ -397,7 +397,7 @@ class Vertex(GraphBase):
 
         if self.properties:
             prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
+            prop_val_str = ", ".join([f"quote_nullable(NEW.{prop.accessor})" for prop in self.properties])
 
         function_string = textwrap.dedent(
             f"""
