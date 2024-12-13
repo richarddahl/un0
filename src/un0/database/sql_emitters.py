@@ -47,6 +47,16 @@ class SQLEmitter(ABC):
             """
         )
 
+    def insert_model_values_sql(self, model) -> str:
+        columns = ', '.join(model.__annotations__.keys())
+        values = ', '.join(f"'{getattr(model, col)}'" for col in model.__annotations__.keys())
+        return textwrap.dedent(
+            f"""
+            INSERT INTO {self.schema_name}.{self.table_name} ({columns})
+            VALUES ({values});
+            """
+        )
+
     def create_sql_trigger(
         self,
         function_name: str,
