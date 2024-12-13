@@ -14,13 +14,38 @@ from un0.config import settings
 
 @dataclass
 class SQLEmitter(ABC):
+    """
+    Abstract base class for SQL emitters that provides methods to generate SQL
+    statements for creating triggers and functions in a database.
+    Attributes:
+        table_name (Optional[str]): The name of the table associated with the SQL emitter.
+        schema_name (Optional[str]): The name of the schema associated with the SQL emitter.
+    Methods:
+        emit_sql() -> str:
+            Abstract method that must be implemented by subclasses to emit SQL statements.
+        create_sql_trigger(
+            db_function: bool = True
+            Generates a SQL statement to create a trigger for a specified function.
+        create_sql_function(
+            security_definer: str = ""
+            Generates a SQL statement to create a function and optionally a trigger
+            for the specified function.
+    """
+
     table_name: Optional[str] = None
     schema_name: Optional[str] = None
-    field_name: Optional[str] = None
 
     @abstractmethod
     def emit_sql(self) -> str:
         raise NotImplementedError
+
+    def insert_record_sql(self) -> str:
+        return textwrap.dedent(
+            f"""
+            INSERT INTO {self.schema_name}.{self.table_name}
+            VALUES (DEFAULT, 'value1', 'value2', 'value3');
+            """
+        )
 
     def create_sql_trigger(
         self,
