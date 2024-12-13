@@ -221,7 +221,17 @@ class Un0FrozenSchemaDef(Un0ModelDef):
 class Un0Model(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def process_app_logic(self):
+    def generate_insert_sql(self) -> str:
+        """
+        Generates an SQL INSERT statement for the model's fields.
+        
+        Returns:
+            str: The SQL INSERT statement.
+        """
+        table_name = self.__class__.table_name
+        columns = ', '.join(self.__annotations__.keys())
+        values = ', '.join(f"'{getattr(self, col)}'" for col in self.__annotations__.keys())
+        return f"INSERT INTO {table_name} ({columns}) VALUES ({values});"
         pass
 
 
