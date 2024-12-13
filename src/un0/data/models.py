@@ -232,7 +232,6 @@ class Un0Model(BaseModel):
         columns = ', '.join(self.__annotations__.keys())
         values = ', '.join(f"'{getattr(self, col)}'" for col in self.__annotations__.keys())
         return f"INSERT INTO {table_name} ({columns}) VALUES ({values});"
-        pass
 
 
 class Un0Obj(BaseModel):
