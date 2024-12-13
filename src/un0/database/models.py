@@ -12,11 +12,16 @@ from sqlalchemy import Table
 from un0.errors import ModelRegistryError
 from un0.utilities import convert_snake_to_title
 from un0.database.base import metadata
-from un0.database.fields import IX, CK, UQ, FieldDefinition
+from un0.database.fields import (
+    IndexDefinition,
+    CheckDefinition,
+    UniqueDefinition,
+    FieldDefinition,
+)
 from un0.database.masks import Mask, MaskDef
 from un0.database.enums import Cardinality, MaskType, SQLOperation
 from un0.database.routers import RouterDef, Router
-from un0.database.graph import Vertex
+from un0.database.graph import Vertex, Edge, Property, Path
 from un0.database.sql_emitters import SQLEmitter, InsertTableTypeSQL, AlterGrantSQL
 from un0.config import settings
 
@@ -29,30 +34,88 @@ class RelatedModel:
 
 
 @dataclass
-class FieldMixin:
+class ModelMixin:
     """
-    FieldMixin class provides a base mixin for database models with common attributes and methods.
+    A mixin class that provides common functionality for database models.
+    Used to add common attributes to database models.
 
     Attributes:
-        field_definitions (ClassVar[dict[str, FieldDefinition]]): A dictionary mapping field names to their definitions.
-        indices (ClassVar[list[IX]]): A list of index definitions.
-        constraints (ClassVar[list[CK | UQ]]): A list of constraint definitions.
-        sql_emitters (ClassVar[list[SQLEmitter]]): A list of SQL emitters.
+        field_definitions (ClassVar[dict[str, FieldDefinition]]): A dictionary mapping field names
+            to their definitions.
+        index_definitions (ClassVar[list[IndexDefinition]]): A list of index definitions for the model.
+        constraint_definitions (ClassVar[list[CheckDefinition | UniqueDefinition]]): A list of constraint
+            definitions for the model, including check and unique constraints.
+        sql_emitters (ClassVar[list[SQLEmitter]]): A list of SQL emitters associated with the model.
 
     Methods:
-        emit_sql() -> str: Emits the SQL representation of the model.
+        emit_sql() -> str:
+            Emits the SQL representation of the model.
     """
 
     field_definitions: ClassVar[dict[str, FieldDefinition]] = {}
-    indices: ClassVar[list[IX]] = []
-    constraints: ClassVar[list[CK | UQ]] = []
+    index_definitions: ClassVar[list[IndexDefinition]] = []
+    constraint_definitions: ClassVar[list[CheckDefinition | UniqueDefinition]] = []
     sql_emitters: ClassVar[list[SQLEmitter]] = []
 
     def emit_sql(self) -> str:
         return super().emit_sql()
 
 
-class Model(BaseModel, FieldMixin):
+class Model(BaseModel, ModelMixin):
+    """
+    Model class that serves as a base for all database models in the application.
+
+    Attributes:
+        table (ClassVar[Table]): SQLAlchemy Table object associated with the model.
+        registry (ClassVar[dict[str, "Model"]]): Registry of all model classes by table name.
+        class_name_map (ClassVar[dict[str, str]]): Mapping of class names to their string representations.
+        schema_name (ClassVar[str]): Name of the database schema.
+        table_name (ClassVar[str]): Name of the database table.
+        table_name_plural (ClassVar[str]): Plural name of the database table.
+        verbose_name (ClassVar[str]): Human-readable name of the model.
+        verbose_name_plural (ClassVar[str]): Plural human-readable name of the model.
+        table_comment (ClassVar[str]): Comment for the database table.
+        field_definitions (ClassVar[dict[str, FieldDefinition]]): Definitions of fields in the model.
+        index_definitions (ClassVar[list[IndexDefinition]]): Definitions of indices for the model.
+        constraint_definitions (ClassVar[list[CheckDefinition | UniqueDefinition]]): Definitions of constraints for the model.
+        sql_emitters (ClassVar[list[str, Type[SQLEmitter]]]): List of SQL emitters for the model.
+        related_models (ClassVar[dict[str, Type[RelatedModel]]]): Related models for the model.
+        vertex_column (ClassVar[str]): Name of the vertex column.
+        vertex (ClassVar[Vertex]): Vertex object associated with the model.
+        properties (ClassVar[dict[str, Property]]): Properties of the model.
+        edges (ClassVar[dict[str, Edge]]): Edges of the model.
+        paths (ClassVar[dict[str, Path]]): Paths of the model.
+        routers (ClassVar[list[Router]]): List of routers for the model.
+        router_defs (ClassVar[dict[str, RouterDef]]): Definitions of routers for the model.
+        masks (ClassVar[dict[str, Mask]]): Masks for the model.
+        mask_defs (ClassVar[list[MaskDef]]): Definitions of masks for the model.
+
+    Methods:
+        __init_subclass__(cls, schema_name: str, table_name: str, table_name_plural: str | None = None, verbose_name: str | None = None, verbose_name_plural: str | None = None) -> None:
+            Initializes a subclass of Model with the given schema and table names.
+
+        update_field_definitions(cls) -> None:
+            Updates the field definitions of the class by merging the field definitions from its ancestors.
+
+        update_constraints(cls) -> None:
+            Updates the constraints of the class by extending the current class's constraints with those of its parent classes.
+
+        update_indices(cls) -> None:
+            Updates the index definitions of the class by extending the current class's index definitions with those of its parent classes.
+
+        update_sql_emitters(cls) -> None:
+            Updates the SQL emitters of the class by extending the current class's SQL emitters with those of its parent classes.
+
+        create_routers(cls) -> None:
+            Creates routers for the model based on the router definitions.
+
+        emit_sql(cls) -> str:
+            Emits the SQL for the model, including vertex and SQL emitters.
+
+        process_app_logic(self):
+            Placeholder method for processing application logic.
+    """
+
     table: ClassVar[Table]
 
     registry: ClassVar[dict[str, "Model"]] = {}
@@ -65,9 +128,8 @@ class Model(BaseModel, FieldMixin):
     verbose_name_plural: ClassVar[str]
     table_comment: ClassVar[str] = ""
     field_definitions: ClassVar[dict[str, FieldDefinition]] = {}
-    indices: ClassVar[list[IX]] = []
-    constraints: ClassVar[list[CK | UQ]] = []
-    primary_keys: ClassVar[set[str]] = set()
+    index_definitions: ClassVar[list[IndexDefinition]] = []
+    constraint_definitions: ClassVar[list[CheckDefinition | UniqueDefinition]] = []
     sql_emitters: ClassVar[list[str, Type[SQLEmitter]]] = [
         AlterGrantSQL,
         InsertTableTypeSQL,
@@ -75,8 +137,11 @@ class Model(BaseModel, FieldMixin):
     related_models: ClassVar[dict[str, Type[RelatedModel]]] = {}
 
     # Graph related attributes
-    is_vertex: ClassVar[bool] = True
+    vertex_column: ClassVar[str] = "id"
     vertex: ClassVar[Vertex] = None
+    properties: ClassVar[dict[str, Property]] = {}
+    edges: ClassVar[dict[str, Edge]] = {}
+    paths: ClassVar[dict[str, Path]] = {}
 
     # Router related attributes
     routers: ClassVar[list[Router]] = []
@@ -138,26 +203,23 @@ class Model(BaseModel, FieldMixin):
         """
         Initialize a subclass of the Model class.
 
-        This method is automatically called when a new subclass is created. It sets up
-        various class attributes and ensures the subclass is properly registered.
+        This method is called when a class is subclassed from the Model class. It sets up
+        various class attributes and registers the subclass in the model registry.
 
         Args:
             cls: The subclass being initialized.
-            schema_name (str | None): The database schema_name name. Defaults to the value of settings.DB_NAME.
-            table_name (str | None): The name of the table. Defaults to None.
-            table_name_plural (str | None): The plural name of the table. Defaults to None.
-            verbose_name (str | None): A human-readable name for the table. Defaults to None.
-            verbose_name_plural (str | None): A human-readable plural name for the table. Defaults to None.
+            schema_name (str): The name of the schema to which the table belongs.
+            table_name (str): The name of the table.
+            table_name_plural (str, optional): The plural name of the table. Defaults to None.
+            verbose_name (str, optional): A human-readable name for the table. Defaults to None.
+            verbose_name_plural (str, optional): A human-readable plural name for the table. Defaults to None.
 
         Raises:
-            ModelRegistryError: If a class with the same table name or model name already exists in the registry.
+            ValueError: If `table_name` or `schema_name` is None.
+            ModelRegistryError: If a class with the same table name or class name already exists in the registry.
 
-        Notes:
-            - This method prevents the base class from being created and added to the registry.
-            - It updates field definitions, constraints, and indices from the parent classes.
-            - It sets various class attributes such as table_name, schema_name, table_name_plural, verbose_name, and verbose_name_plural.
-            - It ensures the subclass is added to the registry only once.
-            - It creates the SQLAlchemy table object and adds columns, constraints, and indices to it.
+        Returns:
+            None
         """
 
         # This prevents the base class from being created and added to the registry
@@ -201,7 +263,7 @@ class Model(BaseModel, FieldMixin):
                 "TABLE_NAME_EXISTS_IN_REGISTRY",
             )
 
-        # Update the field_definitions, constraints, and indices from the parent classes
+        # Update the field_definitions, constraints, and index_definitions from the parent classes
         cls.update_field_definitions()
         cls.update_constraints()
         cls.update_indices()
@@ -215,7 +277,7 @@ class Model(BaseModel, FieldMixin):
 
         constraints = []
         # Add the constraints to the table
-        for constraint in cls.constraints:
+        for constraint in cls.constraint_definitions:
             constraints.append(constraint.create_constraint())
 
         # Create the sqlalchemy table object
@@ -227,26 +289,27 @@ class Model(BaseModel, FieldMixin):
             *columns,
             *constraints,
         )
-        # Add the indices to the table
+        # Add the index_definitions to the table
         # Indices are added to improve the performance of database operations
-        for index in cls.indices:
+        for index in cls.index_definitions:
             table.indexes.add(index.create_index(table))
 
         # Set the table attribute on the class to the created SQLAlchemy table object
         cls.table = table
-        cls.primary_keys = {column.key for column in cls.table.primary_key.columns}
-        if cls.primary_keys.__len__() == 0:
-            raise ValueError("No primary keys defined for table")
-        elif cls.primary_keys.__len__() > 1 and cls.is_vertex:
-            raise ValueError(
-                f"Un0 does not support vertices with composite primary keys: {cls.table_name}"
+        properties = {}
+        for column in table.columns:
+            properties[column.name] = Property(
+                table_name=table.name, schema_name=table.schema, column=column
             )
-        elif cls.is_vertex:
+        cls.properties = properties
+
+        if cls.vertex_column:
             cls.vertex = Vertex(
+                table=cls.table,
                 table_name=cls.table_name,
                 schema_name=cls.schema_name,
-                table=cls.table,
-                column_name=list(cls.primary_keys)[0],
+                column_name=cls.vertex_column,
+                properties=cls.properties,
             )
 
         cls.create_routers()
@@ -285,29 +348,29 @@ class Model(BaseModel, FieldMixin):
             None
         """
         for kls in cls.mro():
-            if hasattr(kls, "constraints"):
-                for constraint in kls.constraints:
-                    if constraint not in cls.constraints:
-                        cls.constraints.append(kls.constraints)
+            if hasattr(kls, "constraint_definitions"):
+                for constraint in kls.constraint_definitions:
+                    if constraint not in cls.constraint_definitions:
+                        cls.constraint_definitions.append(kls.constraint_definitions)
 
     @classmethod
     def update_indices(cls) -> None:
         """
-        Updates the indices of the class by extending the current class's indices
-        with the indices of all its parent classes in the method resolution order (MRO).
+        Updates the index_definitions of the class by extending the current class's index_definitions
+        with the index_definitions of all its parent classes in the method resolution order (MRO).
 
         This method iterates through the MRO of the class and checks if each class
-        has an attribute named 'indices'. If the attribute exists, it extends the
-        current class's indices with the indices of that class.
+        has an attribute named 'index_definitions'. If the attribute exists, it extends the
+        current class's index_definitions with the index_definitions of that class.
 
         Returns:
             None
         """
         for kls in cls.mro():
-            if hasattr(kls, "indices"):
-                for index in kls.indices:
-                    if index not in cls.indices:
-                        cls.indices.append(index)
+            if hasattr(kls, "index_definitions"):
+                for index in kls.index_definitions:
+                    if index not in cls.index_definitions:
+                        cls.index_definitions.append(index)
 
     @classmethod
     def update_sql_emitters(cls) -> None:
