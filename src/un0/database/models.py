@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2024-present Richard Dahl <richard@dahl.us>
 #
 # SPDX-License-Identifier: MIT
+from enum import Enum
 
 from typing import Type, ClassVar
 
@@ -431,11 +432,26 @@ class Model(BaseModel, ModelMixin):
     def generate_insert_sql(self) -> str:
         """
         Generates an SQL INSERT statement for the model's fields.
-        
+
         Returns:
             str: The SQL INSERT statement.
         """
-        columns = ', '.join(self.field_definitions.keys())
-        values = ', '.join(f"'{getattr(self, col)}'" for col in self.field_definitions.keys())
+        columns = ", ".join(self.field_definitions.keys())
+        # values = ", ".join(
+        #    f"{getattr(self, col)}" for col in self.field_definitions.keys()
+        # )
+        _columns = []
+        _values = []
+        for key, val in self.model_dump().items():
+            if not val:
+                continue
+            _columns.append(key)
+            if isinstance(val, Enum):
+                _values.append(f"'{val.name}'")
+            elif isinstance(val, str):
+                _values.append(f"'{val}'")
+            else:
+                _values.append(f"{val}")
+        columns = ", ".join(_columns)
+        values = ", ".join(_values)
         return f"INSERT INTO {self.schema_name}.{self.table_name} ({columns}) VALUES ({values});"
-        pass
