@@ -429,29 +429,19 @@ class Model(BaseModel, ModelMixin):
         )
         return sql
 
-    def generate_insert_sql(self) -> str:
+    def generate_insert_sql(self) -> tuple[str, tuple]:
         """
-        Generates an SQL INSERT statement for the model's fields.
+        Generates an SQL INSERT statement for the model's fields using parameterized queries.
 
         Returns:
-            str: The SQL INSERT statement.
+            tuple: A tuple containing the SQL INSERT statement and a tuple of values.
         """
         columns = ", ".join(self.field_definitions.keys())
-        # values = ", ".join(
-        #    f"{getattr(self, col)}" for col in self.field_definitions.keys()
-        # )
-        _columns = []
-        _values = []
-        for key, val in self.model_dump().items():
-            if not val:
-                continue
-            _columns.append(key)
-            if isinstance(val, Enum):
-                _values.append(f"'{val.name}'")
-            elif isinstance(val, str):
-                _values.append(f"'{val}'")
-            else:
-                _values.append(f"{val}")
-        columns = ", ".join(_columns)
-        values = ", ".join(_values)
-        return f"INSERT INTO {self.schema_name}.{self.table_name} ({columns}) VALUES ({values});"
+        placeholders = ", ".join(f"%s" for _ in self.field_definitions.keys())
+        values = tuple(
+            getattr(self, col) if not isinstance(getattr(self, col), Enum) else getattr(self, col).name
+            for col in self.field_definitions.keys()
+            if getattr(self, col) is not None
+        )
+        sql = f"INSERT INTO {self.schema_name}.{self.table_name} ({columns}) VALUES ({placeholders});"
+        return sql, values
