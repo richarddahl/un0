@@ -10,11 +10,11 @@ from sqlalchemy.dialects.postgresql import BOOLEAN, TEXT
 from pydantic.dataclasses import dataclass
 
 from un0.database.fields import FieldDefinition
-from un0.database.models import FieldMixin
+from un0.database.models import ModelMixin
 from un0.database.sql_emitters import SQLEmitter
 
 
-class NameMixin(FieldMixin):
+class NameMixin(ModelMixin):
     """
     NameMixin is a mixin class that provides a 'name' field definition for models.
 
@@ -35,7 +35,7 @@ class NameMixin(FieldMixin):
     name: Optional[str] = None
 
 
-class DescriptionMixin(FieldMixin):
+class DescriptionMixin(ModelMixin):
     """
     DescriptionMixin is a mixin class that provides a description field for a model.
 
@@ -59,20 +59,30 @@ class DescriptionMixin(FieldMixin):
 
 
 @dataclass
-class SoftDeleteSQL(SQLEmitter):
+class SoftDelete(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = """
+            DECLARE
+                user_id TEXT:= current_setting('rls_var.user_id', true);
             BEGIN
                 /* 
                 */
-
                 IF OLD.is_deleted IS TRUE THEN
+                    OLD.deleted_at = now();
+                    OLD.deleted_by_id = user_id;
+                    OLD.modified_at = now();
+                    OLD.modified_by_id = user_id;
                     RETURN OLD;
                 ELSE
                     EXECUTE format('
                         UPDATE %I 
-                        SET is_deleted = true
-                        WHERE id = %L', TG_TABLE_NAME, OLD.id
+                        SET is_deleted = true,
+                            is_active = false,
+                            deleted_at = now(),
+                            deleted_by_id = %L,
+                            modified_at = now(),
+                            modified_by_id = %L
+                        WHERE id = %L', TG_TABLE_NAME, user_id, user_id, OLD.id
                     );
                     RETURN NULL;
                 END IF;
@@ -89,7 +99,7 @@ class SoftDeleteSQL(SQLEmitter):
         )
 
 
-class ActiveDeletedMixin(FieldMixin):
+class ActiveDeletedMixin(ModelMixin):
     """
     Mixin class that adds an 'is_active' field to a model.
 
@@ -103,7 +113,7 @@ class ActiveDeletedMixin(FieldMixin):
         is_active (bool): Indicates if the record is active. Defaults to True.
     """
 
-    sql_emitters = [SoftDeleteSQL]
+    sql_emitters = [SoftDelete]
     field_definitions = {
         "is_active": FieldDefinition(
             data_type=BOOLEAN,
@@ -123,7 +133,7 @@ class ActiveDeletedMixin(FieldMixin):
     is_deleted: bool = False
 
 
-class ImportMixin(FieldMixin):
+class ImportMixin(ModelMixin):
     """
     ImportMixin is a mixin class that provides fields and field definitions for importing
     records from an external system.

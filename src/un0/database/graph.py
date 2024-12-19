@@ -4,6 +4,8 @@
 
 import textwrap
 
+from typing import Type
+
 from psycopg.sql import SQL, Identifier, Literal, Placeholder, quote
 
 from datetime import datetime, date, time
@@ -13,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from sqlalchemy import Table, Column
 
-from un0.utilities import convert_snake_to_capital_word
 from un0.filters.enums import (
     GraphType,
     EdgeDirection,
@@ -22,6 +23,7 @@ from un0.filters.enums import (
     numeric_lookups,
     string_lookups,
 )
+from un0.utilities import convert_snake_to_capital_word
 from un0.config import settings
 
 
@@ -45,26 +47,14 @@ class GraphBase(BaseModel):
             if db_function
             else f"{self.schema_name}.{self.table_name}_"
         )
-        return (
-            SQL(
-                f"""
+        return textwrap.dedent(
+            f"""
             CREATE OR REPLACE TRIGGER {self.table_name}_{function_name}_trigger
                 {timing} {operation}
                 ON {self.schema_name}.{self.table_name}
                 FOR EACH {for_each}
                 EXECUTE FUNCTION {trigger_scope}{function_name}();
             """
-            )
-            .format(
-                table_name=Identifier(self.table_name),
-                function_name=Identifier(function_name),
-                timing=Literal(timing),
-                operation=Literal(operation),
-                schema_name=Identifier(self.schema_name),
-                for_each=Literal(for_each),
-                trigger_scope=Identifier(trigger_scope),
-            )
-            .as_string()
         )
 
     def create_sql_function(
@@ -74,13 +64,14 @@ class GraphBase(BaseModel):
         function_args: str = "",
         db_function: bool = True,
         return_type: str = "TRIGGER",
+        volatile: str = "VOLATILE",
         include_trigger: bool = False,
         timing: str = "BEFORE",
         operation: str = "UPDATE",
         for_each: str = "ROW",
         security_definer: str = "SECURITY DEFINER",
     ) -> str:
-        if function_args and return_type == "TRIGGER":
+        if function_args and include_trigger is True:
             raise ValueError(
                 "Function arguments cannot be used when creating a trigger function."
             )
@@ -89,16 +80,18 @@ class GraphBase(BaseModel):
             if db_function
             else f"{self.schema_name}.{self.table_name}_{function_name}"
         )
-        fnct_string = SQL(
+        fnct_string = textwrap.dedent(
             f"""
+            SET ROLE {settings.DB_NAME}_admin;
             CREATE OR REPLACE FUNCTION {full_function_name}({function_args})
             RETURNS {return_type}
             LANGUAGE plpgsql
+            SECURITY DEFINER
             AS $$
             {function_string}
             $$;
             """
-        ).as_string()
+        )
 
         if not include_trigger:
             return fnct_string
@@ -113,10 +106,11 @@ class GraphBase(BaseModel):
 
 
 class Property(GraphBase):
+    # table_name: str <- GraphBase
+    # schema_name: str <- GraphBase
+
     # accessor: str <- computed_field
-    # data_type: str <- computed_field
     # lookups: Lookup <- computed_field
-    # label: str <- computed_field
 
     column: Column
 
@@ -125,12 +119,6 @@ class Property(GraphBase):
     @computed_field
     def accessor(self) -> str:
         return self.column.name
-
-    @computed_field
-    def data_type(self) -> str:
-        """Get the column type for a given column"""
-        # return Identifier(f"NEW.{self.accessor}")
-        return f"quote_nullable(NEW.{self.accessor})"
 
     @computed_field
     def lookups(self) -> Lookup:
@@ -151,64 +139,17 @@ class Property(GraphBase):
     def label(self) -> str:
         return self.column.name.replace("_id", " ").replace("_", " ").title()
 
-    def create_filter_field_sql(self) -> str:
-        """
-        Generates the SQL statement to create a filter field and its associated table type.
-
-        This method constructs and returns a SQL statement that performs the following operation:
-        1. Inserts a new filter field into the `un0.filterfield` table with the specified attributes.
-           - If a conflict occurs on the combination of `label` and `graph_type`, the insertion is ignored.
-        2. Inserts a relationship between the filter field and a table type into the `un0.filterfield_tabletype` table.
-           - The relationship is defined by the `filterfield_id`, `table_type_id`, and `direction`.
-           - If a conflict occurs, the insertion is ignored.
-
-        Returns:
-            str: The SQL statement for creating the filter field and its associated table type.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Create the filter field
-            INSERT INTO un0.filterfield (
-                accessor,
-                label,
-                data_type,
-                graph_type,
-                lookups
-            )
-            VALUES (
-                '{self.accessor}',
-                '{self.label}',
-                '{self.column.type}',
-                '{GraphType.PROPERTY.name}',
-                ARRAY{self.lookups}::un0.lookup[]
-            ) ON CONFLICT (label, graph_type) DO NOTHING;
-
-            INSERT INTO un0.filterfield_tabletype (
-                filterfield_id,
-                table_type_id,
-                direction
-            )
-            SELECT f.id, t.id, '{EdgeDirection.FROM.name}'
-            FROM un0.filterfield f
-            JOIN un0.table_type t
-            ON f.label = '{self.label}'
-            AND f.graph_type = '{GraphType.PROPERTY.name}'
-            AND t.name = '{self.table_name}'
-            AND t.schema_name = '{self.schema_name}'
-            ON CONFLICT DO NOTHING;
-            """
-        )
-
 
 class Vertex(GraphBase):
+    # table_name: str <- GraphBase
+    # schema_name: str <- GraphBase
+
     # label: str <- computed_field
-    # accessor: str <- computed_field
-    # data_type: str <- computed_field
-    # properties: list[PropertySqlEmitter] | None <- computed_field
     # edges: list[EdgeSqlEmitter] | None <- computed_field
 
     table: Table
     column_name: str
+    properties: dict[str, Property]
     lookups: list[Lookup] = related_lookups
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -218,42 +159,8 @@ class Vertex(GraphBase):
         return convert_snake_to_capital_word(self.table.name)
 
     @computed_field
-    def accessor(self) -> str:
-        return self.table.name
-
-    @computed_field
     def column(self) -> Column:
         return self.table.columns[self.column_name]
-
-    @computed_field
-    def data_type(self) -> str:
-        """
-        Generates a string representing a SQL expression to cast a column to its specified type.
-
-        Returns:
-            str: A SQL expression string in the format "quote_nullable(NEW.<column_name>::<column_type>)".
-        """
-        return quote(f"NEW.{self.column.name}::{self.column.type}")
-
-    @computed_field
-    def properties(self) -> list[Property] | None:
-        """
-        Generates a list of PropertySqlEmitter instances for each column in the table.
-
-        Returns:
-            list[PropertySqlEmitter] | None: A list of PropertySqlEmitter instances or None if no columns are present.
-        """
-        props = []
-        for column in self.table.columns:
-            props.append(
-                Property(
-                    schema_name=self.schema_name,
-                    table_name=self.table_name,
-                    table=self.table,
-                    column=column,
-                )
-            )
-        return props
 
     @computed_field
     def edges(self) -> list["Edge"] | None:
@@ -269,6 +176,7 @@ class Vertex(GraphBase):
         for fk in self.table.foreign_keys:
             edges.append(
                 Edge(
+                    label=fk.parent.info.get("edge_label"),
                     schema_name=self.schema_name,
                     table_name=self.table_name,
                     table=self.table,
@@ -278,11 +186,27 @@ class Vertex(GraphBase):
                         schema_name=fk.column.table.schema,
                         table_name=fk.column.table.name,
                         table=fk.column.table,
-                        column=fk.parent,
                         column_name=fk.column.name,
                     ),
                 )
             )
+            for reverse_edge_label in fk.parent.info.get("reverse_edge_labels", []):
+                edges.append(
+                    Edge(
+                        label=reverse_edge_label,
+                        schema_name=self.schema_name,
+                        table_name=self.table_name,
+                        table=self.table,
+                        to_column=fk.column,
+                        start_vertex=Vertex(
+                            schema_name=fk.parent.table.schema,
+                            table_name=fk.parent.table.name,
+                            table=fk.parent.table,
+                            column_name=fk.parent.name,
+                        ),
+                        end_vertex=self,
+                    )
+                )
         return edges
 
     # Functions to generate sql statements
@@ -307,54 +231,6 @@ class Vertex(GraphBase):
         # sql += f"\n{self.truncate_vertext_sql()}"
         # sql += f"\n{self.create_filter_field_sql()}"
         return textwrap.dedent(sql)
-
-    def create_filter_field_sql(self) -> str:
-        """
-        Generates the SQL statement to create a filter field and associate it with a table type.
-
-        The SQL statement performs the following operations:
-        1. Inserts a new filter field into the `un0.filterfield` table with the specified attributes.
-           - If a conflict occurs on the combination of `label` and `graph_type`, the insertion is ignored.
-        2. Inserts a new association between the filter field and a table type into the `un0.filterfield_tabletype` table.
-           - The association includes the filter field ID, table type ID, and direction.
-           - If a conflict occurs, the insertion is ignored.
-
-        Returns:
-            str: The generated SQL statement.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Create the filter field
-            INSERT INTO un0.filterfield (
-                accessor,
-                label,
-                data_type,
-                graph_type,
-                lookups
-            )
-            VALUES (
-                '{self.accessor}',
-                '{self.label}',
-                '{self.column.type}',
-                '{GraphType.VERTEX.name}',
-                ARRAY{self.lookups}::un0.lookup[]
-            ) ON CONFLICT (label, graph_type) DO NOTHING;
-
-            INSERT INTO un0.filterfield_tabletype (
-                filterfield_id,
-                table_type_id,
-                direction
-            )
-            SELECT f.id, t.id, '{EdgeDirection.FROM.name}'
-            FROM un0.filterfield f
-            JOIN un0.table_type t
-            ON f.label = '{self.label}'
-            AND f.graph_type = '{GraphType.VERTEX.name}'
-            AND t.name = '{self.table_name}'
-            AND t.schema_name = '{self.schema_name}'
-            ON CONFLICT DO NOTHING;
-            """
-        )
 
     def create_vertex_label_sql(self) -> str:
         query = SQL(
@@ -392,56 +268,17 @@ class Vertex(GraphBase):
         prop_key_str = ""
         prop_val_str = ""
         edge_str = ""
-        if self.edges:
-            edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
+        # if self.edges:
+        #    edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
 
         if self.properties:
-            prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", ".join([f"quote_nullable(NEW.{prop.accessor})" for prop in self.properties])
-
-        function_string = textwrap.dedent(
-            f"""
-            DECLARE 
-                _sql TEXT := 'SELECT * FROM cypher(''graph'', $graph$
-                        CREATE (v:{self.label} {{{prop_key_str}}})
-                    $graph$) AS (a agtype);';
-            BEGIN
-                EXECUTE _sql USING {prop_val_str};
-                -- {edge_str}
-                RETURN NEW;
-            END;
-            """
-        )
-
-        return self.create_sql_function(
-            "insert_vertex",
-            function_string,
-            operation="INSERT",
-            include_trigger=True,
-            db_function=False,
-        )
-
-    def insert_vertex_sql_old(self) -> str:
-        """
-        Generates SQL code to create a function and trigger for inserting a new vertex record
-        when a new relational table record is inserted.
-
-        The function constructs the SQL statements required to:
-        - Create a new vertex with the specified label and properties.
-        - Create edges for the vertex if any are defined.
-
-        Returns:
-            str: The generated SQL code for the insert function and trigger.
-        """
-        prop_key_str = ""
-        prop_val_str = ""
-        edge_str = ""
-        if self.edges:
-            edge_str = "\n".join([edge.insert_edge_sql() for edge in self.edges])
-
-        if self.properties:
-            prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
+            prop_key_str = ", ".join(f"{prop}: %s" for prop in self.properties.keys())
+            prop_val_str = ", ".join(
+                [
+                    f"quote_nullable(NEW.{prop.accessor})"
+                    for prop in self.properties.values()
+                ]
+            )
 
         function_string = textwrap.dedent(
             f"""
@@ -451,7 +288,7 @@ class Vertex(GraphBase):
                     $graph$) AS (a agtype);', {prop_val_str});
             BEGIN
                 EXECUTE _sql;
-                -- {edge_str}
+                {edge_str}
                 RETURN NEW;
             END;
             """
@@ -575,10 +412,10 @@ class Vertex(GraphBase):
 
 
 class Edge(GraphBase):
-    # label: str <- computed_field
     # accessor: str <- computed_field
     # properties: list[PropertySqlEmitter] <- computed_field
 
+    label: str
     table: Table
     to_column: Column
     start_vertex: Vertex
@@ -587,10 +424,6 @@ class Edge(GraphBase):
     in_vertex: bool = True
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    @computed_field
-    def label(self) -> str:
-        return self.to_column.info.get("edge")
 
     @computed_field
     def accessor(self) -> str:
@@ -611,74 +444,6 @@ class Edge(GraphBase):
                 if not column.foreign_keys:
                     props.append(Property(table=self.table, column=column))
         return props
-
-    # Functions to generate sql statements
-
-    def create_sql(self) -> str:
-        return "\n".join(
-            [
-                self.create_label_sql(),
-                self.insert_edge_sql(),
-                self.update_edge_sql(),
-                self.delete_edge_sql(),
-                self.truncate_edge_sql(),
-                self.create_filter_field_sql(),
-            ]
-        )
-
-    def create_filter_field_sql(self) -> str:
-        """Returns the sql to insert the Edge as a filter field
-
-        Additionally, it creates the filterfield_tabletype records for the edge
-        for both the start and end vertices.
-        """
-        return textwrap.dedent(
-            f"""
-            -- Create the filter field
-            INSERT INTO un0.filterfield (
-                accessor,
-                label,
-                data_type,
-                graph_type,
-                lookups
-            )
-            VALUES (
-                '{self.accessor}',
-                '{self.label}',
-                '{self.to_column.type}',
-                '{GraphType.EDGE.name}',
-                ARRAY{self.lookups}::un0.lookup[]
-            ) ON CONFLICT (label, graph_type) DO NOTHING;
-
-            INSERT INTO un0.filterfield_tabletype (
-                filterfield_id,
-                table_type_id,
-                direction
-            )
-            SELECT f.id, t.id, '{EdgeDirection.FROM.name}'
-            FROM un0.filterfield f
-            JOIN un0.table_type t
-            ON f.label = '{self.label}'
-            AND f.graph_type = '{GraphType.EDGE.name}'
-            AND t.name = '{self.table_name}'
-            AND t.schema_name = '{self.schema_name}'
-            ON CONFLICT DO NOTHING;
-    
-            INSERT INTO un0.filterfield_tabletype (
-                filterfield_id,
-                table_type_id,
-                direction
-            )
-            SELECT f.id, t.id, '{EdgeDirection.TO.name}'
-            FROM un0.filterfield f
-            JOIN un0.table_type t
-            ON f.label = '{self.label}'
-            AND f.graph_type = '{GraphType.EDGE.name}'
-            AND t.name = '{self.end_vertex.table.name}'
-            AND t.schema_name = '{self.end_vertex.table.schema_name}'
-            ON CONFLICT DO NOTHING;
-            """
-        )
 
     def create_label_sql(self) -> str:
         """
@@ -714,11 +479,8 @@ class Edge(GraphBase):
         Returns:
             str: The generated SQL string.
         """
-        prop_key_str = ""
-        prop_val_str = ""
-        if self.properties:
-            prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
-            prop_val_str = ", ".join([prop.data_type for prop in self.properties])
+        prop_key_str = ", ".join(f"{prop.accessor}: %s" for prop in self.properties)
+        prop_val_str = ", ".join([prop.data_type for prop in self.properties])
         function_string = f"""
             DECLARE
                 _sql TEXT := FORMAT('SELECT * FROM cypher(''graph'', $graph$
@@ -726,23 +488,12 @@ class Edge(GraphBase):
                     MATCH (w:{self.end_vertex.label} {{id: %s}})
                     CREATE (v)-[e:{self.label} {{{prop_key_str}}}]->(w)
                 $graph$) AS (a agtype);', quote_nullable(NEW.id), quote_nullable(NEW.id){prop_val_str});
-
             BEGIN
                 EXECUTE _sql;
                 RETURN NEW;
             END;
             """
         return textwrap.dedent(function_string)
-
-        return textwrap.dedent(
-            self.create_sql_function(
-                "insert_edge",
-                function_string,
-                operation="INSERT",
-                include_trigger=True,
-                db_function=False,
-            )
-        )
 
     def update_edge_sql(self) -> str:
         """
@@ -851,3 +602,12 @@ class Edge(GraphBase):
                 db_function=False,
             )
         )
+
+
+class Path(GraphBase):
+    from_vertex: Vertex
+    edge: Edge
+    to_vertex: Vertex
+    parent_path: "Path"
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)

@@ -11,7 +11,7 @@ import textwrap
 import pytest
 
 from sqlalchemy import func, select, delete, text, create_engine, Inspector, Column
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from un0.database.management.db_manager import DBManager
@@ -84,7 +84,7 @@ AS $$
 DECLARE
 BEGIN
     /*
-    Function to set the session variables used for RLS and set the role to the reader role
+    Function to set the session variables used for RLS and set the role to the provided role
     */
 
     --Set the session variables
@@ -94,7 +94,7 @@ BEGIN
     PERFORM set_config('rls_var.is_tenant_admin', is_tenant_admin, true);
     PERFORM set_config('rls_var.tenant_id', tenant_id, true);
 
-    --Set the role to the databases reader role
+    --Set the role to the provided database role
     PERFORM un0.mock_role(role_name);
 END;
 $$;
@@ -207,8 +207,21 @@ def engine():
 
 
 @pytest.fixture(scope="session")
+def echo_engine():
+    return create_engine(settings.DB_URL, echo=True)
+
+
+@pytest.fixture(scope="session")
 def async_engine():
     return create_async_engine(settings.DB_URL)
+
+
+@pytest.fixture(scope="session")
+def echo_connection(echo_engine, superuser_id):
+    connection = echo_engine.connect()
+    yield connection
+    connection.close()
+    echo_engine.dispose()
 
 
 @pytest.fixture(scope="session")
@@ -216,17 +229,17 @@ def db_connection(engine, superuser_id):
     """Returns an sqlalchemy session, and after the test tears down everything properly."""
     connection = engine.connect()
     # begin the nested transaction
-    transaction = connection.begin()
+    # transaction = connection.begin()
     yield connection
     # roll back the broader transaction
-    transaction.rollback()
+    # transaction.rollback()
     # put back the connection to the connection pool
     connection.close()
     engine.dispose()
 
 
 @pytest.fixture(scope="session")
-def async_engine():
+def test_async_engine():
     return create_async_engine(settings.DB_URL)
 
 
@@ -240,8 +253,8 @@ def superuser_id():
 
 
 @pytest.fixture(scope="class")
-def session(superuser_id, create_test_functions):
-    engine = create_engine(settings.DB_URL)
+def echo_session(superuser_id, create_test_functions):
+    engine = create_engine(settings.DB_URL, echo=True)
     session_factory = sessionmaker(
         bind=engine,
         expire_on_commit=True,
@@ -250,6 +263,12 @@ def session(superuser_id, create_test_functions):
         yield session
         session.close()
     engine.dispose()
+
+
+@pytest.fixture(scope="class")
+def session(engine, superuser_id, create_test_functions):
+    session = scoped_session(sessionmaker(bind=engine, expire_on_commit=True))
+    yield session
 
 
 @pytest.fixture(scope="class")
@@ -274,24 +293,24 @@ def tenant_dict(session, superuser_id):
         tenant
         group
     """
-    tenant_list = [
-        ["Acme Inc.", TenantType.ENTERPRISE],
-        ["Nacme Corp", TenantType.CORPORATE],
-        ["Coyote LLP", TenantType.BUSINESS],
-        ["Birdy", TenantType.INDIVIDUAL],
-    ]
     tenants = [
-        Tenant(name=name, tenant_type=tenant_type) for name, tenant_type in tenant_list
+        Tenant.table(name="Acme Inc.", tenant_type=TenantType.ENTERPRISE),
+        Tenant.table(name="Nacme Corp", tenant_type=TenantType.CORPORATE),
+        Tenant.table(name="Coyote LLP", tenant_type=TenantType.BUSINESS),
+        Tenant.table(name="Birdy", tenant_type=TenantType.INDIVIDUAL),
     ]
     with session.begin():
         session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
         session.execute(func.un0.mock_role("writer"))
         session.add_all(tenants)
-        result = session.execute(select(Tenant))
-    db_tenants = result.scalars().all()
-    tenant_dict = {
-        t.name: {"id": t.id, "tenant_type": t.tenant_type} for t in db_tenants
-    }
+        session.commit()
+    with session.begin():
+        result = session.execute(select(Tenant.table))
+        db_tenants = result.scalars().all()
+        tenant_dict = {
+            t.name: {"id": t.id, "tenant_type": t.tenant_type} for t in db_tenants
+        }
+        session.commit()
     yield tenant_dict
 
 
@@ -299,10 +318,10 @@ def tenant_dict(session, superuser_id):
 def group_dict(session, superuser_id):
     with session.begin():
         session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
-        result = session.execute(select(Group))
+        result = session.execute(select(Group.table))
         db_groups = result.scalars().all()
         group_dict = {g.name: {"id": g.id} for g in db_groups}
-
+        session.commit()
     yield group_dict
 
 
@@ -314,7 +333,7 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
         tenant_id = tenant_value.get("id")
         default_group_id = group_dict.get(tenant_name).get("id")
         users.append(
-            User(
+            User.table(
                 email=f"{'admin'}@{tenant_name_lower}.com",
                 handle=f"{tenant_name_lower}_admin",
                 full_name=f"{tenant_name} Admin",
@@ -333,7 +352,7 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
             rng = range(1, 1)
         for u in rng:
             users.append(
-                User(
+                User.table(
                     email=f"{'user'}{u}@{tenant_name_lower}.com",
                     handle=f"{tenant_name_lower}_user{u}",
                     full_name=f"{tenant_name} User{u}",
@@ -342,21 +361,25 @@ def user_dict(session, superuser_id, tenant_dict, group_dict):
                 )
             )
     with session.begin():
+        session.add_all(users)
         session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
         session.execute(func.un0.mock_role("writer"))
-        session.add_all(users)
-        result = session.execute(select(User))
+        session.commit()
+    with session.begin():
+        session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
+        result = session.execute(select(User.table))
         db_users = result.scalars().all()
         user_dict = {
             u.email: {
                 "email": u.email,
                 "id": u.id,
-                "is_superuser": u.is_superuser,
-                "is_tenant_admin": u.is_tenant_admin,
+                "is_superuser": u.is_superuser if u.is_superuser else False,
+                "is_tenant_admin": u.is_tenant_admin if u.is_tenant_admin else False,
                 "tenant_id": u.tenant_id,
             }
             for u in db_users
         }
+        session.commit()
     yield user_dict
 
 

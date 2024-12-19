@@ -2,14 +2,32 @@
 #
 # SPDX-License-Identifier: MIT
 
-from typing import AsyncIterator
+import datetime
+from enum import Enum
+from decimal import Decimal
+
+
+from typing import AsyncIterator, Annotated
 
 from sqlalchemy import MetaData
+from sqlalchemy.dialects.postgresql import (
+    BIGINT,
+    TIMESTAMP,
+    DATE,
+    TIME,
+    BOOLEAN,
+    ENUM,
+    NUMERIC,
+    ARRAY,
+    TEXT,
+)
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
+    AsyncAttrs,
 )
+from sqlalchemy.orm import registry, DeclarativeBase
 from un0.config import settings
 
 
@@ -46,7 +64,13 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-'''
+str_26 = Annotated[str, 26]
+str_64 = Annotated[str, 64]
+str_128 = Annotated[str, 128]
+str_255 = Annotated[str, 255]
+decimal = Annotated[Decimal, 19]
+
+
 class Base(AsyncAttrs, DeclarativeBase):
     """
     Base class for SQLAlchemy models with asynchronous attributes and custom type annotations.
@@ -91,4 +115,3 @@ class Base(AsyncAttrs, DeclarativeBase):
         )
     )
     metadata = metadata
-'''

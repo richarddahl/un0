@@ -169,7 +169,7 @@ class FilterFieldModel(UN0Model):
                 'FROM'
             FROM un0.table_type t
             JOIN un0.filterfield f
-            ON t.schema_name = '{self.table.schema_name}'
+            ON t.db_schema = '{self.table.schema_name}'
             AND t.name = '{self.table.name}'
             AND f.name = '{self.from_column.name}'
             AND f.graph_type = '{self.graph_type.name}'
@@ -191,7 +191,7 @@ class FilterFieldModel(UN0Model):
                     'TO'
                 FROM un0.table_type t
                 JOIN un0.filterfield f
-                ON t.schema_name = '{self.table.schema_name}'
+                ON t.db_schema = '{self.table.schema_name}'
                 AND t.name = '{self.table.name}'
                 AND f.name = '{self.to_column.name}'
                 AND f.graph_type = '{self.graph_type.name}'

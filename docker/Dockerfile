@@ -45,5 +45,12 @@ RUN cd /docker-entrypoint-initdb.d/age-master && make install
 RUN cd /docker-entrypoint-initdb.d/pgjwt-master && make install
 RUN cd /docker-entrypoint-initdb.d/supa_audit-main && make install
 
+# Create plugins directory and link age.so (Allows non superusers to use the extension)
+RUN mkdir /usr/local/lib/postgresql/plugins
+RUN ln -s /usr/local/lib/postgresql/age.so /usr/local/lib/postgresql/plugins/age.so
+
+# Remove extension files
+RUN rm -rf /docker-entrypoint-initdb.d/*
+
 # Start PostgreSQL
 CMD ["postgres"]

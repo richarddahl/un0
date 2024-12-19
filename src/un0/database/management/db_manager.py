@@ -20,8 +20,7 @@ from un0.database.management.sql_emitters import (
     TablePrivilegeSQL,
 )
 from un0.database.models import Model
-
-from un0.database.base import metadata
+from un0.database.base import Base
 from un0.config import settings
 
 
@@ -42,8 +41,6 @@ class DBManager:
         with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             for model in Model.registry.values():
                 print(f"Creating the {model.__name__} table\n")
-                # if model.__name__ == "User":
-                # print(model.emit_sql())
                 conn.execute(text(model.emit_sql()))
                 conn.commit()
             conn.close()
@@ -286,7 +283,7 @@ class DBManager:
 
             # Create the tables
             print("Creating the database tables\n")
-            metadata.create_all(bind=conn)
+            Base.metadata.create_all(bind=conn)
 
             print("Setting the table privileges\n")
             conn.execute(text(TablePrivilegeSQL().emit_sql()))

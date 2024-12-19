@@ -39,24 +39,7 @@ class SQLEmitter(ABC):
     def emit_sql(self) -> str:
         raise NotImplementedError
 
-    def insert_model_values_sql(self, model) -> str:
-        """
-        Generates an SQL INSERT statement for the given model's values.
-        
-        Args:
-            model: The model instance containing the values to insert.
-        
-        Returns:
-            str: The SQL INSERT statement.
-        """
-        columns = ', '.join(model.__annotations__.keys())
-        values = ', '.join(f"'{getattr(model, col)}'" for col in model.__annotations__.keys())
-        return textwrap.dedent(
-            f"""
-            INSERT INTO {self.schema_name}.{self.table_name} ({columns})
-            VALUES ({values});
-            """
-        )
+    def create_sql_trigger(
         self,
         function_name: str,
         timing: str = "BEFORE",

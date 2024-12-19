@@ -5,9 +5,9 @@
 from sqlalchemy import inspect, Integer
 from sqlalchemy.dialects.postgresql import TEXT, VARCHAR
 
-from un0.database.fields import UQ
+from un0.database.fields import UniqueDefinition
 from un0.relatedobjects.models import TableType
-from un0.authorization.sql_emitters import InsertTableOperationFnctnTrggrSQL
+from un0.authorization.sql_emitters import InsertTableOperation
 
 from tests.conftest import (
     print_indices,
@@ -25,7 +25,7 @@ class TestTableType:
     def test_table_type_model_structure(self):
         """
         Test the structure of the TableType Model.
-        The constraints, indices, and field_definitions are tested in other methods.
+        The constraints, index_definitions, and field_definitions are tested in other methods.
         """
         assert TableType.__name__ == "TableType"
         assert TableType.__module__ == "un0.relatedobjects.models"
@@ -35,18 +35,19 @@ class TestTableType:
         assert TableType.verbose_name == "Table Type"
         assert TableType.verbose_name_plural == "Table Types"
         assert list(TableType.field_definitions.keys()) == ["id", "db_schema", "name"]
-        assert TableType.constraints == [
-            UQ(columns=["db_schema", "name"], name="uq_tabletype_db_schema_name")
+        assert TableType.constraint_definitions == [
+            UniqueDefinition(
+                columns=["db_schema", "name"], name="uq_tabletype_db_schema_name"
+            )
         ]
-        assert TableType.indices == []
-        assert InsertTableOperationFnctnTrggrSQL in TableType.sql_emitters
-        assert TableType.primary_keys == {"id"}
+        assert TableType.index_definitions == []
+        assert InsertTableOperation in TableType.sql_emitters
 
-        table_type = TableType(db_schema="un0", name="table")
-        assert str(table_type) == "un0.table"
+        table_type = TableType(db_schema="un0", name="table_test")
+        assert str(table_type) == "un0.table_test"
 
     def test_table_type_indices(self, db_connection):
-        """Test the indices on the table_type table in the database."""
+        """Test the index_definitions on the table_type table in the database."""
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "table_type", schema=self.schema)
         assert db_inspector.get_indexes("table_type", schema=self.schema) == [

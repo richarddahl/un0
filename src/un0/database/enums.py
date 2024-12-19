@@ -90,8 +90,8 @@ class Cardinality(str, enum.Enum):
         MANY_TO_MANY (str): Many-to-many relationship.
     """
 
-    ONE_TO_ONE = "one_to_one"  # FK with unique constraint
-    ONE_TO_MANY = "one_to_many"  # FK without unique constraint
-    MANY_TO_ONE = "many_to_one"  # Reverse of FK without unique constraint
+    ONE_TO_ONE = "one_to_one"  # FKDefinition with unique constraint
+    ONE_TO_MANY = "one_to_many"  # FKDefinition without unique constraint
+    MANY_TO_ONE = "many_to_one"  # Reverse of FKDefinition without unique constraint
     MANY_TO_MANY = "many_to_many"  # To edge of relationship
     REV_MANY_TO_MANY = "rev_many_to_many"  # from edge of many to many relationship

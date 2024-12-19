@@ -21,21 +21,20 @@ from sqlalchemy.dialects.postgresql import (
     TIMESTAMP,
 )
 
-from pydantic.dataclasses import dataclass
-
 from un0.database.fields import (
-    FK,
-    UQ,
-    CK,
-    IX,
+    FKDefinition,
+    UniqueDefinition,
+    CheckDefinition,
+    IndexDefinition,
     FieldDefinition,
 )
 from un0.database.models import Model
 from un0.database.mixins import NameMixin, DescriptionMixin
 from un0.database.enums import SQLOperation
-from un0.database.sql_emitters import SQLEmitter, RecordVersionAuditSQL
+from un0.database.sql_emitters import RecordVersionAuditSQL
 from un0.relatedobjects.models import TableType
 from un0.relatedobjects.mixins import RelatedObjectIdMixin
+from un0.authorization.sql_emitters import UserRecordFieldAuditSQL
 from un0.authorization.enums import TenantType
 from un0.authorization.mixins import (
     TenantMixin,
@@ -43,35 +42,42 @@ from un0.authorization.mixins import (
     ActiveDeletedMixin,
     ImportMixin,
 )
-
+from un0.authorization.sql_emitters import (
+    ValidateGroupInsert,
+    InsertGroupForTenant,
+    DefaultGroupTenant,
+)
 from un0.authorization.rls_sql_emitters import (
     RLSSQL,
+    UserRLSSQL,
     TenantRLSSQL,
 )
 
 
 class Tenant(
     Model,
-    NameMixin,
     AuthorizationMixin,
+    NameMixin,
     schema_name="un0",
     table_name="tenant",
 ):
     """The Tenant model."""
 
     # name: str <- NameMixin
-    # id: str <- AuthFieldMixin
-    # related_object: RelatedObject <- AuthFieldMixin
-    # active: bool <- AuthFieldMixin
-    # created_at: datetime <- AuthFieldMixin
-    # created_by: User <- AuthFieldMixin
-    # modified_at: datetime <- AuthFieldMixin
-    # modified_by: User <- AuthFieldMixin
-    # is_deleted: bool <- AuthFieldMixin
-    # deleted_at: datetime <- AuthFieldMixin
-    # deleted_by: User <- AuthFieldMixin
+    # id: str <- AuthModelMixin
+    # related_object: RelatedObject <- AuthModelMixin
+    # active: bool <- AuthModelMixin
+    # created_at: datetime <- AuthModelMixin
+    # created_by: User <- AuthModelMixin
+    # modified_at: datetime <- AuthModelMixin
+    # modified_by: User <- AuthModelMixin
+    # is_deleted: bool <- AuthModelMixin
+    # deleted_at: datetime <- AuthModelMixin
+    # deleted_by: User <- AuthModelMixin
 
-    constraints = [UQ(columns=["name"], name="uq_tenant_name")]
+    sql_emitters = [InsertGroupForTenant]
+
+    constraint_definitions = [UniqueDefinition(columns=["name"], name="uq_tenant_name")]
     field_definitions = {
         "tenant_type": FieldDefinition(
             data_type=ENUM(
@@ -91,65 +97,6 @@ class Tenant(
 
     def __str__(self) -> str:
         return f"{self.name} ({self.tenant_type})"
-
-
-@dataclass
-class UserRecordFieldAuditSQL(SQLEmitter):
-    """ """
-
-    def emit_sql(self) -> str:
-        function_string = """
-            DECLARE
-                user_id TEXT := current_setting('rls_var.user_id', true);
-                estimate INT4;
-            BEGIN
-                SELECT current_setting('rls_var.user_id', true) INTO user_id;
-
-                IF user_id IS NULL THEN
-                    /*
-                    This should only happen when the very first user is created
-                    and therefore a user_id cannot be set in the session variables
-                    */
-                    SELECT reltuples AS estimate FROM PG_CLASS WHERE relname = TG_TABLE_NAME INTO estimate;
-                    IF TG_TABLE_NAME = 'user' AND estimate < 1 THEN
-                        NEW.modified_at := NOW();
-
-                        IF TG_OP = 'INSERT' THEN
-                            NEW.created_at := NOW();
-                        END IF;
-
-                        IF TG_OP = 'DELETE' THEN
-                            NEW.deleted_at = NOW();
-                        END IF;
-                    ELSE
-                        RAISE EXCEPTION 'user_id is NULL';
-                    END IF;
-                END IF;
-
-                NEW.modified_at := NOW();
-                NEW.modified_by_id = user_id;
-
-                IF TG_OP = 'INSERT' THEN
-                    NEW.created_at := NOW();
-                    NEW.owned_by_id = user_id;
-                END IF;
-
-                IF TG_OP = 'DELETE' THEN
-                    NEW.deleted_at = NOW();
-                    NEW.deleted_by_id = user_id;
-                END IF;
-                RETURN NEW;
-            END;
-            """
-
-        return self.create_sql_function(
-            "set_owner_and_modified",
-            function_string,
-            timing="BEFORE",
-            operation="INSERT OR UPDATE OR DELETE",
-            include_trigger=True,
-            db_function=False,
-        )
 
 
 class User(
@@ -191,9 +138,10 @@ class User(
         __str__: Returns the handle of the user as the string representation.
     """
 
-    sql_emitters = [UserRecordFieldAuditSQL]
-    constraints = [
-        CK(
+    vertex_column = "id"
+    sql_emitters = [UserRecordFieldAuditSQL, UserRLSSQL]
+    constraint_definitions = [
+        CheckDefinition(
             expression=textwrap.dedent(
                 """
                 (is_superuser = 'false' AND default_group_id IS NOT NULL) OR
@@ -224,11 +172,11 @@ class User(
         ),
         "default_group_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.group.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.group.id",
                 ondelete="CASCADE",
-                to_edge="IS_DEFAULT",
-                from_edge="IS_DEFAULT_FOR",
+                edge_label="IS_DEFAULT_GROUP",
+                reverse_edge_labels=["IS_DEFAULT_GROUP_FOR"],
             ),
             index=True,
             nullable=True,
@@ -246,11 +194,11 @@ class User(
         ),
         "tenant_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.tenant.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.tenant.id",
                 ondelete="CASCADE",
-                to_edge="BELONGS_TO",
-                from_edge="HAS",
+                edge_label="WORKS_FOR",
+                reverse_edge_labels=["HAS_EMPLOYEE"],
             ),
             index=True,
             doc="Tenant to which the user belongs",
@@ -263,11 +211,11 @@ class User(
         ),
         "owned_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="OWNED_BY",
-                from_edge="OWNS",
+                edge_label="OWNED_BY",
+                reverse_edge_labels=["OWNS"],
             ),
             index=True,
             nullable=True,  # Must be true for the first user
@@ -281,11 +229,11 @@ class User(
         ),
         "modified_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="LAST_MODIFIED_BY",
-                from_edge="LAST_MODIFIED",
+                edge_label="LAST_MODIFIED_BY",
+                reverse_edge_labels=["LAST_MODIFIED"],
             ),
             index=True,
             nullable=True,  # Must be true for the first user
@@ -299,11 +247,11 @@ class User(
         ),
         "deleted_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="LAST_MODIFIED_BY",
-                from_edge="LAST_MODIFIED",
+                edge_label="DELETED_BY",
+                reverse_edge_labels=["DELETED"],
             ),
             index=True,
             nullable=True,
@@ -311,18 +259,18 @@ class User(
         ),
     }
 
-    # tenant_id: str <- TenantFieldMixin
-    # tenant: Tenant <- TenantFieldMixin
-    # id: str <- AuthFieldMixin
-    # related_object: RelatedObject <- AuthFieldMixin
-    # active: bool <- AuthFieldMixin
-    # created_at: datetime <- AuthFieldMixin
-    # created_by: User <- AuthFieldMixin
-    # modified_at: datetime <- AuthFieldMixin
-    # modified_by: User <- AuthFieldMixin
-    # is_deleted: bool <- AuthFieldMixin
-    # deleted_at: datetime <- AuthFieldMixin
-    # deleted_by: User <- AuthFieldMixin
+    # tenant_id: str <- TenantModelMixin
+    # tenant: Tenant <- TenantModelMixin
+    # id: str <- AuthModelMixin
+    # related_object: RelatedObject <- AuthModelMixin
+    # active: bool <- AuthModelMixin
+    # created_at: datetime <- AuthModelMixin
+    # created_by: User <- AuthModelMixin
+    # modified_at: datetime <- AuthModelMixin
+    # modified_by: User <- AuthModelMixin
+    # is_deleted: bool <- AuthModelMixin
+    # deleted_at: datetime <- AuthModelMixin
+    # deleted_by: User <- AuthModelMixin
 
     email: Optional[str] = None
     handle: Optional[str] = None
@@ -361,11 +309,13 @@ class TableOperation(
         [SELECT, UPDATE]
         [SELECT, INSERT, UPDATE]
         [SELECT, INSERT, UPDATE, DELETE]
-    Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
+    Deleted automatically by the DB via the FKDefinition Constraints ondelete when a table_type is deleted.
     """
 
-    constraints = [
-        UQ(columns=["table_type_id", "operations"], name="uq_tabletype_operations")
+    constraint_definitions = [
+        UniqueDefinition(
+            columns=["table_type_id", "operations"], name="uq_tabletype_operations"
+        )
     ]
     field_definitions = {
         "id": FieldDefinition(
@@ -377,11 +327,11 @@ class TableOperation(
         ),
         "table_type_id": FieldDefinition(
             data_type=Integer,
-            foreign_key=FK(
-                target="un0.table_type.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.table_type.id",
                 ondelete="CASCADE",
-                to_edge="HAS_TABLE_TYPE",
-                from_edge="HAS_TABLE_PERMISSION",
+                edge_label="HAS_TABLE_TYPE",
+                reverse_edge_labels=["HAS_TABLE_PERMISSION"],
             ),
             index=True,
         ),
@@ -398,7 +348,6 @@ class TableOperation(
             index=True,
         ),
     }
-    is_vertex = True
 
     table_type_id: Optional[str] = None
     table_type: Optional[TableType] = None
@@ -414,7 +363,7 @@ class Role(
     DescriptionMixin,
     AuthorizationMixin,
     TenantMixin,
-    # DefaultRLSFieldMixin,
+    # DefaultRLSModelMixin,
     schema_name="un0",
     table_name="role",
 ):
@@ -423,23 +372,27 @@ class Role(
     Roles enable the assignment of group permissions by functionality, department, etc., to users.
     """
 
-    indices = [IX(name="ix_role_tenant_id_name", columns=["tenant_id", "name"])]
-    constraints = [UQ(columns=["tenant_id", "name"], name="uq_role_tenant_name")]
+    index_definitions = [
+        IndexDefinition(name="ix_role_tenant_id_name", columns=["tenant_id", "name"])
+    ]
+    constraint_definitions = [
+        UniqueDefinition(columns=["tenant_id", "name"], name="uq_role_tenant_name")
+    ]
 
     # name: str <- NameDescriptionMixin
     # description: str <- NameDescriptionMixin
-    # id: str <- DefaultRLSFieldMixin
-    # related_object: RelatedObject <- DefaultRLSFieldMixin
-    # active: bool <- DefaultRLSFieldMixin
-    # created_at: datetime <- DefaultRLSFieldMixin
-    # created_by: User <- DefaultRLSFieldMixin
-    # modified_at: datetime <- DefaultRLSFieldMixin
-    # modified_by: User <- DefaultRLSFieldMixin
-    # is_deleted: bool <- DefaultRLSFieldMixin
-    # deleted_at: datetime <- DefaultRLSFieldMixin
-    # deleted_by: User <- DefaultRLSFieldMixin
-    # tenant_id: str <- DefaultRLSFieldMixin
-    # tenant: Tenant <- DefaultRLSFieldMixin
+    # id: str <- DefaultRLSModelMixin
+    # related_object: RelatedObject <- DefaultRLSModelMixin
+    # active: bool <- DefaultRLSModelMixin
+    # created_at: datetime <- DefaultRLSModelMixin
+    # created_by: User <- DefaultRLSModelMixin
+    # modified_at: datetime <- DefaultRLSModelMixin
+    # modified_by: User <- DefaultRLSModelMixin
+    # is_deleted: bool <- DefaultRLSModelMixin
+    # deleted_at: datetime <- DefaultRLSModelMixin
+    # deleted_by: User <- DefaultRLSModelMixin
+    # tenant_id: str <- DefaultRLSModelMixin
+    # tenant: Tenant <- DefaultRLSModelMixin
 
 
 class RoleTableOperation(
@@ -456,11 +409,11 @@ class RoleTableOperation(
     field_definitions = {
         "role_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.role.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.role.id",
                 ondelete="CASCADE",
-                to_edge="HAS_ROLE",
-                from_edge="HAS_TABLE_OPERATION",
+                edge_label="HAS_ROLE",
+                reverse_edge_labels=["HAS_TABLE_OPERATION"],
             ),
             index=True,
             primary_key=True,
@@ -468,18 +421,17 @@ class RoleTableOperation(
         ),
         "table_operation_id": FieldDefinition(
             data_type=Integer,
-            foreign_key=FK(
-                target="un0.table_operation.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.table_operation.id",
                 ondelete="CASCADE",
-                to_edge="HAS_TABLE_OPERATION",
-                from_edge="HAS_ROLE",
+                edge_label="HAS_TABLE_OPERATION",
+                reverse_edge_labels=["HAS_ROLE"],
             ),
             primary_key=True,
             index=True,
             doc="The applicable table operation",
         ),
     }
-    is_vertex = False
 
     role_id: Optional[str] = None
     role: Optional[Role] = None
@@ -505,23 +457,27 @@ class Group(
     Groups enable the assignment of roles to users.
     """
 
-    # sql_emitters = [AuditModelSQLEmitter, ValidateGroupInsertSQLEmitter]
-    indices = [IX(name="ix_group_name_tenant", columns=["name", "tenant_id"])]
-    constraints = [UQ(columns=["name", "tenant_id"], name="uq_group_name_tenant")]
+    # sql_emitters = [ValidateGroupInsert, DefaultGroupTenant]
+    index_definitions = [
+        IndexDefinition(name="ix_group_name_tenant", columns=["name", "tenant_id"])
+    ]
+    constraint_definitions = [
+        UniqueDefinition(columns=["name", "tenant_id"], name="uq_group_name_tenant")
+    ]
 
     # name: str <- NameMixin
-    # tenant_id: str <- TenantFieldMixin
-    # tenant: Tenant <- TenantFieldMixin
-    # id: str <- AuthFieldMixin
-    # related_object: RelatedObject <- AuthFieldMixin
-    # active: bool <- AuthFieldMixin
-    # created_at: datetime <- AuthFieldMixin
-    # created_by: User <- AuthFieldMixin
-    # modified_at: datetime <- AuthFieldMixin
-    # modified_by: User <- AuthFieldMixin
-    # is_deleted: bool <- AuthFieldMixin
-    # deleted_at: datetime <- AuthFieldMixin
-    # deleted_by: User <- AuthFieldMixin
+    # tenant_id: str <- TenantModelMixin
+    # tenant: Tenant <- TenantModelMixin
+    # id: str <- AuthModelMixin
+    # related_object: RelatedObject <- AuthModelMixin
+    # active: bool <- AuthModelMixin
+    # created_at: datetime <- AuthModelMixin
+    # created_by: User <- AuthModelMixin
+    # modified_at: datetime <- AuthModelMixin
+    # modified_by: User <- AuthModelMixin
+    # is_deleted: bool <- AuthModelMixin
+    # deleted_at: datetime <- AuthModelMixin
+    # deleted_by: User <- AuthModelMixin
 
 
 class UserGroupRole(
@@ -538,35 +494,37 @@ class UserGroupRole(
     field_definitions = {
         "user_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
+                edge_label="HAS_USER",
+                reverse_edge_labels=["HAS_GROUP", "HAS_ROLE"],
             ),
             index=True,
-            to_edge="HAS_USER",
         ),
         "group_id": FieldDefinition(
             data_type=VARCHAR(26),
             primary_key=True,
-            foreign_key=FK(
-                target="un0.group.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.group.id",
                 ondelete="CASCADE",
+                edge_label="HAS_GROUP",
+                reverse_edge_labels=["HAS_USER", "HAS_ROLE"],
             ),
             index=True,
-            to_edge="HAS_GROUP",
         ),
         "role_id": FieldDefinition(
             data_type=VARCHAR(26),
             primary_key=True,
-            foreign_key=FK(
-                target="un0.role.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.role.id",
                 ondelete="CASCADE",
+                edge_label="HAS_ROLE",
+                reverse_edge_labels=["HAS_USER", "HAS_GROUP"],
             ),
             index=True,
-            to_edge="HAS_ROLE",
         ),
     }
-    is_vertex = False
 
     user_id: Optional[str] = None
     user: Optional[User] = None

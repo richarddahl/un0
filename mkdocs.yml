@@ -18,7 +18,7 @@ nav:
    - DB:
       - Models: db/models.md
       - SQL Emitters: db/sql_emitters.md
-      - Model FieldMixins: db/model_mixin.md
+      - Model ModelMixins: db/model_mixin.md
    #   - DB Operation:
    #      - Un0DB: db/un0db.md
    #      - Un0Obj: db/models.md

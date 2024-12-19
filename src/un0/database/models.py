@@ -12,7 +12,7 @@ from sqlalchemy import Table
 
 from un0.errors import ModelRegistryError
 from un0.utilities import convert_snake_to_title
-from un0.database.base import metadata
+from un0.database.base import metadata, Base
 from un0.database.fields import (
     IndexDefinition,
     CheckDefinition,
@@ -23,7 +23,11 @@ from un0.database.masks import Mask, MaskDef
 from un0.database.enums import Cardinality, MaskType, SQLOperation
 from un0.database.routers import RouterDef, Router
 from un0.database.graph import Vertex, Edge, Property, Path
-from un0.database.sql_emitters import SQLEmitter, InsertTableTypeSQL, AlterGrantSQL
+from un0.database.sql_emitters import (
+    SQLEmitter,
+    InsertTableTypeSQL,
+    AlterGrantSQL,
+)
 from un0.config import settings
 
 
@@ -284,7 +288,7 @@ class Model(BaseModel, ModelMixin):
         # Create the sqlalchemy table object
         table = Table(
             cls.table_name,
-            metadata,
+            Base.metadata,
             schema=cls.schema_name,
             comment=cls.table_comment,
             *columns,
@@ -296,7 +300,8 @@ class Model(BaseModel, ModelMixin):
             table.indexes.add(index.create_index(table))
 
         # Set the table attribute on the class to the created SQLAlchemy table object
-        cls.table = table
+        # cls.table = table
+        cls.table = type(cls.table_name, (Base,), {"__table__": table})
         properties = {}
         for column in table.columns:
             properties[column.name] = Property(
@@ -304,14 +309,14 @@ class Model(BaseModel, ModelMixin):
             )
         cls.properties = properties
 
-        if cls.vertex_column:
-            cls.vertex = Vertex(
-                table=cls.table,
-                table_name=cls.table_name,
-                schema_name=cls.schema_name,
-                column_name=cls.vertex_column,
-                properties=cls.properties,
-            )
+        # if cls.vertex_column:
+        #    cls.vertex = Vertex(
+        #        table=cls.table,
+        #        table_name=cls.table_name,
+        #        schema_name=cls.schema_name,
+        #        column_name=cls.vertex_column,
+        #        properties=cls.properties,
+        #    )
 
         cls.create_routers()
 
@@ -429,7 +434,7 @@ class Model(BaseModel, ModelMixin):
         )
         return sql
 
-    def generate_insert_sql(self) -> tuple[str, tuple]:
+    def generate_insert_sql_robot(self) -> tuple[str, tuple]:
         """
         Generates an SQL INSERT statement for the model's fields using parameterized queries.
 
@@ -439,9 +444,38 @@ class Model(BaseModel, ModelMixin):
         columns = ", ".join(self.field_definitions.keys())
         placeholders = ", ".join(f"%s" for _ in self.field_definitions.keys())
         values = tuple(
-            getattr(self, col) if not isinstance(getattr(self, col), Enum) else getattr(self, col).name
+            getattr(self, col)
+            if not isinstance(getattr(self, col), Enum)
+            else getattr(self, col).name
             for col in self.field_definitions.keys()
             if getattr(self, col) is not None
         )
         sql = f"INSERT INTO {self.schema_name}.{self.table_name} ({columns}) VALUES ({placeholders});"
         return sql, values
+
+    def generate_insert_sql(self) -> str:
+        """
+        Generates an SQL INSERT statement for the model's fields.
+
+        Returns:
+            str: The SQL INSERT statement.
+        """
+        columns = ", ".join(self.field_definitions.keys())
+        # values = ", ".join(
+        #    f"{getattr(self, col)}" for col in self.field_definitions.keys()
+        # )
+        _columns = []
+        _values = []
+        for key, val in self.model_dump().items():
+            if not val:
+                continue
+            _columns.append(key)
+            if isinstance(val, Enum):
+                _values.append(f"'{val.name}'")
+            elif isinstance(val, str):
+                _values.append(f"'{val}'")
+            else:
+                _values.append(f"{val}")
+        columns = ", ".join(_columns)
+        values = ", ".join(_values)
+        return f"INSERT INTO {self.schema_name}.{self.table_name} ({columns}) VALUES ({values});"

@@ -152,12 +152,12 @@ class CreateSchemasAndExtensionsSQL(SQLEmitter):
                 """
             -- Create the un0 schemas
             CREATE SCHEMA IF NOT EXISTS un0 AUTHORIZATION {admin_role};
-            CREATE SCHEMA IF NOT EXISTS {db_schema} AUTHORIZATION {admin_role};
+            CREATE SCHEMA IF NOT EXISTS {schema_name} AUTHORIZATION {admin_role};
             """
             )
             .format(
                 admin_role=ADMIN_ROLE,
-                db_schema=DB_SCHEMA,
+                schema_name=DB_SCHEMA,
             )
             .as_string()
         )
@@ -234,7 +234,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {db_schema} 
+                {schema_name} 
             FROM
                 public,
                 {base_role},
@@ -248,7 +248,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {db_schema} 
+                {schema_name} 
             FROM
                 public,
                 {base_role},
@@ -267,7 +267,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
             )
             .format(
                 db_name=DB_NAME,
-                db_schema=DB_SCHEMA,
+                schema_name=DB_SCHEMA,
                 base_role=BASE_ROLE,
                 login_role=LOGIN_ROLE,
                 reader_role=READER_ROLE,
@@ -289,7 +289,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema};
+                {schema_name};
 
             ALTER ROLE
                 {login_role}
@@ -298,7 +298,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema};
+                {schema_name};
 
 
             ALTER ROLE
@@ -308,7 +308,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema};
+                {schema_name};
 
             ALTER ROLE
                 {writer_role}
@@ -317,7 +317,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema};
+                {schema_name};
 
             ALTER ROLE
                 {admin_role}
@@ -326,7 +326,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema};
+                {schema_name};
             """
             )
             .format(
@@ -335,7 +335,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 reader_role=READER_ROLE,
                 writer_role=WRITER_ROLE,
                 admin_role=ADMIN_ROLE,
-                db_schema=DB_SCHEMA,
+                schema_name=DB_SCHEMA,
             )
             .as_string()
         )
@@ -350,7 +350,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
             ALTER SCHEMA graph OWNER TO {admin_role};
             ALTER SCHEMA ag_catalog OWNER TO {admin_role};
 
-            ALTER SCHEMA {db_schema} OWNER TO {admin_role};
+            ALTER SCHEMA {schema_name} OWNER TO {admin_role};
             ALTER TABLE audit.record_version OWNER TO {admin_role};
 
             -- Grant connect privileges to the DB login role
@@ -362,7 +362,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {db_schema}
+                {schema_name}
             TO
                 {login_role},
                 {admin_role},
@@ -373,7 +373,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema}
+                {schema_name}
             TO
                 {admin_role};
 
@@ -382,7 +382,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {db_schema}
+                {schema_name}
             TO
                 {login_role},
                 {admin_role},
@@ -396,7 +396,7 @@ class PrivilegeAndSearchPathSQL(SQLEmitter):
             )
             .format(
                 db_name=DB_NAME,
-                db_schema=DB_SCHEMA,
+                schema_name=DB_SCHEMA,
                 admin_role=ADMIN_ROLE,
                 reader_role=READER_ROLE,
                 writer_role=WRITER_ROLE,
@@ -418,7 +418,7 @@ class TablePrivilegeSQL(SQLEmitter):
                 audit,
                 graph,
                 ag_catalog,
-                {db_schema}
+                {schema_name}
             TO
                 {reader_role},
                 {writer_role};
@@ -427,7 +427,7 @@ class TablePrivilegeSQL(SQLEmitter):
                 un0,
                 audit,
                 graph,
-                {db_schema} 
+                {schema_name} 
             TO
                 {writer_role},
                 {admin_role};
@@ -448,7 +448,7 @@ class TablePrivilegeSQL(SQLEmitter):
                 admin_role=ADMIN_ROLE,
                 reader_role=READER_ROLE,
                 writer_role=WRITER_ROLE,
-                db_schema=DB_SCHEMA,
+                schema_name=DB_SCHEMA,
             )
             .as_string()
         )
@@ -579,32 +579,3 @@ class CreateTokenSecretSQL(SQLEmitter):
             .format(admin_role=ADMIN_ROLE, db_name=DB_NAME)
             .as_string()
         )
-
-
-CREATE_INSERT_GROUP_CONSTRAINT = SQL(
-    """
-    ALTER TABLE un0.group ADD CONSTRAINT ck_can_insert_group
-        CHECK (un0.can_insert_group(tenant_id) = true);
-    """
-).as_string()
-
-
-CREATE_INSERT_GROUP_FOR_TENANT_FUNCTION_AND_TRIGGER = SQL(
-    """
-CREATE OR REPLACE FUNCTION un0.insert_group_for_tenant()
-    RETURNS TRIGGER
-    LANGUAGE plpgsql
-AS $$
-BEGIN
-    INSERT INTO un0.group(tenant_id, name) VALUES (NEW.id, NEW.name);
-    RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
-    -- The trigger to call the function: AFTER INSERT
-    AFTER INSERT ON un0.tenant
-    FOR EACH ROW
-    EXECUTE FUNCTION un0.insert_group_for_tenant();
-"""
-).as_string()

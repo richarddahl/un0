@@ -1,6 +1,6 @@
 # un0/db/models.py
   
-## ::: un0.db.models.FieldMixin
+## ::: un0.db.models.ModelMixin
 
     handler: python
     options:

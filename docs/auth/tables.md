@@ -18,7 +18,7 @@ The tables.py file contains the following DeclarativeBase classes.
       show_root_heading: true
       show_source: true
 
-## ::: un0.auth.tables.RoleTablePermission
+## ::: un0.auth.tables.RoleTableOperation
 
     handler: python
     options:
@@ -26,7 +26,7 @@ The tables.py file contains the following DeclarativeBase classes.
       show_root_heading: true
       show_source: true
 
-## ::: un0.auth.tables.TablePermission
+## ::: un0.auth.tables.TableOperation
 
     handler: python
     options:

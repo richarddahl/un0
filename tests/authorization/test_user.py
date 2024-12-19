@@ -5,11 +5,12 @@
 from sqlalchemy import inspect, BOOLEAN
 from sqlalchemy.dialects.postgresql import TEXT, VARCHAR, TIMESTAMP
 
-from un0.database.fields import CK
-from un0.relatedobjects.mixins import InsertRelatedObjectSQL
-from un0.authorization.models import User, UserRecordFieldAuditSQL
-from un0.database.mixins import SoftDeleteSQL
-from un0.database.models import InsertTableTypeSQL
+from un0.database.fields import CheckDefinition
+from un0.database.sql_emitters import AlterGrantSQL, InsertTableTypeSQL
+from un0.relatedobjects.sql_emitters import InsertRelatedObject
+from un0.authorization.models import User
+from un0.authorization.sql_emitters import UserRecordFieldAuditSQL
+from un0.database.mixins import SoftDelete
 
 from tests.conftest import (
     print_indices,
@@ -32,7 +33,6 @@ class TestUser:
         assert User.table_name_plural == "users"
         assert User.verbose_name == "User"
         assert User.verbose_name_plural == "Users"
-        # print(User.field_definitions.keys())
         assert list(User.field_definitions.keys()) == [
             "email",
             "handle",
@@ -53,22 +53,22 @@ class TestUser:
             "import_id",
             "import_key",
         ]
-        assert User.constraints == [
-            CK(
+        assert User.constraint_definitions == [
+            CheckDefinition(
                 expression="\n(is_superuser = 'false' AND default_group_id IS NOT NULL) OR\n(is_superuser = 'true' AND default_group_id IS NULL) AND\n(is_superuser = 'false' AND is_tenant_admin = 'false') OR\n(is_superuser = 'true' AND is_tenant_admin = 'false') OR\n(is_superuser = 'false' AND is_tenant_admin = 'true')\n",
                 name="ck_user_is_superuser",
             )
         ]
-        assert User.indices == []
+        assert User.index_definitions == []
         for emitter in [
-            UserRecordFieldAuditSQL,
+            AlterGrantSQL,
             InsertTableTypeSQL,
-            SoftDeleteSQL,
-            InsertRelatedObjectSQL,
+            InsertRelatedObject,
+            UserRecordFieldAuditSQL,
+            SoftDelete,
         ]:
             assert emitter in User.sql_emitters
-        assert User.indices == []
-        assert User.primary_keys == {"id"}
+        assert User.index_definitions == []
 
         user = User(
             id="string", email="test@example.com", handle="test", full_name="Test User"
@@ -155,7 +155,7 @@ class TestUser:
     def test_user_check_constraints(self, db_connection):
         """Test the check constraints on the user table in the database."""
         db_inspector = inspect(db_connection)
-        print_ck_constraints(db_inspector, "user", schema=self.schema)
+        # print_ck_constraints(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_check_constraints("user", schema=self.schema) == [
             {
                 "name": "ck_user_ck_user_is_superuser",
@@ -165,7 +165,7 @@ class TestUser:
         ]
 
     def test_user_indices(self, db_connection):
-        """Test the indices on the user table in the database."""
+        """Test the index_definitions on the user table in the database."""
         db_inspector = inspect(db_connection)
         # print_indices(db_inspector, "user", schema=self.schema)
         assert db_inspector.get_indexes("user", schema=self.schema) == [

@@ -6,12 +6,13 @@ import pytest  # type: ignore
 
 # from un0.auth.tables import User
 from tests.conftest import mock_rls_vars
+from un0.authorization.models import User
 from un0.config import settings
 
 
 @pytest.fixture(scope="function")
 def new_user(tenant_dict, group_dict):
-    user = User(
+    user = User.table(
         email="new_user@acme.com",
         handle="new_user",
         full_name="New User",

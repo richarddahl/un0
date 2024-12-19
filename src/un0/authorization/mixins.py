@@ -14,9 +14,9 @@ from pydantic.dataclasses import dataclass
 
 from un0.database.models import Model
 from un0.database.sql_emitters import SQLEmitter
-from un0.database.fields import FieldDefinition, FK
+from un0.database.fields import FieldDefinition, FKDefinition
 from un0.database.mixins import (
-    FieldMixin,
+    ModelMixin,
     ActiveDeletedMixin,
     ImportMixin,
 )
@@ -24,7 +24,7 @@ from un0.relatedobjects.mixins import RelatedObjectIdMixin
 from un0.authorization.sql_emitters import RecordFieldAuditSQL
 
 
-class RecordFieldAuditMixin(FieldMixin):
+class RecordFieldAuditMixin(ModelMixin):
     sql_emitters = [RecordFieldAuditSQL]
     field_definitions = {
         "created_at": FieldDefinition(
@@ -35,11 +35,11 @@ class RecordFieldAuditMixin(FieldMixin):
         ),
         "owned_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="OWNED_BY",
-                from_edge="OWNS",
+                edge_label="OWNED_BY",
+                reverse_edge_labels=["OWNS"],
             ),
             index=True,
             nullable=False,
@@ -53,11 +53,11 @@ class RecordFieldAuditMixin(FieldMixin):
         ),
         "modified_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="LAST_MODIFIED_BY",
-                from_edge="LAST_MODIFIED",
+                edge_label="LAST_MODIFIED_BY",
+                reverse_edge_labels=["LAST_MODIFIED"],
             ),
             index=True,
             nullable=False,
@@ -69,11 +69,11 @@ class RecordFieldAuditMixin(FieldMixin):
         ),
         "deleted_by_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.user.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.user.id",
                 ondelete="CASCADE",
-                to_edge="DELETED_BY",
-                from_edge="DELETED",
+                edge_label="DELETED_BY",
+                reverse_edge_labels=["DELETED"],
             ),
             index=True,
             doc="User that deleted the record",
@@ -91,37 +91,9 @@ class RecordFieldAuditMixin(FieldMixin):
     deleted_by: Optional[Model] = None
 
 
-@dataclass
-class DefaultTenantSQL(SQLEmitter):
-    def emit_sql(self) -> str:
-        function_string = textwrap.dedent(
-            """
-            DECLARE
-                tenant_id TEXT := current_setting('rls_var.tenant_id', true);
-            BEGIN
-                IF tenant_id IS NULL THEN
-                    RAISE EXCEPTION 'tenant_id is NULL';
-                END IF;
-
-                NEW.tenant_id := tenant_id;
-
-                RETURN NEW;
-            END;
-            """
-        )
-        return self.create_sql_function(
-            "set_tenant_id",
-            function_string,
-            timing="BEFORE",
-            operation="INSERT",
-            include_trigger=True,
-            db_function=False,
-        )
-
-
-class TenantMixin(FieldMixin):
+class TenantMixin(ModelMixin):
     """
-    TenantFieldMixin is a mixin class that provides tenant-related fields and functionality to a model.
+    TenantModelMixin is a mixin class that provides tenant-related fields and functionality to a model.
 
     Attributes:
         field_definitions (dict): A dictionary defining the tenant_id field with its properties,
@@ -131,16 +103,14 @@ class TenantMixin(FieldMixin):
         tenant (Model): The tenant model instance associated with the tenant_id.
     """
 
-    sql_emitters = [DefaultTenantSQL]
-
     field_definitions = {
         "tenant_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.tenant.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.tenant.id",
                 ondelete="CASCADE",
-                to_edge="BELONGS_TO",
-                from_edge="HAS",
+                edge_label="BELONGS_TO",
+                reverse_edge_labels=["HAS"],
             ),
             index=True,
             nullable=False,
@@ -152,9 +122,9 @@ class TenantMixin(FieldMixin):
     tenant: Optional[Model] = None
 
 
-class GroupMixin(FieldMixin):
+class GroupMixin(ModelMixin):
     """
-    GroupFieldMixin is a mixin class that provides group-related fields and functionality to a model.
+    GroupModelMixin is a mixin class that provides group-related fields and functionality to a model.
 
     Attributes:
         field_definitions (dict): A dictionary defining the group_id field with its properties,
@@ -167,11 +137,11 @@ class GroupMixin(FieldMixin):
     field_definitions = {
         "group_id": FieldDefinition(
             data_type=VARCHAR(26),
-            foreign_key=FK(
-                target="un0.group.id",
+            foreign_key_definition=FKDefinition(
+                target_column_name="un0.group.id",
                 ondelete="CASCADE",
-                to_edge="BELONGS_TO",
-                from_edge="HAS",
+                edge_label="BELONGS_TO",
+                reverse_edge_labels=["HAS"],
             ),
             index=True,
             nullable=False,
@@ -186,6 +156,7 @@ class GroupMixin(FieldMixin):
 class AuthorizationMixin(
     RelatedObjectIdMixin,
     ActiveDeletedMixin,
+    RecordFieldAuditMixin,
     ImportMixin,
 ):
     pass
@@ -194,6 +165,7 @@ class AuthorizationMixin(
 class RLSMixin(
     RelatedObjectIdMixin,
     ActiveDeletedMixin,
+    RecordFieldAuditMixin,
     GroupMixin,
     TenantMixin,
     ImportMixin,

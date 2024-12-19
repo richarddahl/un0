@@ -10,6 +10,70 @@ from un0.database.sql_emitters import SQLEmitter
 from un0.config import settings
 
 
+@dataclass
+class UserRecordFieldAuditSQL(SQLEmitter):
+    """ """
+
+    def emit_sql(self) -> str:
+        function_string = """
+            DECLARE
+                user_id TEXT := current_setting('rls_var.user_id', true);
+                estimate INT4;
+            BEGIN
+                SELECT current_setting('rls_var.user_id', true) INTO user_id;
+
+                IF user_id IS NULL THEN
+                    /*
+                    This should only happen when the very first user is created
+                    and therefore a user_id cannot be set in the session variables
+                    */
+                    SELECT reltuples AS estimate FROM PG_CLASS WHERE relname = TG_TABLE_NAME INTO estimate;
+                    IF TG_TABLE_NAME = 'user' AND estimate < 1 THEN
+                    /*
+                         NEW.modified_at := NOW();
+
+                        IF TG_OP = 'INSERT' THEN
+                            NEW.created_at := NOW();
+                        END IF;
+
+                        IF TG_OP = 'DELETE' THEN
+                            NEW.deleted_at = NOW();
+                        END IF;
+                        */
+                    ELSE
+                        RAISE EXCEPTION 'user_id is NULL';
+                    END IF;
+                END IF;
+
+                NEW.modified_at := NOW();
+                NEW.modified_by_id = user_id;
+
+                IF TG_OP = 'INSERT' THEN
+                    NEW.created_at := NOW();
+                    NEW.owned_by_id = user_id;
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN
+                    NEW.deleted_at = NOW();
+                    NEW.deleted_by_id = user_id;
+                END IF;
+                RETURN NEW;
+            END;
+            """
+
+        return self.create_sql_function(
+            "set_owner_and_modified",
+            function_string,
+            timing="BEFORE",
+            operation="INSERT OR UPDATE OR DELETE",
+            include_trigger=True,
+            db_function=False,
+        )
+
+
+# UNVERIFIED
+
+
 class RecordFieldAuditSQL(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = """
@@ -58,7 +122,7 @@ class RecordFieldAuditSQL(SQLEmitter):
 
 
 @dataclass
-class InsertTableOperationFnctnTrggrSQL(SQLEmitter):
+class InsertTableOperation(SQLEmitter):
     def emit_sql(self) -> str:
         return f"{self.emit_create_table_record_sql()}\n{self.emit_get_permissions_function_sql()}"
 
@@ -73,7 +137,7 @@ class InsertTableOperationFnctnTrggrSQL(SQLEmitter):
                     [SELECT, UPDATE]
                     [SELECT, INSERT, UPDATE]
                     [SELECT, INSERT, UPDATE, DELETE]
-                Deleted automatically by the DB via the FK Constraints ondelete when a table_type is deleted.
+                Deleted automatically by the DB via the FKDefinition Constraints ondelete when a table_type is deleted.
                 */
                 INSERT INTO un0.table_operation(table_type_id, operations)
                     VALUES (NEW.id, ARRAY['SELECT']::un0.sqloperation[]);
@@ -125,7 +189,7 @@ class InsertTableOperationFnctnTrggrSQL(SQLEmitter):
         )
 
 
-class ValidateGroupInsertSQLSQL(SQLEmitter):
+class ValidateGroupInsert(SQLEmitter):
     def emit_sql(self) -> str:
         function_string = f"""
             DECLARE
@@ -173,6 +237,60 @@ class ValidateGroupInsertSQLSQL(SQLEmitter):
 
         return self.create_sql_function(
             "validate_group_insert",
+            function_string,
+            timing="BEFORE",
+            operation="INSERT",
+            include_trigger=True,
+            db_function=False,
+        )
+
+
+# class InsertGroupConstraint(SQLEmitter):
+#    def emit_sql(self) -> str:
+#        return """ALTER TABLE un0.group ADD CONSTRAINT ck_can_insert_group
+#            CHECK (un0.validate_group_insert(tenant_id) = true);
+#            """
+
+
+class InsertGroupForTenant(SQLEmitter):
+    def emit_sql(self) -> str:
+        return """CREATE OR REPLACE FUNCTION un0.insert_group_for_tenant()
+            RETURNS TRIGGER
+            LANGUAGE plpgsql
+            AS $$
+            BEGIN
+                INSERT INTO un0.group(tenant_id, name) VALUES (NEW.id, NEW.name);
+                RETURN NEW;
+            END;
+            $$;
+
+            CREATE OR REPLACE TRIGGER insert_group_for_tenant_trigger
+            -- The trigger to call the function
+            AFTER INSERT ON un0.tenant
+            FOR EACH ROW
+            EXECUTE FUNCTION un0.insert_group_for_tenant();
+            """
+
+
+class DefaultGroupTenant(SQLEmitter):
+    def emit_sql(self) -> str:
+        function_string = textwrap.dedent(
+            """
+            DECLARE
+                tenant_id TEXT := current_setting('rls_var.tenant_id', true);
+            BEGIN
+                IF tenant_id IS NULL THEN
+                    RAISE EXCEPTION 'tenant_id is NULL';
+                END IF;
+
+                NEW.tenant_id := tenant_id;
+
+                RETURN NEW;
+            END;
+            """
+        )
+        return self.create_sql_function(
+            "set_tenant_id",
             function_string,
             timing="BEFORE",
             operation="INSERT",

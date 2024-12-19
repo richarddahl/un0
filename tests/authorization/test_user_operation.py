@@ -15,18 +15,10 @@ from sqlalchemy.dialects.postgresql import BOOLEAN
 from fastapi.testclient import TestClient
 
 from un0.config import settings
-from un0.authorization.models import (
-    User,
-    Tenant,
-    #    TableOperation,
-    #    Group,
-    #    Role,
-    #    UserGroupRole,
-    #    RoleTableOperation,
-)
+from un0.authorization.models import User
 
 # from un0.rltd.models import TableType, RelatedObject
-# from tests.pgjwt.test_pgjwt import encode_test_token
+from tests.pgjwt.test_pgjwt import encode_test_token
 from un0.database.management.db_manager import DBManager
 from tests.conftest import mock_rls_vars
 
@@ -37,28 +29,28 @@ from tests.conftest import mock_rls_vars
 class TestUser:
     """Tests for the User model."""
 
-    pass
-    '''
-
-    def test_create_user_function(self, session):
-        """Creates the superuser and returns it's id."""
+    def test_create_user(self, session, superuser_id):
+        # Creates the superuser and returns it's id.
         db_manager = DBManager()
-        superuser_id = db_manager.create_user(
-            email="new_admin@notorm.com",
+        new_superuser_id = db_manager.create_user(
+            email="new_admin@notorm.tech",
             handle="new_admin",
             full_name="New Admin",
             is_superuser=True,
         )
-        assert superuser_id is not None
+        assert new_superuser_id is not None
 
         with session.begin():
-            session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
-            superuser = session.scalar(
-                select(User.table).where(User.table.c.id == superuser_id)
+            stmt = select(User.table).where(User.table.email == "new_admin@notorm.tech")
+            session.execute(
+                func.un0.mock_authorize_user(
+                    *mock_rls_vars(superuser_id, role_name="admin")
+                )
             )
+            superuser = session.scalar(stmt)
 
             assert superuser is not None
-            assert superuser.email == "new_admin@notorm.com"
+            assert superuser.email == "new_admin@notorm.tech"
             assert superuser.handle == "new_admin"
             assert superuser.full_name == "New Admin"
             assert superuser.is_superuser is True
@@ -68,20 +60,67 @@ class TestUser:
             assert superuser.created_at is not None
             assert superuser.modified_at is not None
             assert superuser.deleted_at is None
+            session.commit()
 
-            session.execute(func.un0.mock_role("admin"))
-            session.execute((delete(User.table).where(User.table.c.id == superuser_id)))
+    def test_soft_delete_user(self, session, superuser_id):
         with session.begin():
             session.execute(
                 func.un0.mock_authorize_user(
-                    *mock_rls_vars(superuser_id, role_name="writer")
+                    *mock_rls_vars(superuser_id, role_name="admin")
                 )
             )
-            session.execute((delete(User).where(User.id == superuser_id)))
-    '''
+            session.execute(
+                delete(User.table).where(User.table.email == "new_admin@notorm.tech")
+            )
+            session.commit()
 
+        # Test to see if the soft delete workked
+        with session.begin():
+            session.execute(
+                func.un0.mock_authorize_user(
+                    *mock_rls_vars(superuser_id, role_name="reader")
+                )
+            )
+            superuser = session.scalar(
+                select(User.table).where(User.table.email == "new_admin@notorm.tech")
+            )
 
-'''
+            assert superuser is not None
+            assert superuser.email == "new_admin@notorm.tech"
+            assert superuser.handle == "new_admin"
+            assert superuser.full_name == "New Admin"
+            assert superuser.is_superuser is True
+            assert superuser.is_tenant_admin is False
+            assert superuser.is_active is False
+            assert superuser.is_deleted is True
+            assert superuser.created_at is not None
+            assert superuser.modified_at is not None
+            assert superuser.deleted_at is not None
+            session.commit()
+
+        with session.begin():
+            session.execute(
+                func.un0.mock_authorize_user(
+                    *mock_rls_vars(superuser_id, role_name="admin")
+                )
+            )
+            # Actually delete the soft deleted user
+            session.execute(
+                delete(User.table).where(User.table.email == "new_admin@notorm.tech")
+            )
+            session.commit()
+
+        # Test to see if the actual delete worked
+        with session.begin():
+            session.execute(
+                func.un0.mock_authorize_user(
+                    *mock_rls_vars(superuser_id, role_name="admin")
+                )
+            )
+            stmt = select(func.count()).select_from(User.table)
+            user_count = session.execute(stmt)
+            assert user_count.scalar() == 1
+
     ############################
     # Admin user related tests #
     ############################
@@ -91,7 +130,7 @@ class TestUser:
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
             admin_user = session.scalar(
-                select(User).where(User.email == settings.SUPERUSER_EMAIL)
+                select(User.table).where(User.table.email == settings.SUPERUSER_EMAIL)
             )
             assert admin_user is not None
             assert admin_user.email == settings.SUPERUSER_EMAIL
@@ -104,6 +143,7 @@ class TestUser:
             assert admin_user.created_at is not None
             assert admin_user.modified_at is not None
             assert admin_user.deleted_at is None
+            session.commit()
 
     ############################
     # Row Level Security Tests #
@@ -121,25 +161,25 @@ class TestUser:
                 )
             )
             # Test with admin role
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 20
 
             # Test with writer role
             session.execute(func.un0.mock_role("writer"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 20
 
             # Test with reader role
             session.execute(func.un0.mock_role("reader"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 20
 
             # Test with login role
             session.execute(func.un0.mock_role("login"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(stmt)
             assert "permission denied" in str(excinfo.value)
@@ -163,25 +203,25 @@ class TestUser:
             )
 
             # Test with admin role
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with writer role
             session.execute(func.un0.mock_role("writer"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with reader role
             session.execute(func.un0.mock_role("reader"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with login role
             session.execute(func.un0.mock_role("login"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(stmt)
             assert "permission denied" in str(excinfo.value)
@@ -204,25 +244,25 @@ class TestUser:
                 )
             )
             # Test with admin role
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with writer role
             session.execute(func.un0.mock_role("writer"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with reader role
             session.execute(func.un0.mock_role("reader"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             user_count = session.execute(stmt)
             assert user_count.scalar() == 10
 
             # Test with login role
             session.execute(func.un0.mock_role("login"))
-            stmt = select(func.count()).select_from(User)
+            stmt = select(func.count()).select_from(User.table)
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(stmt)
             assert "permission denied" in str(excinfo.value)
@@ -259,7 +299,7 @@ class TestUser:
             assert new_user.id is not None
 
             # UPDATE the user with the admin role
-            stmt = select(User).where(User.email == new_user.email)
+            stmt = select(User.table).where(User.table.email == new_user.email)
             new_user = session.scalar(stmt)
             new_user.full_name = "Updated User"
 
@@ -273,7 +313,7 @@ class TestUser:
             assert new_user.full_name == "Updated User"
 
             # UPDATE the user's TENANT with the admin role
-            stmt = select(User).where(User.email == new_user.email)
+            stmt = select(User.table).where(User.table.email == new_user.email)
             new_user = session.scalar(stmt)
             new_user.tenant_id = tenant_dict.get("Nacme Corp").get("id")
 
@@ -292,7 +332,9 @@ class TestUser:
                     *mock_rls_vars(superuser_id, role_name=role_name)
                 )
             )
-            session.execute((delete(User).where(User.email == new_user.email)))
+            session.execute(
+                (delete(User.table).where(User.table.email == new_user.email))
+            )
 
         with session.begin():
             # Verify that new_user.is_deleted was set to True with the admin role
@@ -301,7 +343,7 @@ class TestUser:
                     *mock_rls_vars(superuser_id, role_name=role_name)
                 )
             )
-            stmt = select(User).where(User.email == new_user.email)
+            stmt = select(User.table).where(User.table.email == new_user.email)
             new_user = session.scalar(stmt)
             assert new_user.is_deleted is True
 
@@ -311,7 +353,9 @@ class TestUser:
                     *mock_rls_vars(superuser_id, role_name=role_name)
                 )
             )
-            session.execute((delete(User).where(User.email == new_user.email)))
+            session.execute(
+                (delete(User.table).where(User.table.email == new_user.email))
+            )
 
         with session.begin():
             # Verify the user was DELETED with the admin role
@@ -351,7 +395,7 @@ class TestUser:
             )
 
             # UPDATE a user with the reader role
-            stmt = select(User).where(User.email == new_user_email)
+            stmt = select(User.table).where(User.table.email == new_user_email)
             new_user = session.scalar(stmt)
             session.execute(
                 func.un0.mock_authorize_user(
@@ -370,7 +414,9 @@ class TestUser:
                 )
             )
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute((delete(User).where(User.email == new_user_email)))
+                session.execute(
+                    (delete(User.table).where(User.table.email == new_user_email))
+                )
             assert "permission denied" in str(excinfo.value)
 
     # Superuser cannot INSERT, UPDATE, DELETE Test with login role
@@ -402,7 +448,7 @@ class TestUser:
             )
 
             # SELECT a user with the login role
-            stmt = select(User).where(User.email == new_user_email)
+            stmt = select(User.table).where(User.table.email == new_user_email)
             with pytest.raises(ProgrammingError) as excinfo:
                 new_user = session.scalar(stmt)
             assert "permission denied" in str(excinfo.value)
@@ -416,8 +462,8 @@ class TestUser:
             new_user.full_name = "Updated User"
             with pytest.raises(ProgrammingError) as excinfo:
                 session.execute(
-                    update(User)
-                    .where(User.email == new_user_email)
+                    update(User.table)
+                    .where(User.table.email == new_user_email)
                     .values(full_name="Updated User")
                 )
             assert "permission denied" in str(excinfo.value)
@@ -430,7 +476,9 @@ class TestUser:
             )
             session.execute(func.un0.mock_role("login"))
             with pytest.raises(ProgrammingError) as excinfo:
-                session.execute((delete(User).where(User.email == new_user_email)))
+                session.execute(
+                    (delete(User.table).where(User.table.email == new_user_email))
+                )
             assert "permission denied" in str(excinfo.value)
 
     def test_rls_tenant_admin_create_update_delete_tenant_user(
@@ -446,7 +494,7 @@ class TestUser:
         Also tests that the tenant user's tenant_id CANNOT be changed by a tenant admin.
 
         """
-        acme_user = User(
+        acme_user = User.table(
             email="user@acme.com",
             handle="acme user",
             full_name="ACME User",
@@ -480,18 +528,20 @@ class TestUser:
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*acme_admin_vars))
             # DELETE the user (trigger sets is_deleted to True)
-            session.execute((delete(User).where(User.email == acme_user.email)))
+            session.execute(
+                (delete(User.table).where(User.table.email == acme_user.email))
+            )
 
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*acme_admin_vars))
             # Verify that new_user.is_deleted was set to True
-            stmt = select(User).where(User.email == acme_user.email)
+            stmt = select(User.table).where(User.table.email == acme_user.email)
             user = session.scalar(stmt)
             assert user.is_deleted is True
 
             # Actually DELETE the user with the admin role
             session.execute(func.un0.mock_authorize_user(*acme_admin_vars))
-            session.execute((delete(User).where(User.email == user.email)))
+            session.execute((delete(User.table).where(User.table.email == user.email)))
 
         with session.begin():
             # Verify the user was DELETED
@@ -508,7 +558,7 @@ class TestUser:
         """Tests that a tenant admin cannot create a user with a different tenant_id."""
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*acme_admin_vars))
-            acme_user = User(
+            acme_user = User.table(
                 email="not_acme@acme.com",
                 handle="not_acme user",
                 full_name="Not ACME User",
@@ -530,12 +580,14 @@ class TestUser:
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*acme_admin_vars))
             # The RLS prevents the select from returning the user, so we can't delete it but get no error
-            session.execute(delete(User).where(User.email == "admin@nacme.com"))
+            session.execute(
+                delete(User.table).where(User.table.email == "admin@nacme.com")
+            )
             session.commit()
 
         with session.begin():
             session.execute(func.un0.mock_authorize_user(*mock_rls_vars(superuser_id)))
-            stmt = select(User).where(User.email == "admin@nacme.com")
+            stmt = select(User.table).where(User.table.email == "admin@nacme.com")
             user_not_deleted = session.scalar(stmt)
             assert user_not_deleted is not None
 
@@ -553,7 +605,7 @@ class TestUser:
                     )
                 )
             )
-            unauthorized_acme_user = User(
+            unauthorized_acme_user = User.table(
                 email="unauthorized@acme.com",
                 handle="unauthorized acme user",
                 full_name="Unauthorized ACME User",
@@ -563,6 +615,8 @@ class TestUser:
             with pytest.raises(ProgrammingError):
                 session.commit()
 
+
+'''
     def test_user_obj_select_model_creation(self):
         """Tests the User model."""
         user_obj = UserObj(app=app)
@@ -751,5 +805,4 @@ async def get_user(user_id: str):
     return select_user_model(**user_data)
 
 """
-
 '''
